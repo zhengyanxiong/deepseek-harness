@@ -1,0 +1,12 @@
+- insert:
+    - id: jev-gate
+      name: '/home/bernie/workspace/repo/deepseek-harness/jev-guard-plugin/src/gate.ts'
+      config:
+        policy: strict
+        tools:
+          - bash
+          - pwsh
+        apiKeyEnv: TYPESAFE_API_KEY
+        model: jev-1.13.0
+        timeoutMs: 8000
+        onError: allow
