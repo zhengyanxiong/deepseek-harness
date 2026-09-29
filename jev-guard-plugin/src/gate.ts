@@ -15,6 +15,7 @@ import z from '@deepseek-ai/schemastery'
 
 import { PINNED_MODEL, screenCommand } from './jev.ts'
 import { POLICIES, fireNote, route } from './policies.ts'
+import type { Policy } from './policies.ts'
 
 export const name = 'jev-gate'
 export const inject = ['tools']
@@ -44,7 +45,10 @@ export const Config: z<Config> = z.object({
 })
 
 export function apply(ctx: Context, config: Config): void {
-  const policy = POLICIES[config.policy ?? 'strict'] ?? POLICIES.strict
+  const policyName = config.policy ?? 'strict'
+  const policy: Policy = policyName in POLICIES
+    ? POLICIES[policyName as 'strict' | 'permissive']
+    : POLICIES.strict
   const watched = new Set(config.tools ?? ['bash', 'pwsh'])
   const apiKeyEnv = config.apiKeyEnv ?? 'TYPESAFE_API_KEY'
   const model = config.model ?? PINNED_MODEL

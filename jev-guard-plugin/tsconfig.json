@@ -1,4 +1,7 @@
 {
+  // 编辑器项目：解析 @deepseek-ai/* 到各包的 lib 声明（skipLibCheck 跳过声明检查），
+  // 只严格检查本插件 src。不被任何仓库脚本构建；--patch source-launch
+  // 路径用 tsx 转译 .ts 源码，与此处的声明解析互不影响。
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -6,8 +9,12 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
     "paths": {
-      "@deepseek-ai/*": ["../../packages/*/*/src"]
+      "@deepseek-ai/cordis": ["../vendor/cordis/lib/types"],
+      "@deepseek-ai/schemastery": ["../vendor/schemastery/lib/types"],
+      "@deepseek-ai/dsh-tools": ["../packages/core/tools/lib/types"]
     }
   },
   "include": ["src"]

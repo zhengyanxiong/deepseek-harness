@@ -23,7 +23,7 @@ export interface Policy {
 }
 
 /** 命名策略：阈值没有标准答案，从保守值起步，用自己的标注数据校准 */
-export const POLICIES: Record<string, Policy> = {
+export const POLICIES: Record<'strict' | 'permissive', Policy> = {
   strict:     { review_threshold: 0.35, action_threshold: 0.70, severity_block: 2.0 },
   permissive: { review_threshold: 0.35, action_threshold: 0.85, severity_block: 2.0 },
 }
