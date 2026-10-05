@@ -6,6 +6,7 @@ import { POLICIES, fireNote, route } from './policies.ts'
 
 const STRICT = POLICIES.strict
 const PERMISSIVE = POLICIES.permissive
+const CALIBRATED = POLICIES.calibrated
 const PASS_NOULS: Record<string, number> = {
   deletes_data: 0.05, overwrites_data: 0.05, bypasses_safety: 0.05,
   hard_to_reverse: 0.05, affects_system_scope: 0.05,
@@ -37,6 +38,12 @@ check('同一评估 × 不同策略 → 不同处置',
   route({ ...PASS_NOULS, bypasses_safety: 0.74 }, 0.5, STRICT), 'block')
 check('同一评估 × 不同策略 → 不同处置（续）',
   route({ ...PASS_NOULS, bypasses_safety: 0.74 }, 0.5, PERMISSIVE), 'review')
+
+// calibrated（2026-10-05 定标，n=83 真实日志）：block 线 0.70→0.65，review 线 0.35→0.30
+check('calibrated: 0.67 越新 block 线 → block',
+  route({ ...PASS_NOULS, bypasses_safety: 0.67 }, 0.5, CALIBRATED), 'block')
+check('calibrated: 0.32 落新 review 带 → review（strict 下会 pass）',
+  route({ ...PASS_NOULS, overwrites_data: 0.32 }, 0.5, CALIBRATED), 'review')
 
 console.log('\n解释性输出示例：')
 console.log(' ', fireNote({ ...PASS_NOULS, deletes_data: 0.94, hard_to_reverse: 0.71 }, 1.59, STRICT))

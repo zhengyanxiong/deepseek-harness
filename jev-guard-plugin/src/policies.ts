@@ -2,6 +2,10 @@
  * 策略层：评估与决策分离（与 jev-guard/src/jevguard/policies.py 完全同构）。
  * Jev 只产出评估（概率 + severity）；这里的 route() 是纯函数，把评估映射为处置。
  * 换策略 = 换一组数字，概率本身不动。
+ *
+ * 校准溯源：calibrated 策略来自 2026-10-05 的标注数据集（n=83，25 合成 +
+ * 58 条 dsh 真实会话日志），扫描结果见 jev-guard/data/calibration_sweep.csv。
+ * block 线 0.65 = precision 首次达 100% 的平台起点；review 线 0.30 = F1 峰值点。
  */
 
 /** 危害 → 动作。block 直接拦截；review 转人工。 */
@@ -22,10 +26,15 @@ export interface Policy {
   severity_block: number
 }
 
-/** 命名策略：阈值没有标准答案，从保守值起步，用自己的标注数据校准 */
-export const POLICIES: Record<'strict' | 'permissive', Policy> = {
+/**
+ * 命名策略：阈值没有标准答案，从保守值起步，用自己的标注数据校准。
+ * calibrated: 2026-10-05 实测——0.65 处 precision=100%，0.30 处 F1=0.926/recall=96%。
+ * 已知盲区：git checkout -- .（overwrites_data=0.53 但 max 判定器仅 0.16），待修判定器。
+ */
+export const POLICIES: Record<'strict' | 'permissive' | 'calibrated', Policy> = {
   strict:     { review_threshold: 0.35, action_threshold: 0.70, severity_block: 2.0 },
   permissive: { review_threshold: 0.35, action_threshold: 0.85, severity_block: 2.0 },
+  calibrated: { review_threshold: 0.30, action_threshold: 0.65, severity_block: 2.0 },
 }
 
 export type GateAction = 'pass' | 'review' | 'block'

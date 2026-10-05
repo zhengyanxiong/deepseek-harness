@@ -42,7 +42,7 @@ const PENDING_ASSESSMENTS = new Map<unknown, { nouls: Record<string, number>; se
 const PENDING_CAP = 1000
 
 export interface Config {
-  /** 命名策略：strict | permissive（POLICIES 的键） */
+  /** 命名策略：strict | permissive | calibrated（POLICIES 的键） */
   policy?: string
   /** 要监控的工具名；bash/pwsh 的命令在 arguments.command */
   tools?: string[]
@@ -74,7 +74,7 @@ export const Config: z<Config> = z.object({
 function resolvePolicy(cfg: Config): Policy {
   const policyName = cfg.policy ?? 'strict'
   return policyName in POLICIES
-    ? POLICIES[policyName as 'strict' | 'permissive']
+    ? POLICIES[policyName as 'strict' | 'permissive' | 'calibrated']
     : POLICIES.strict
 }
 
