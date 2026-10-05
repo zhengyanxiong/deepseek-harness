@@ -197,7 +197,7 @@
   appearance: textfield;
 }
 
-/* 下拉箭头：原生 appearance 关掉后自绘一个 chevron */
+/* 下拉箭头：原生 appearance 关掉后自绘一个 caret */
 .selectWrap {
   position: relative;
 }
@@ -207,7 +207,9 @@
   cursor: pointer;
 }
 
-.chevron {
+/* 与头部折叠 chevron 是不同元素：必须分开命名，
+   否则后者会覆盖成 absolute 定位（教训：同名类在模块内二次定义） */
+.selectCaret {
   position: absolute;
   right: 10px;
   top: 50%;

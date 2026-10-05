@@ -114,7 +114,7 @@ export function JevGateCard(props: JevGateCardProps) {
               </option>
             ))}
           </select>
-          <span className={css.chevron} aria-hidden="true">▾</span>
+          <span className={css.selectCaret} aria-hidden="true">▾</span>
         </div>
       )
     }
