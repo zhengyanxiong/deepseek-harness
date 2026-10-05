@@ -25,6 +25,7 @@
 | `model` | `jev-1.13.0` | 钉死版本，不用 `jev-latest` |
 | `timeoutMs` | `8000` | 评估请求超时 |
 | `onError` | `allow` | 评估失败（含缺 key）：`allow` 放行+日志 / `deny` fail-closed |
+| `verbose` | `false` | 开启后每次评估在实例终端留一行完整 nouls 摘要（含 pass），用于观测与阈值校准 |
 
 ## 运行
 

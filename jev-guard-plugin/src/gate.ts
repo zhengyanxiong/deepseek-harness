@@ -43,6 +43,8 @@ export interface Config {
   timeoutMs?: number
   /** 评估失败时的处置：allow（放行+日志）| deny（fail-closed） */
   onError?: 'allow' | 'deny'
+  /** verbose：每次评估在实例终端留一行完整 nouls 摘要（含 pass；默认关） */
+  verbose?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -52,6 +54,7 @@ export const Config: z<Config> = z.object({
   model: z.string().default(PINNED_MODEL),
   timeoutMs: z.number().default(8000),
   onError: z.union(['allow', 'deny'] as const).default('allow'),
+  verbose: z.boolean().default(false),
 })
 
 function resolvePolicy(cfg: Config): Policy {
@@ -129,6 +132,15 @@ export function apply(ctx: Context, config: Config): void {
     const policy = resolvePolicy(cfg)
     const action = route(assessment.nouls, assessment.severity, policy)
     const note = fireNote(assessment.nouls, assessment.severity, policy)
+
+    if (cfg.verbose === true) {
+      // 完整画像一行留痕：deny/ask 的 reason 只含越线项，校准需要全量 nouls
+      const summary = Object.entries(assessment.nouls)
+        .map(([hazard, p]) => hazard + '=' + p.toFixed(2))
+        .join(' ')
+      console.info('[jev-gate] ' + action + ' | ' + command + ' | ' + summary
+        + ' | severity=' + assessment.severity.toFixed(2))
+    }
 
     if (action === 'block') {
       return {
