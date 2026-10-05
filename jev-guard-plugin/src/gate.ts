@@ -15,9 +15,12 @@
  * （onError: 'allow'），网络故障不应把开发工作完全锁死；追求强保证时切 'deny'。
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { randomUUID } from 'node:crypto'
+
 import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
+import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-settings'
-import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { PostToolDecision, PreToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 
 import { PINNED_MODEL, screenCommand } from './jev.ts'
@@ -29,6 +32,14 @@ export const inject = ['tools']
 
 /** settings namespace（join key：settings.yaml 里的段名） */
 export const JEV_GATE_NS = 'jev-gate'
+
+/**
+ * pre-execute → post-execute 的评估传递表（以 exec.token 关联同一调用）。
+ * 只有 pass 会暂存（deny/ask 已由决策契约呈现在轨迹里）；有界防泄漏：
+ * 超限整体清空，post-execute 命中即删。
+ */
+const PENDING_ASSESSMENTS = new Map<unknown, { nouls: Record<string, number>; severity: number }>()
+const PENDING_CAP = 1000
 
 export interface Config {
   /** 命名策略：strict | permissive（POLICIES 的键） */
@@ -45,6 +56,8 @@ export interface Config {
   onError?: 'allow' | 'deny'
   /** verbose：每次评估在实例终端留一行完整 nouls 摘要（含 pass；默认关） */
   verbose?: boolean
+  /** traceNote：把 pass 的评估画像以 notice 折叠行写进会话轨迹（默认关） */
+  traceNote?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -55,6 +68,7 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number().default(8000),
   onError: z.union(['allow', 'deny'] as const).default('allow'),
   verbose: z.boolean().default(false),
+  traceNote: z.boolean().default(false),
 })
 
 function resolvePolicy(cfg: Config): Policy {
@@ -64,8 +78,38 @@ function resolvePolicy(cfg: Config): Policy {
     : POLICIES.strict
 }
 
+/** 递归冻结：复刻 dsh-llm freezeMessage 的不可变语义（message 发布前必须冻结） */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const key of Object.keys(value)) {
+      deepFreeze((value as Record<string, unknown>)[key])
+    }
+    Object.freeze(value)
+  }
+  return value
+}
+
 /**
- * 解析评估用的 API key：优先走 dsh 凭证缝（ctx.credentials），解析顺序为
+ * 本地复刻 @deepseek-ai/dsh-llm 的 createUserMessage（{...input, role:'user',
+ * id: uuid} 后深冻结）。不引它的运行时：其 lib/types 产物缺 lib/package.json，
+ * tsconfig paths 指过去会在加载时炸；type-only 的类型引用只存在于编译期。
+ */
+function createNoticeMessage(text: string, summary: string): UserMessage {
+  return deepFreeze({
+    id: randomUUID(),
+    role: 'user' as const,
+    content: [{ type: 'text' as const, text }],
+    source: {
+      kind: 'plugin' as const,
+      plugin: 'jev-gate',
+      form: 'notice' as const,
+      summary,
+    },
+  } as unknown as UserMessage)
+}
+
+/**
+ * 解析评估用的 API key：优先走 dsh 凭证缝（`ctx.credentials`），解析顺序为
  * 进程环境变量 > ~/.dsh/.credentials.yaml 的 refs（受管存储，Models 页可写、
  * 外部编辑热更新）> 启动 cwd 的 .env > ~/.dsh/.env；凭证服务未加载时
  * （standalone / selfcheck 场景）回退进程环境变量。
@@ -154,6 +198,34 @@ export function apply(ctx: Context, config: Config): void {
         reason: `jev-gate [policy=${cfg.policy}] 需要人工确认：${command}\n触发：${note}`,
       }
     }
+    // pass：评估结果暂存，post-execute 按需转成轨迹 notice（traceNote）
+    if (PENDING_ASSESSMENTS.size >= PENDING_CAP) PENDING_ASSESSMENTS.clear()
+    PENDING_ASSESSMENTS.set(exec.token, { nouls: assessment.nouls, severity: assessment.severity })
     return next()
+  })
+
+  // 轨迹注记：pass 的评估画像以 notice 折叠行写进会话轨迹（可展开看全量画像）。
+  // observe-and-enrich、从不否决——写法对齐 guard/repeat-tool-reminder 的成熟先例；
+  // denied 调用也会经过本瀑布，注记同样折上（被下游 block 时评估事实仍然成立）。
+  ctx.on('tools/post-execute', async (exec: ToolExecution, _result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>): Promise<PostToolDecision> => {
+    const downstream = await next()
+    const cached = PENDING_ASSESSMENTS.get(exec.token)
+    if (cached === undefined) return downstream
+    PENDING_ASSESSMENTS.delete(exec.token)
+    if (source().traceNote !== true) return downstream
+    if (exec.agent === undefined) return downstream // 直接 tools.execute() 调用无轨迹可注
+
+    const entries = Object.entries(cached.nouls)
+    const highest = entries.reduce((a, b) => (b[1] > a[1] ? b : a))
+    const summaryText = entries.map(([hazard, p]) => hazard + '=' + p.toFixed(2)).join(' ')
+    const notice: UserMessage = createNoticeMessage(
+      'jev-gate 评估画像：' + summaryText + ' | severity=' + cached.severity.toFixed(2),
+      'jev-gate：放行 · 最高 ' + highest[0] + '=' + highest[1].toFixed(2),
+    )
+    const contexts = [notice, ...downstream.additionalContexts ?? []]
+    if (downstream.kind === 'block') {
+      return { kind: 'block', feedback: downstream.feedback, additionalContexts: contexts }
+    }
+    return { ...downstream, additionalContexts: contexts }
   })
 }

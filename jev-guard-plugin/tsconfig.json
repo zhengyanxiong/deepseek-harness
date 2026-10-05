@@ -16,7 +16,8 @@
       "@deepseek-ai/schemastery": ["../vendor/schemastery/lib/types"],
       "@deepseek-ai/dsh-tools": ["../packages/core/tools/lib/types"],
       "@deepseek-ai/dsh-settings": ["../packages/settings/settings/lib/types"],
-      "@deepseek-ai/dsh-credentials": ["../packages/credentials/credentials/lib/types"]
+      "@deepseek-ai/dsh-credentials": ["../packages/credentials/credentials/lib/types"],
+      "@deepseek-ai/dsh-session": ["../packages/core/session/lib/types"]
     }
   },
   "include": ["src"]

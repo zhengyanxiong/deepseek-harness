@@ -26,8 +26,13 @@
 | `timeoutMs` | `8000` | 评估请求超时 |
 | `onError` | `allow` | 评估失败（含缺 key）：`allow` 放行+日志 / `deny` fail-closed |
 | `verbose` | `false` | 开启后每次评估在实例终端留一行完整 nouls 摘要（含 pass），用于观测与阈值校准 |
+| `traceNote` | `false` | 把 pass 的评估画像以 notice 折叠行写进会话轨迹（Web UI 可见可展开） |
 
 ## 运行
+
+Key 配置（任选其一，插件经 dsh 凭证缝 ctx.credentials 按序解析）：
+轨迹可见性（2026-10-05 新增）：`traceNote: true` 时，放行的命令会在会话轨迹里留一条
+notice 折叠行（来源 jev-gate，展开可见全量评估画像）；deny/ask 天然可见，无需开关。
 
 Key 配置（任选其一，插件经 dsh 凭证缝 ctx.credentials 按序解析）：
 1. ~/.dsh/.credentials.yaml 的 refs: 段加 `TYPESAFE_API_KEY: ts_...`（受管存储，热更新，**推荐**）
