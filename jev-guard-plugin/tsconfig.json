@@ -14,7 +14,8 @@
     "paths": {
       "@deepseek-ai/cordis": ["../vendor/cordis/lib/types"],
       "@deepseek-ai/schemastery": ["../vendor/schemastery/lib/types"],
-      "@deepseek-ai/dsh-tools": ["../packages/core/tools/lib/types"]
+      "@deepseek-ai/dsh-tools": ["../packages/core/tools/lib/types"],
+      "@deepseek-ai/dsh-settings": ["../packages/settings/settings/lib/types"]
     }
   },
   "include": ["src"]
