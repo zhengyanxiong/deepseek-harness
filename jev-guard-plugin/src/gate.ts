@@ -15,6 +15,7 @@
  * （onError: 'allow'），网络故障不应把开发工作完全锁死；追求强保证时切 'deny'。
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-settings'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
@@ -34,7 +35,7 @@ export interface Config {
   policy?: string
   /** 要监控的工具名；bash/pwsh 的命令在 arguments.command */
   tools?: string[]
-  /** 存放 TypeSafe API Key 的环境变量名 */
+  /** TypeSafe API Key 的凭证引用名（默认 TYPESAFE_API_KEY）；经 ctx.credentials 解析，refs 层即 ~/.dsh/.credentials.yaml */
   apiKeyEnv?: string
   /** 钉死版本，不用 jev-latest */
   model?: string
@@ -58,6 +59,20 @@ function resolvePolicy(cfg: Config): Policy {
   return policyName in POLICIES
     ? POLICIES[policyName as 'strict' | 'permissive']
     : POLICIES.strict
+}
+
+/**
+ * 解析评估用的 API key：优先走 dsh 凭证缝（ctx.credentials），解析顺序为
+ * 进程环境变量 > ~/.dsh/.credentials.yaml 的 refs（受管存储，Models 页可写、
+ * 外部编辑热更新）> 启动 cwd 的 .env > ~/.dsh/.env；凭证服务未加载时
+ * （standalone / selfcheck 场景）回退进程环境变量。
+ */
+async function resolveApiKey(ctx: Context, apiKeyEnv: string): Promise<string | undefined> {
+  if (isCredentialRefName(apiKeyEnv)) {
+    const hit = await ctx.get('credentials')?.resolve(credentialRef(apiKeyEnv))
+    if (hit !== undefined) return hit.value
+  }
+  return process.env[apiKeyEnv]
 }
 
 export function apply(ctx: Context, config: Config): void {
@@ -84,7 +99,7 @@ export function apply(ctx: Context, config: Config): void {
 
     const apiKeyEnv = cfg.apiKeyEnv ?? 'TYPESAFE_API_KEY'
     const onError = cfg.onError ?? 'allow'
-    const apiKey = process.env[apiKeyEnv]
+    const apiKey = await resolveApiKey(ctx, apiKeyEnv)
     if (apiKey === undefined) {
       // 没有 key 就无法评估；按 onError 处置，与评估失败一致
       if (onError === 'deny') {

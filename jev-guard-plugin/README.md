@@ -21,14 +21,17 @@
 | --- | --- | --- |
 | `policy` | `strict` | 命名策略：`strict`（action≥0.70）/ `permissive`（action≥0.85） |
 | `tools` | `[bash, pwsh]` | 监控的工具名；命令取 `arguments.command` |
-| `apiKeyEnv` | `TYPESAFE_API_KEY` | 存放 TypeSafe Key 的环境变量名（key 不进配置文件） |
+| `apiKeyEnv` | `TYPESAFE_API_KEY` | TypeSafe Key 的凭证引用名；经 ctx.credentials 解析（见下） |
 | `model` | `jev-1.13.0` | 钉死版本，不用 `jev-latest` |
 | `timeoutMs` | `8000` | 评估请求超时 |
 | `onError` | `allow` | 评估失败（含缺 key）：`allow` 放行+日志 / `deny` fail-closed |
 
 ## 运行
 
-前提：`export TYPESAFE_API_KEY=ts_...`
+Key 配置（任选其一，插件经 dsh 凭证缝 ctx.credentials 按序解析）：
+1. ~/.dsh/.credentials.yaml 的 refs: 段加 `TYPESAFE_API_KEY: ts_...`（受管存储，热更新，**推荐**）
+2. 启动前 `export TYPESAFE_API_KEY=ts_...`（进程环境，优先级最高）
+3. 启动 cwd 的 .env 或 ~/.dsh/.env（兜底回退）
 
 ```bash
 cd ~/workspace/repo/deepseek-harness
