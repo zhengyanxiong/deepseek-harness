@@ -6,20 +6,20 @@
  * - `deny`  → 本次调用以错误收场（block 场景）
  * - `ask`   → 经审批服务放行后才执行（review 场景）
  *
- * 配置两层（docs/cookbook/adding-a-settings-card.md）：
+ * 配置（新 master 机制，docs/cookbook/adding-a-settings-card.md）：
  * - base 层：cordis.yml 的 config 段（部署时给定）
- * - user 层：~/.dsh/settings.yaml 的 `jev-gate:` 段（installSection 注册后
- *   按字段覆盖，保存即生效，无需重启；删除字段即恢复默认）
+ * - user 层：profile patch 文档（Web Plugins 页编辑，经 ConfigEditor 写入；
+ *   所有字段 .volatile()，ConfigEditor 应用编辑后 volatile HMR 即时生效，
+ *   读操作每次评估现取 .get()，无需重启、无需自管 source 重定向）
  *
  * 设计纪律：本插件只收窄（deny/ask），从不放宽。评估失败默认放行但记日志
  * （onError: 'allow'），网络故障不应把开发工作完全锁死；追求强保证时切 'deny'。
  */
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
 
 import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-settings'
 import type { PostToolDecision, PreToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 
@@ -30,9 +30,6 @@ import type { Policy } from './policies.ts'
 export const name = 'jev-gate'
 export const inject = ['tools']
 
-/** settings namespace（join key：settings.yaml 里的段名） */
-export const JEV_GATE_NS = 'jev-gate'
-
 /**
  * pre-execute → post-execute 的评估传递表（以 exec.token 关联同一调用）。
  * 只有 pass 会暂存（deny/ask 已由决策契约呈现在轨迹里）；有界防泄漏：
@@ -42,37 +39,37 @@ const PENDING_ASSESSMENTS = new Map<unknown, { nouls: Record<string, number>; se
 const PENDING_CAP = 1000
 
 export interface Config {
-  /** 命名策略：strict | permissive | calibrated（POLICIES 的键） */
-  policy?: string
+  /** 命名策略：strict | permissive | calibrated（POLICIES 的键）；未知名回退 strict */
+  policy?: Volatile<string>
   /** 要监控的工具名；bash/pwsh 的命令在 arguments.command */
-  tools?: string[]
+  tools?: Volatile<string[]>
   /** TypeSafe API Key 的凭证引用名（默认 TYPESAFE_API_KEY）；经 ctx.credentials 解析，refs 层即 ~/.dsh/.credentials.yaml */
-  apiKeyEnv?: string
+  apiKeyEnv?: Volatile<string>
   /** 钉死版本，不用 jev-latest */
-  model?: string
+  model?: Volatile<string>
   /** 评估请求超时 */
-  timeoutMs?: number
+  timeoutMs?: Volatile<number>
   /** 评估失败时的处置：allow（放行+日志）| deny（fail-closed） */
-  onError?: 'allow' | 'deny'
+  onError?: Volatile<'allow' | 'deny'>
   /** verbose：每次评估在实例终端留一行完整 nouls 摘要（含 pass；默认关） */
-  verbose?: boolean
+  verbose?: Volatile<boolean>
   /** traceNote：把 pass 的评估画像以 notice 折叠行写进会话轨迹（默认关） */
-  traceNote?: boolean
+  traceNote?: Volatile<boolean>
 }
 
-export const Config: z<Config> = z.object({
-  policy: z.string().default('strict'),
-  tools: z.array(z.string()).default(['bash', 'pwsh']),
-  apiKeyEnv: z.string().default('TYPESAFE_API_KEY'),
-  model: z.string().default(PINNED_MODEL),
-  timeoutMs: z.number().default(8000),
-  onError: z.union(['allow', 'deny'] as const).default('allow'),
-  verbose: z.boolean().default(false),
-  traceNote: z.boolean().default(false),
+export const Config = z.object({
+  policy: z.string().default('strict').volatile(),
+  tools: z.array(z.string()).default(['bash', 'pwsh']).volatile(),
+  apiKeyEnv: z.string().role('credential-ref').default('TYPESAFE_API_KEY').volatile(),
+  model: z.string().default(PINNED_MODEL).volatile(),
+  timeoutMs: z.number().step(1).min(0).default(8000).volatile(),
+  onError: z.union(['allow', 'deny'] as const).default('allow').volatile(),
+  verbose: z.boolean().default(false).volatile(),
+  traceNote: z.boolean().default(false).volatile(),
 })
 
-function resolvePolicy(cfg: Config): Policy {
-  const policyName = cfg.policy ?? 'strict'
+function resolvePolicy(config: Config): Policy {
+  const policyName = config.policy?.get() ?? 'strict'
   return policyName in POLICIES
     ? POLICIES[policyName as 'strict' | 'permissive' | 'calibrated']
     : POLICIES.strict
@@ -123,29 +120,17 @@ async function resolveApiKey(ctx: Context, apiKeyEnv: string): Promise<string | 
 }
 
 export function apply(ctx: Context, config: Config): void {
-  // 配置数据源：初始为 base 层（cordis.yml）；settings 用户层覆盖后经
-  // setSource 换成运行时源。监听每次读取都走 source()，改配置无需重启。
-  let source = () => config
-
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, JEV_GATE_NS, Config, config, {
-      setSource: (current) => { source = current },
-      // 读取是惰性的（每次 pre-execute 现取 source()），无需重建，仅满足钩子契约
-      onChange: () => {},
-    })
-  })
-
   ctx.on('tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> => {
-    const cfg = source()
-    const watched = new Set(cfg.tools ?? ['bash', 'pwsh'])
+    // volatile 字段：每次评估现取，Web 页改配置经 volatile HMR 即时生效
+    const watched = new Set(config.tools?.get() ?? ['bash', 'pwsh'])
     if (!watched.has(exec.name)) return next()
 
     const args = exec.arguments as { command?: unknown } | null
     const command = typeof args?.command === 'string' ? args.command.trim() : ''
     if (command === '') return next()
 
-    const apiKeyEnv = cfg.apiKeyEnv ?? 'TYPESAFE_API_KEY'
-    const onError = cfg.onError ?? 'allow'
+    const apiKeyEnv = config.apiKeyEnv?.get() ?? 'TYPESAFE_API_KEY'
+    const onError = config.onError?.get() ?? 'allow'
     const apiKey = await resolveApiKey(ctx, apiKeyEnv)
     if (apiKey === undefined) {
       // 没有 key 就无法评估；按 onError 处置，与评估失败一致
@@ -160,8 +145,8 @@ export function apply(ctx: Context, config: Config): void {
     try {
       assessment = await screenCommand(command, {
         apiKey,
-        model: cfg.model ?? PINNED_MODEL,
-        timeoutMs: cfg.timeoutMs ?? 8000,
+        model: config.model?.get() ?? PINNED_MODEL,
+        timeoutMs: config.timeoutMs?.get() ?? 8000,
         signal: exec.signal,
       })
     } catch (error) {
@@ -173,11 +158,11 @@ export function apply(ctx: Context, config: Config): void {
       return next()
     }
 
-    const policy = resolvePolicy(cfg)
+    const policy = resolvePolicy(config)
     const action = route(assessment.nouls, assessment.severity, policy)
     const note = fireNote(assessment.nouls, assessment.severity, policy)
 
-    if (cfg.verbose === true) {
+    if (config.verbose?.get() === true) {
       // 完整画像一行留痕：deny/ask 的 reason 只含越线项，校准需要全量 nouls
       const summary = Object.entries(assessment.nouls)
         .map(([hazard, p]) => hazard + '=' + p.toFixed(2))
@@ -189,13 +174,13 @@ export function apply(ctx: Context, config: Config): void {
     if (action === 'block') {
       return {
         kind: 'deny',
-        reason: `jev-gate [policy=${cfg.policy}] 拦截：${command}\n触发：${note}`,
+        reason: `jev-gate [policy=${config.policy?.get() ?? 'strict'}] 拦截：${command}\n触发：${note}`,
       }
     }
     if (action === 'review') {
       return {
         kind: 'ask',
-        reason: `jev-gate [policy=${cfg.policy}] 需要人工确认：${command}\n触发：${note}`,
+        reason: `jev-gate [policy=${config.policy?.get() ?? 'strict'}] 需要人工确认：${command}\n触发：${note}`,
       }
     }
     // pass：评估结果暂存，post-execute 按需转成轨迹 notice（traceNote）
@@ -212,7 +197,7 @@ export function apply(ctx: Context, config: Config): void {
     const cached = PENDING_ASSESSMENTS.get(exec.token)
     if (cached === undefined) return downstream
     PENDING_ASSESSMENTS.delete(exec.token)
-    if (source().traceNote !== true) return downstream
+    if (config.traceNote?.get() !== true) return downstream
     if (exec.agent === undefined) return downstream // 直接 tools.execute() 调用无轨迹可注
 
     const entries = Object.entries(cached.nouls)

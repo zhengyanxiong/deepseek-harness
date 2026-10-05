@@ -1,43 +1,55 @@
 /**
- * jev-gate-ui 浏览器半：把 jev-gate 的配置卡片注册进
- * Settings → Plugins → Plugin configuration（key = settings namespace）。
- *
- * Host 半（gate.ts）注册同名 namespace 后，tab 自动把两半配成对——
- * 本包不解释 namespace 的含义，tab 也不认识这张卡片。
+ * jev-gate 配置页，浏览器半面：在 Plugins 页注册 'plugins.item' 条目
+ * （id: jev-gate），仅在宿主提供 jev-gate 命名空间时存在
+ * （configForms.whileServed）——宿主未组合该插件时页面不留痕迹。
+ * 写法对齐 ui-settings-web-search 伴侣包（新 master 的 plugins.item 契约）。
  */
 
-import type { Context as ClientContext } from '@deepseek-ai/cordis'
-// Type-only：ctx.slots 的 Context 合并（ui-slots 包 src 侧声明；官方包经
-// 值引用带入，本包纯净门约束下用类型引用达到同效）。
-import type {} from '@deepseek-ai/dsh-client-ui-slots'
-// Type-only：ctx.locale / ctx.settingsScope 的 Context 合并（服务经 cordis
-// 注入，值引用只碰平台基线模块）。
+// Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: the ctx.configForms Context merge. Cross-plugin collaboration
+// goes through the service, never a value import (client bundle purity gate).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-// Type-only：ctx.slots 的 Context 合并不在 ui-slots（那里只有 SlotMap），
-// 而在 ui-renderer 的 client 半——官方卡片包同款引用。
+// Type-only: the Plugins page's SlotMap merge (the 'plugins.item' entry).
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { JevGateCard } from './JevGateCard.tsx'
 import { JEV_GATE_NS, JevGateCardController } from './controller.ts'
-import { en, zh } from './locales.ts'
+import { en, zh, type JevGateLocaleKey } from './locales.ts'
 
-/** 本卡片 fiber 需要的服务。 */
-export const inject = ['slots', 'locale', 'settingsScope']
+export type { JevGateCardProps } from './JevGateCard.tsx'
+export type { JevGateCardFace, JevGateCardState, JevGateSettings } from './controller.ts'
+export type { JevGateLocaleKey } from './locales.ts'
 
-const NS = 'jev-gate-ui'
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** jev-gate settings page copy. */
+    'jev-gate-ui': JevGateLocaleKey
+  }
+}
+
+/** Dictionary namespace owned by this plugin. */
+export const NS = 'jev-gate-ui'
+
+/** Required services (cordis fiber inject). */
+export const inject = ['slots', 'locale', 'configForms']
 
 /**
- * 挂载卡片：注册 locale 字典 + 把卡片注册进 keyed 插槽。
- * @param ctx - 浏览器插件上下文。
+ * Mount the jev-gate settings page while the Host serves its namespace.
+ * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
+  const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'jev-gate-ui: dictionaries')
-
-  const card = new JevGateCardController(ctx.settingsScope.bind({ namespace: JEV_GATE_NS }))
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-    name: 'settings.plugin.item',
-    key: JEV_GATE_NS,
+  const card = new JevGateCardController(ctx.configForms.get(JEV_GATE_NS))
+  ctx.effect(() => () => { card.dispose() }, 'jev-gate-ui: form subscription')
+  ctx.effect(() => ctx.configForms.whileServed([JEV_GATE_NS], () => ctx.slots.inject('plugins.item', () => ctx.slots.register({
+    name: 'plugins.item',
+    id: 'jev-gate',
+    order: 40,
+    label: () => t('title'),
     locale: NS,
     inject: () => card.inject(),
-  }, JevGateCard))
+  }, JevGateCard))), 'jev-gate-ui: page')
 }
