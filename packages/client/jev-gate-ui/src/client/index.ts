@@ -7,10 +7,16 @@
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+// Type-only：ctx.slots 的 Context 合并（ui-slots 包 src 侧声明；官方包经
+// 值引用带入，本包纯净门约束下用类型引用达到同效）。
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only：ctx.locale / ctx.settingsScope 的 Context 合并（服务经 cordis
 // 注入，值引用只碰平台基线模块）。
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only：ctx.slots 的 Context 合并不在 ui-slots（那里只有 SlotMap），
+// 而在 ui-renderer 的 client 半——官方卡片包同款引用。
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { JevGateCard } from './JevGateCard.tsx'
 import { JEV_GATE_NS, JevGateCardController } from './controller.ts'
 import { en, zh } from './locales.ts'

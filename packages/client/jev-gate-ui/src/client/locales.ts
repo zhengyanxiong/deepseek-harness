@@ -65,3 +65,10 @@ export const en: Record<keyof typeof zh, string> = {
 }
 
 export type JevGateLocaleKey = keyof typeof zh
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** jev-gate 配置卡片文案。 */
+    'jev-gate-ui': JevGateLocaleKey
+  }
+}

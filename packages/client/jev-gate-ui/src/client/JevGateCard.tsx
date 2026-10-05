@@ -47,6 +47,24 @@ const FIELDS: readonly FieldDescriptor[] = [
 type FieldState = { text: string; overridden: boolean; invalid: boolean }
 
 /**
+ * 折叠箭头（SVG，不依赖页面字体对 ▾ 字形的支持）。
+ */
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`${css.chevron} ${open ? css.chevronOpen : ''}`}
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
  * 渲染 jev-gate 卡片。
  * @param props - locale 文案、卡片快照与表单动作。
  * @returns 卡片；namespace 不可用时渲染为空（宿主未组合该插件时不留痕迹）。
@@ -126,7 +144,7 @@ export function JevGateCard(props: JevGateCardProps) {
           <span className={css.description}>{t('description')}</span>
         </span>
         {state.dirty ? <span className={css.pending}>{t('unsaved')}</span> : null}
-        <span className={`${css.chevron} ${open ? css.chevronOpen : ''}`} aria-hidden="true">▾</span>
+        <ChevronIcon open={open} />
       </button>
       {open
         ? (
