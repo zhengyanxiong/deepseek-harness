@@ -2935,6 +2935,8 @@ importers:
         specifier: workspace:*
         version: link:../../host/webserver
 
+  packages/client/jev-gate-ui: {}
+
   packages/client/locale:
     dependencies:
       '@deepseek-ai/schemastery':
