@@ -1,0 +1,25 @@
+{
+  "name": "jev-gate-ui",
+  "description": "jev-gate 安全门禁插件的浏览器配置卡片（Settings → Plugins）",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  },
+  "scripts": {
+    "bundle": "DSH_BUILD_FACE=client tsdown"
+  }
+}
