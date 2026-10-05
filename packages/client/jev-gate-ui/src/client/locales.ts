@@ -27,6 +27,8 @@ export const zh = {
   invalid: '不是有效值',
   saveFailed: '保存失败，请修正后重试',
   readOnly: '当前为只读，无法保存',
+  expand: '展开',
+  collapse: '收起',
   on: '开',
   off: '关',
 } as const
@@ -56,6 +58,8 @@ export const en: Record<keyof typeof zh, string> = {
   invalid: 'invalid value',
   saveFailed: 'Save failed; fix and retry',
   readOnly: 'Read-only; cannot save',
+  expand: 'Expand',
+  collapse: 'Collapse',
   on: 'on',
   off: 'off',
 }

@@ -5,9 +5,11 @@
  * 的 PluginCard/fields），只用平台基线模块（react / dsh-client-store /
  * dsh-client-ui-slots），零额外模块请求。样式走 dsw-alias-* 设计令牌
  * （CSS Modules，构建期 lightningcss 编译注入），亮暗主题随宿主。
+ * 交互对齐官方卡片：默认收起、点标题展开、保存成功自动折叠、
+ * 未保存徽标带在标题行（收着也能看见）。
  */
 
-import { type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only：keyed 插槽 'settings.plugin.item' 的 SlotMap 声明（宿主包提供，
 // 类型在编译期擦除，运行时经 ctx.slots 服务协作）。
@@ -52,9 +54,23 @@ type FieldState = { text: string; overridden: boolean; invalid: boolean }
 export function JevGateCard(props: JevGateCardProps) {
   const { t } = props
   const state = props.useJevGateCard(snapshot => snapshot)
-  if (!state.available) return null
+  const [open, setOpen] = useState(false)
+  const saveStarted = useRef(false)
   const disabled = !state.writable
   const blocked = !state.dirty || state.invalid || state.saving
+
+  // 仅在 Host 确认落定后折叠：被拒的写保留诊断与草稿供修正。
+  useEffect(() => {
+    if (state.saving) {
+      saveStarted.current = true
+      return
+    }
+    if (!saveStarted.current) return
+    saveStarted.current = false
+    if (!state.dirty && !state.failed) setOpen(false)
+  }, [state.dirty, state.failed, state.saving])
+
+  if (!state.available) return null
 
   const fieldStateOf = (field: string): FieldState =>
     state[field as keyof typeof state] as unknown as FieldState
@@ -97,51 +113,64 @@ export function JevGateCard(props: JevGateCardProps) {
   }
 
   return (
-    <li className={css.card}>
-      <div className={css.head}>
-        <div className={css.name}>{t('title')}</div>
-        <div className={css.description}>{t('description')}</div>
-      </div>
-      {!state.writable ? <p className={css.readOnly} role="status">{t('readOnly')}</p> : null}
-      <div className={css.body}>
-        {FIELDS.map((desc) => {
-          const fieldState = fieldStateOf(desc.field)
-          return (
-            <div key={desc.field} className={css.field}>
-              <div className={css.labelRow}>
-                <span>{t(desc.labelKey)}</span>
-                {fieldState.overridden ? <span className={css.badge}>{t('overridden')}</span> : null}
-                {fieldState.invalid ? <span className={`${css.badge} ${css.badgeInvalid}`}>{t('invalid')}</span> : null}
-                <button type="button" className={css.reset} disabled={disabled} onClick={() => { props.resetField(desc.field) }}>
-                  {t('reset')}
-                </button>
-              </div>
-              {renderControl(desc)}
-              {desc.hintKey !== undefined ? <div className={css.hint}>{t(desc.hintKey)}</div> : null}
+    <li className={`${css.card} ${open ? css.cardOpen : ''}`}>
+      <button
+        type="button"
+        className={css.header}
+        aria-expanded={open}
+        aria-label={`${t(open ? 'collapse' : 'expand')}: ${t('title')}`}
+        onClick={() => { setOpen(!open) }}
+      >
+        <span className={css.headText}>
+          <span className={css.name}>{t('title')}</span>
+          <span className={css.description}>{t('description')}</span>
+        </span>
+        {state.dirty ? <span className={css.pending}>{t('unsaved')}</span> : null}
+        <span className={`${css.chevron} ${open ? css.chevronOpen : ''}`} aria-hidden="true">▾</span>
+      </button>
+      {open
+        ? (
+          <div className={css.body}>
+            {!state.writable ? <p className={css.readOnly} role="status">{t('readOnly')}</p> : null}
+            {FIELDS.map((desc) => {
+              const fieldState = fieldStateOf(desc.field)
+              return (
+                <div key={desc.field} className={css.field}>
+                  <div className={css.labelRow}>
+                    <span>{t(desc.labelKey)}</span>
+                    {fieldState.overridden ? <span className={css.badge}>{t('overridden')}</span> : null}
+                    {fieldState.invalid ? <span className={`${css.badge} ${css.badgeInvalid}`}>{t('invalid')}</span> : null}
+                    <button type="button" className={css.reset} disabled={disabled} onClick={() => { props.resetField(desc.field) }}>
+                      {t('reset')}
+                    </button>
+                  </div>
+                  {renderControl(desc)}
+                  {desc.hintKey !== undefined ? <div className={css.hint}>{t(desc.hintKey)}</div> : null}
+                </div>
+              )
+            })}
+            <div className={css.footer}>
+              {state.failed ? <p className={css.failed} role="status">{t('saveFailed')}</p> : null}
+              <button
+                type="button"
+                className={css.discard}
+                disabled={!state.dirty || state.saving}
+                onClick={props.discard}
+              >
+                {t('discard')}
+              </button>
+              <button
+                type="button"
+                className={css.save}
+                disabled={blocked}
+                onClick={props.save}
+              >
+                {t(state.saving ? 'saving' : 'save')}
+              </button>
             </div>
-          )
-        })}
-      </div>
-      <div className={css.footer}>
-        {state.failed ? <p className={css.failed} role="status">{t('saveFailed')}</p> : null}
-        {state.dirty ? <span className={css.badge}>{t('unsaved')}</span> : null}
-        <button
-          type="button"
-          className={css.discard}
-          disabled={!state.dirty || state.saving}
-          onClick={props.discard}
-        >
-          {t('discard')}
-        </button>
-        <button
-          type="button"
-          className={css.save}
-          disabled={blocked}
-          onClick={props.save}
-        >
-          {t(state.saving ? 'saving' : 'save')}
-        </button>
-      </div>
+          </div>
+        )
+        : null}
     </li>
   )
 }
