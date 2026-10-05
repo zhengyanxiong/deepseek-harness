@@ -19,7 +19,16 @@ import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
 
 import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
+
+// Format v4 起没有通用 'plugin' source kind：每个生产者在自己的模块里
+// 声明自有 kind（MessageSourceMap 合并扩展），会话持久化准入拒绝 'plugin'。
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'jev-gate': { kind: 'jev-gate' } & ContextFormed
+  }
+}
 import type { PostToolDecision, PreToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 
@@ -88,8 +97,10 @@ function deepFreeze<T>(value: T): T {
 
 /**
  * 本地复刻 @deepseek-ai/dsh-llm 的 createUserMessage（{...input, role:'user',
- * id: uuid} 后深冻结）。不引它的运行时：其 lib/types 产物缺 lib/package.json，
- * tsconfig paths 指过去会在加载时炸；type-only 的类型引用只存在于编译期。
+ * id: uuid} 后深冻结），source 用生产者自有 kind 'jev-gate'（format v4 准入
+ * 要求，见文件头 MessageSourceMap 合并）。不引它的运行时：其 lib/types 产物
+ * 缺 lib/package.json，tsconfig paths 指过去会在加载时炸；type-only 的类型
+ * 引用只存在于编译期。
  */
 function createNoticeMessage(text: string, summary: string): UserMessage {
   return deepFreeze({
@@ -97,8 +108,7 @@ function createNoticeMessage(text: string, summary: string): UserMessage {
     role: 'user' as const,
     content: [{ type: 'text' as const, text }],
     source: {
-      kind: 'plugin' as const,
-      plugin: 'jev-gate',
+      kind: 'jev-gate' as const,
       form: 'notice' as const,
       summary,
     },
