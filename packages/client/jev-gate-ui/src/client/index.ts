@@ -1,7 +1,11 @@
 /**
  * jev-gate 配置页，浏览器半面：在 Plugins 页注册 'plugins.item' 条目
- * （id: jev-gate），仅在宿主提供 jev-gate 命名空间时存在
- * （configForms.whileServed）——宿主未组合该插件时页面不留痕迹。
+ * （id: jev-gate）。注册不走 whileServed 门控：模块已加载、但宿主未服务
+ * jev-gate 配置段时（如宿主加载失败），卡片仍保留并显示「宿主未提供配置段」，
+ * 便于诊断。注意平台语义边界：宿主被开关停用时 client 伴侣随宿主包一起卸载，
+ * 注册代码根本不会运行，卡片整条消失——重新启用需手改
+ * ~/.dsh/profiles/web/cordis.patch.yml 删除该插件的 disabled: true
+ * （HMR 会热应用，无需重启实例）。
  * 写法对齐 ui-settings-web-search 伴侣包（新 master 的 plugins.item 契约）。
  */
 
@@ -44,7 +48,11 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'jev-gate-ui: dictionaries')
   const card = new JevGateCardController(ctx.configForms.get(JEV_GATE_NS))
   ctx.effect(() => () => { card.dispose() }, 'jev-gate-ui: form subscription')
-  ctx.effect(() => ctx.configForms.whileServed([JEV_GATE_NS], () => ctx.slots.inject('plugins.item', () => ctx.slots.register({
+  // 不走 whileServed 门控：宿主加载失败/未服务配置段时卡片保留显示
+  // unavailable 态，便于诊断；宿主被开关停用则卡片随包卸载消失（平台语义，
+  // 无法从 UI 重开，需手改 profile patch 删除 disabled）。启用开关由
+  // ui-plugin-manager 的 meta.module 契约独立驱动。
+  ctx.effect(() => ctx.slots.inject('plugins.item', () => ctx.slots.register({
     name: 'plugins.item',
     id: 'jev-gate',
     order: 40,
@@ -55,5 +63,5 @@ export function apply(ctx: ClientContext): void {
     // 注意：与仓库路径绑定，repo 迁移后需同步改这里（否则开关不渲染，不影响其他功能）。
     meta: { module: 'file:///home/bernie/workspace/repo/deepseek-harness/jev-guard-plugin/src/gate.ts' },
     inject: () => card.inject(),
-  }, JevGateCard))), 'jev-gate-ui: page')
+  }, JevGateCard)), 'jev-gate-ui: page')
 }
