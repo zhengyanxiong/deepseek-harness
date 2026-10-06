@@ -65,7 +65,6 @@ export type WorkbenchKey =
   | 'trends.token'
   | 'trends.ctx'
   | 'trends.jobs'
-  | 'trends.windowHint'
   | 'progress.title'
   | 'progress.context'
   | 'progress.empty'
@@ -73,6 +72,11 @@ export type WorkbenchKey =
   | 'strip.output'
   | 'strip.context'
   | 'strip.trend'
+  | 'spine.label'
+  | 'spine.empty'
+  | 'spine.more'
+  | 'eyebrow.happening'
+  | 'eyebrow.reference'
   | 'composer.workspace'
   | 'composer.workspaceLoading'
   | 'composer.workspacePlaceholder'
@@ -85,6 +89,10 @@ export type WorkbenchKey =
   | 'toast.pickWorkspaceFirst'
   | 'toast.composerReady'
   | 'toast.draftPrimed'
+  | 'toast.cmd.newSession'
+  | 'toast.cmd.runWorkflow'
+  | 'toast.cmd.addTodo'
+  | 'toast.cmd.setReminder'
   | 'toast.workspaceCreated'
   | 'toast.workspacePickFailed'
   | 'dlg.browseTitle'
@@ -206,7 +214,6 @@ export const zh: Record<WorkbenchKey, string> = {
   'trends.token': 'token 消耗',
   'trends.ctx': '上下文占用',
   'trends.jobs': '任务吞吐',
-  'trends.windowHint': '30s 采样 · 已落盘',
   'progress.title': '任务 / 目标进度',
   'progress.context': '会话上下文',
   'progress.empty': '暂无进度数据',
@@ -214,6 +221,11 @@ export const zh: Record<WorkbenchKey, string> = {
   'strip.output': '输出',
   'strip.context': '上下文',
   'strip.trend': '查看趋势',
+  'spine.label': '实时',
+  'spine.empty': '等待事件…',
+  'spine.more': '查看全部',
+  'eyebrow.happening': '正在发生',
+  'eyebrow.reference': '参考数据',
   'composer.workspace': '工作区',
   'composer.workspaceLoading': '正在加载工作区…',
   'composer.workspacePlaceholder': '选择工作区…',
@@ -224,8 +236,12 @@ export const zh: Record<WorkbenchKey, string> = {
   'drawer.unavailable': '无法打开该会话（可能已归档或删除）',
   'toast.voiceP2': '语音命令（P2）：将复用 STT 管线，未识别时回退插入草稿',
   'toast.pickWorkspaceFirst': '请先选择工作区',
-  'toast.composerReady': '新会话已就绪，在下方输入框继续',
-  'toast.draftPrimed': '已填入下方输入框，回车发送',
+  'toast.composerReady': '新会话已就绪，在指挥舱输入框继续',
+  'toast.draftPrimed': '已填入指挥舱输入框，回车发送',
+  'toast.cmd.newSession': '已开启新会话 · 在指挥舱输入第一条指令',
+  'toast.cmd.runWorkflow': '已备好工作流模板 · 补充参数后回车发送',
+  'toast.cmd.addTodo': '已备好待办模板 · 写入内容后回车发送',
+  'toast.cmd.setReminder': '已备好提醒模板 · 设定时间后回车发送',
   'toast.workspaceCreated': '工作区已创建',
   'toast.workspacePickFailed': '目录选择失败，请稍后重试',
   'dlg.browseTitle': '选择工作区目录',
@@ -345,7 +361,6 @@ export const en: Record<WorkbenchKey, string> = {
   'trends.token': 'Token usage',
   'trends.ctx': 'Context occupancy',
   'trends.jobs': 'Job throughput',
-  'trends.windowHint': '30s sampling · persisted',
   'progress.title': 'Job / goal progress',
   'progress.context': 'Session context',
   'progress.empty': 'No progress data',
@@ -353,6 +368,11 @@ export const en: Record<WorkbenchKey, string> = {
   'strip.output': 'Output',
   'strip.context': 'Context',
   'strip.trend': 'View trends',
+  'spine.label': 'Live',
+  'spine.empty': 'Waiting for events…',
+  'spine.more': 'View all',
+  'eyebrow.happening': 'Happening now',
+  'eyebrow.reference': 'Reference data',
   'composer.workspace': 'Workspace',
   'composer.workspaceLoading': 'Loading workspaces…',
   'composer.workspacePlaceholder': 'Choose workspace…',
@@ -363,8 +383,12 @@ export const en: Record<WorkbenchKey, string> = {
   'drawer.unavailable': 'Cannot open that session (archived or removed)',
   'toast.voiceP2': 'Voice commands (P2): will reuse the STT pipeline, falling back to draft insertion',
   'toast.pickWorkspaceFirst': 'Pick a workspace first',
-  'toast.composerReady': 'New session ready — continue in the input bar below',
-  'toast.draftPrimed': 'Placed in the input bar below — press Enter to send',
+  'toast.composerReady': 'New session ready — continue in the command deck input',
+  'toast.draftPrimed': 'Placed in the command deck input — press Enter to send',
+  'toast.cmd.newSession': 'New session started — type your first instruction in the command deck',
+  'toast.cmd.runWorkflow': 'Workflow template ready — fill in the parameters and press Enter',
+  'toast.cmd.addTodo': 'Todo template ready — write the item and press Enter',
+  'toast.cmd.setReminder': 'Reminder template ready — set the time and press Enter',
   'toast.workspaceCreated': 'Workspace created',
   'toast.workspacePickFailed': 'Directory picking failed — please try again',
   'dlg.browseTitle': 'Select Workspace Directory',

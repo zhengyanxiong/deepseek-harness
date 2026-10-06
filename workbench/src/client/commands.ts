@@ -47,9 +47,10 @@ export interface CommandDeps {
   /**
    * Prime the workbench composer with a command template (or a fresh blank
    * session for 新会话); the panel owns the toasts so commands never report
-   * work the user cannot see.
+   * work the user cannot see. The ready key names the command-specific toast
+   * so each quick action reports what it actually staged.
    */
-  startSession(prompt?: string): void
+  startSession(prompt?: string, readyKey?: WorkbenchKey): void
   stopJob(sessionId: SessionId, jobId: string): Promise<boolean>
   switchTab(tab: 'command' | 'monitor'): void
   summaryText(): string
@@ -87,7 +88,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: true,
       icon: IconNewChatOutlineRegular,
       run: () => {
-        deps.startSession()
+        deps.startSession(undefined, 'toast.cmd.newSession')
       },
     },
     {
@@ -115,7 +116,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: true,
       icon: IconPlayOutlineRegular,
       run: () => {
-        deps.startSession(t('cmd.prompt.workflow'))
+        deps.startSession(t('cmd.prompt.workflow'), 'toast.cmd.runWorkflow')
       },
     },
     {
@@ -137,7 +138,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: true,
       icon: IconChecklistOutlineRegular,
       run: () => {
-        deps.startSession(t('cmd.prompt.todo'))
+        deps.startSession(t('cmd.prompt.todo'), 'toast.cmd.addTodo')
       },
     },
     {
@@ -148,7 +149,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: true,
       icon: IconAlarmClockOutlineRegular,
       run: () => {
-        deps.startSession(t('cmd.prompt.reminder'))
+        deps.startSession(t('cmd.prompt.reminder'), 'toast.cmd.setReminder')
       },
     },
     {

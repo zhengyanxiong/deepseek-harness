@@ -130,6 +130,9 @@ const DRAWER_MIN = 360
 const DRAWER_MAX = 720
 const DRAWER_WIDTH_KEY = 'dsh-workbench.drawer-width'
 
+/** Toast auto-dismiss delay (design v2 mockup cadence). */
+const TOAST_DISMISS_MS = 2200
+
 function initialDrawerWidth(): number {
   if (typeof localStorage === 'undefined') return 480
   const raw = Number(localStorage.getItem(DRAWER_WIDTH_KEY))
@@ -245,12 +248,15 @@ export function pagerFooter<T>(page: Pagination<T>, prevLabel: string, nextLabel
   )
 }
 
-/** A card's shell: the settings-card material with a title, count, body, and optional pager. */
-export function Card({ wide, icon, title, count, footer, children }: {
+/** A card's shell: the settings-card material with a title, optional count, header extra, body, and optional pager. */
+export function Card({ wide, icon, title, count, headerExtra, footer, children }: {
   wide?: boolean
   icon: ReactNode
   title: string
-  count: number
+  /** Tabular count in the header; omitted when undefined (e.g. trend card shows window chips instead). */
+  count?: number
+  /** Trailing header content rendered beside the count (e.g. window chips). */
+  headerExtra?: ReactNode
   footer?: ReactNode
   children: ReactNode
 }) {
@@ -261,7 +267,8 @@ export function Card({ wide, icon, title, count, footer, children }: {
           {icon}
           <h2 className={css.cardTitle}>{title}</h2>
         </div>
-        <span className={css.cardCount}>{count}</span>
+        {headerExtra}
+        {count !== undefined && <span className={css.cardCount}>{count}</span>}
       </header>
       <div className={css.cardBody}>{children}</div>
       {footer}
@@ -308,6 +315,14 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
   const notify = useCallback((text: string, tone: 'success' | 'error' = 'success') => {
     setToast({ seq: ++toastSeq.current, text, tone })
   }, [])
+
+  /* Toast auto-dismiss (design v2: 2.2s, same cadence as the mockup). A later
+     notify supersedes the timer by bumping seq; the effect re-arms on it. */
+  useEffect(() => {
+    if (toast === null) return
+    const timer = window.setTimeout(() => { setToast(null) }, TOAST_DISMISS_MS)
+    return () => { window.clearTimeout(timer) }
+  }, [toast])
 
   /* ---- derived rows (kept from the read-only dashboard, now clickable) ---- */
   const { ids, byId, phase } = sessionsState
@@ -389,7 +404,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
    * the native InputBar instead of navigating anywhere (design §11.5). Owns
    * every toast so the caller never reports a session the user cannot see.
    */
-  const primeComposer = useCallback((prompt?: string): PrimeOutcome => {
+  const primeComposer = useCallback((prompt?: string, readyKey?: WorkbenchKey): PrimeOutcome => {
     if (effectiveWorkspaceId === undefined) {
       notify(t('toast.pickWorkspaceFirst'), 'error')
       return 'need-workspace'
@@ -404,11 +419,11 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
       pendingPrime.current = { prompt }
       releaseComposer()
       setRebindSeq(n => n + 1)
-      notify(prompt === undefined ? t('toast.composerReady') : t('toast.draftPrimed'), 'success')
+      notify(t(readyKey ?? (prompt === undefined ? 'toast.composerReady' : 'toast.draftPrimed')), 'success')
       return 'rebinding'
     }
     actions.primeComposerDraft(sid, prompt)
-    notify(prompt === undefined ? t('toast.composerReady') : t('toast.draftPrimed'), 'success')
+    notify(t(readyKey ?? (prompt === undefined ? 'toast.composerReady' : 'toast.draftPrimed')), 'success')
     return 'primed'
   }, [actions, byId, effectiveWorkspaceId, notify, releaseComposer, t])
 
@@ -724,7 +739,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
       .map(({ job, sessionTitle, sessionId }) => ({ id: String(job.id), sessionId, label: `${job.label} · ${sessionTitle}` })),
     openSession: sessionId => { actions.openSession(sessionId) },
     /** Command templates land in the workbench composer, not a new main-view session. */
-    startSession: prompt => { primeComposer(prompt) },
+    startSession: (prompt, readyKey) => { primeComposer(prompt, readyKey) },
     stopJob: (sessionId, jobId) => actions.stopJob(sessionId, jobId as JobId),
     switchTab: setTab,
     summaryText: () => {
@@ -851,6 +866,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
                 t={t}
                 phase={phase}
                 sessions={{ ids, byId, phase }}
+                useActivity={useActivity}
                 jobRows={jobRows}
                 workflowRows={workflowRows}
                 goalRows={goalRows}

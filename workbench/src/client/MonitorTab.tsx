@@ -56,12 +56,11 @@ function sparkPoints(values: readonly number[]): string {
 }
 
 /** One sparkline block: label, tabular current value, and the SVG polyline. */
-function Sparkline({ label, color, series, metric, t }: {
+function Sparkline({ label, color, series, metric }: {
   label: string
   color: string
   series: TrendSeries
   metric: (typeof METRICS)[number]
-  t(key: WorkbenchKey): string
 }) {
   const values = metric.key === 'token' ? series.input : metric.key === 'ctx' ? series.ctx : series.jobs
   const points = sparkPoints(values)
@@ -84,7 +83,6 @@ function Sparkline({ label, color, series, metric, t }: {
           </>
         )}
       </svg>
-      <span className={css.trendDelta}>{t('trends.windowHint')}</span>
     </div>
   )
 }
@@ -204,21 +202,23 @@ export function MonitorTab(props: MonitorTabProps) {
 
   return (
     <div className={css.tabView}>
-      <Card icon={<StateDot state="ongoing" size={12} />} title={t('trends.title')} count={0}>
-        <div className={css.trendWindows} role="group" aria-label={t('trends.title')}>
-          {TREND_WINDOWS.map(candidate => (
-            <button key={candidate} type="button"
-              aria-pressed={candidate === window}
-              className={candidate === window ? cx(css.windowChip, css.windowChipActive) : css.windowChip}
-              onClick={() => { setWindow(candidate) }}>
-              {candidate}
-            </button>
-          ))}
-        </div>
+      <Card icon={<StateDot state="ongoing" size={12} />} title={t('trends.title')}
+        headerExtra={(
+          <div className={css.trendWindows} role="group" aria-label={t('trends.title')}>
+            {TREND_WINDOWS.map(candidate => (
+              <button key={candidate} type="button"
+                aria-pressed={candidate === window}
+                className={candidate === window ? cx(css.windowChip, css.windowChipActive) : css.windowChip}
+                onClick={() => { setWindow(candidate) }}>
+                {candidate}
+              </button>
+            ))}
+          </div>
+        )}>
         <div className={css.trends}>
           {METRICS.map(metric => (
             <Sparkline key={metric.key} label={t(metric.labelKey)} color={metric.color}
-              series={seriesByMetric[metric.key]} metric={metric} t={t} />
+              series={seriesByMetric[metric.key]} metric={metric} />
           ))}
         </div>
       </Card>

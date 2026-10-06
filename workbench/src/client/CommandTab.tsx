@@ -1,14 +1,18 @@
 /**
- * 指挥台 (design §3): quick actions generated from the command registry, the
- * 进行中 / 今日提醒·到期目标 summary columns, the eight clickable data-source
- * cards, the resource strip, and the composer seat (workspace picker chrome +
- * the host-native InputBar, supplied by the panel as a ReactNode).
+ * 指挥台 (design v2): the composer promoted into a 指挥舱 (command deck) at
+ * the page's first surface with the quick actions docked inside it, the 实时
+ * 脊线 (live spine) — a hairline-bounded activity band with the newest events
+ * inline — then the section eyebrows (正在发生 / 参考数据) that replace the
+ * old equal-weight card stack, the eight clickable data-source cards, and the
+ * resource strip. The deck keeps the native InputBar seat supplied by the
+ * panel as a ReactNode.
  */
 
 import type { ReactNode } from 'react'
 import {
   Button, IconRightUpOutlineRegular, IconStopFillRegular, StateDot, Tag,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkbenchCommand } from './commands.ts'
@@ -16,8 +20,12 @@ import { DashboardCards } from './DashboardCards.tsx'
 import type { DashboardSessionSummary, GoalRowContext, JobRowContext, TokenRowContext } from './DashboardCards.tsx'
 import { Card, compact } from './WorkbenchPanel.tsx'
 import type { OngoingRow, RemindersSnapshot, TodayRow } from './WorkbenchPanel.tsx'
+import type { ActivitySnapshot } from './store.ts'
 import type { WorkbenchKey } from './locales.ts'
 import css from './WorkbenchPanel.module.css'
+
+/** How many newest events the spine shows inline. */
+const SPINE_EVENTS = 4
 
 /** Props for the 指挥台 tab. */
 export interface CommandTabProps {
@@ -28,6 +36,8 @@ export interface CommandTabProps {
     readonly byId: Readonly<Record<SessionId, DashboardSessionSummary | undefined>>
     readonly phase: string
   }
+  /** Activity stream hook the spine reads the newest events from. */
+  useActivity: SnapshotSelectorHook<ActivitySnapshot>
   ongoingRows: readonly OngoingRow[]
   todayRows: readonly TodayRow[]
   jobRows: readonly JobRowContext[]
@@ -54,37 +64,81 @@ const TODAY_TONE: Record<string, 'info' | 'warning' | 'danger' | 'neutral' | 'su
   success: 'success',
 }
 
+/** One section eyebrow: caption ink + a hairline rule filling the remainder. */
+function Eyebrow({ name }: { name: string }) {
+  return (
+    <div className={css.eyebrow} aria-hidden="true">
+      <span className={css.eyebrowName}>{name}</span>
+      <span className={css.eyebrowRule} />
+    </div>
+  )
+}
+
 /**
  * Render the 指挥台 tab.
- * @param props - derived rows, commands, and the injected actions.
+ * @param props - derived rows, commands, the activity hook, and the injected actions.
  * @returns the command dashboard.
  */
 export function CommandTab(props: CommandTabProps) {
   const {
-    t, sessions, ongoingRows, todayRows, jobRows, workflowRows, goalRows, reminders,
+    t, sessions, useActivity, ongoingRows, todayRows, jobRows, workflowRows, goalRows, reminders,
     tokenRows, tokenTotals, commands, onRunCommand, onOpenSession, onStopJob,
     composer, onOpenTrend,
   } = props
+
+  const activity = useActivity(state => state)
+  const spineEvents = activity.events.slice(0, SPINE_EVENTS)
 
   const ctxValues = tokenRows.flatMap(row => row.percent === undefined ? [] : [row.percent])
   const ctxAvg = ctxValues.length === 0 ? 0 : Math.round(ctxValues.reduce((sum, v) => sum + v, 0) / ctxValues.length)
 
   return (
     <div className={css.tabView}>
-      <div className={css.quickRow} aria-label={t('quick.aria')}>
-        {commands.filter(command => command.common).map(command => {
-          const Icon = command.icon
-          return (
-            <Button key={command.id} variant="outline" size="sm"
-              aria-label={t(command.nameKey)}
-              onClick={() => { onRunCommand(command) }}>
-              <Icon size={14} />
-              {t(command.nameKey)}
-            </Button>
-          )
-        })}
+      {/* 指挥舱: composer first, quick actions docked inside the deck */}
+      <div className={css.deck} aria-label={t('title')}>
+        {composer}
+        <div className={css.deckActions} aria-label={t('quick.aria')}>
+          {commands.filter(command => command.common).map(command => {
+            const Icon = command.icon
+            return (
+              <Button key={command.id} variant="outline" size="sm"
+                aria-label={t(command.nameKey)}
+                onClick={() => { onRunCommand(command) }}>
+                <Icon size={14} />
+                {t(command.nameKey)}
+              </Button>
+            )
+          })}
+        </div>
       </div>
 
+      {/* 实时脊线: the live activity band */}
+      <div className={css.spine} aria-label={t('spine.label')}>
+        <div className={css.spineLive}>
+          <span className={css.spinePulse} />
+          {t('spine.label')}
+        </div>
+        <div className={css.spineEvents}>
+          {spineEvents.length === 0
+            ? <span className={css.spineEmpty}>{t('spine.empty')}</span>
+            : spineEvents.map(event => (
+                <span key={event.id} className={css.spineEvent}>
+                  <span className={css.spineTime}>{event.time}</span>
+                  <StateDot state={event.kind} />
+                  <span className={css.spineText}>{event.text}</span>
+                </span>
+              ))}
+        </div>
+        <div className={css.spineMore}>
+          <Button variant="ghost" size="sm" onClick={onOpenTrend}
+            icon={<IconRightUpOutlineRegular size={13} />}>
+            {t('spine.more')}
+          </Button>
+        </div>
+      </div>
+
+      {/* 正在发生: the attention pair */}
+      <Eyebrow name={t('eyebrow.happening')} />
       <div className={css.summaryCols}>
         <Card icon={<StateDot state="ongoing" size={12} />} title={t('ongoing.title')} count={ongoingRows.length}>
           {ongoingRows.length === 0
@@ -138,6 +192,8 @@ export function CommandTab(props: CommandTabProps) {
         </Card>
       </div>
 
+      {/* 参考数据: the eight data-source cards */}
+      <Eyebrow name={t('eyebrow.reference')} />
       <DashboardCards
         t={t}
         sessions={sessions}
@@ -162,8 +218,6 @@ export function CommandTab(props: CommandTabProps) {
           {t('strip.trend')}
         </Button>
       </div>
-
-      {composer}
     </div>
   )
 }
