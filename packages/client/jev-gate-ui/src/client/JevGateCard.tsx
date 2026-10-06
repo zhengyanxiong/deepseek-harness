@@ -1,10 +1,10 @@
 /**
- * jev-gate 配置页：Plugins 页上的一个条目——summary 视图给一句话简介，
- * page 视图给分段表单（SettingsForm 外壳 + SettingsValueField 控件，
- * 平台基元渲染，样式与官方插件配置页完全一致，无自绘 CSS）。
+ * jev-gate 配置页：bundle 详情页的一项——page 视图给分段表单
+ * （SettingsForm 外壳 + SettingsValueField 控件，平台基元渲染，
+ * 样式与官方插件配置页完全一致，无自绘 CSS）。
  */
 
-// Type-only: the Plugins page's SlotMap merge (the 'plugins.item' entry).
+// Type-only: the Plugins page's SlotMap merge (the 'plugins.bundle.config' entry).
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { SettingsForm, SettingsValueField } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -14,7 +14,7 @@ import type { JevGateCardFace, JevGateCardState } from './controller.ts'
 
 /** Props the renderer binds for the jev-gate page. */
 export type JevGateCardProps =
-  PropsRuntime<'plugins.item'>
+  PropsRuntime<'plugins.bundle.config'>
   & PropsLocale<'jev-gate-ui'>
   & InjectFace<JevGateCardFace>
 

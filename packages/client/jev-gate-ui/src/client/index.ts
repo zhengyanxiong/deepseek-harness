@@ -44,22 +44,17 @@ export const inject = ['slots', 'locale', 'configForms']
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
-  const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'jev-gate-ui: dictionaries')
   const card = new JevGateCardController(ctx.configForms.get(JEV_GATE_NS))
   ctx.effect(() => () => { card.dispose() }, 'jev-gate-ui: form subscription')
-  // 不走 whileServed 门控：宿主加载失败/未服务配置段时卡片保留显示
-  // unavailable 态，便于诊断；宿主被开关停用则卡片随包卸载消失（平台语义，
-  // 无法从 UI 重开，需手改 profile patch 删除 disabled）。启用开关由
-  // ui-plugin-manager 的 meta.module 契约独立驱动。
-  ctx.effect(() => ctx.slots.inject('plugins.item', () => ctx.slots.register({
-    name: 'plugins.item',
-    id: 'jev-gate',
-    order: 40,
-    label: () => t('title'),
+  // bundle 化后的单卡片架构（slot 契约明示：bundle 的配置属于 plugins.bundle.config，
+  // 不占 plugins.item）：listBundles 驱动 bundle 卡片常驻（开关=manifest bundles 选择，
+  // 双向热生效），本注册把配置表单挂到 bundle 详情页（点卡片进入）。
+  // 宿主被开关停用则本模块随包卸载、表单缺席，卡片与开关仍在（与官方 bundle 一致）。
+  ctx.effect(() => ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
+    name: 'plugins.bundle.config',
+    key: 'jev-gate',
     locale: NS,
-    // 启用开关不在本卡片：bundle 化后由 listBundles 驱动的 bundle 卡片开关统一控制；
-    // item 开关走 setPluginEnabled 会写 patch 禁用行，与 bundle 选择互相打架，故移除 meta。
     inject: () => card.inject(),
   }, JevGateCard)), 'jev-gate-ui: page')
 }
