@@ -1,0 +1,8 @@
+# dsh-workbench bundle patch: one insert over the profile root. The row is
+# referenced by package name so the Loader resolves the installed code; the
+# browser half mounts on this bare-name row because `dsh.client` is declared
+# with a `./client` export.
+
+- insert:
+    - id: workbench
+      name: dsh-workbench

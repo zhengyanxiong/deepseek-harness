@@ -1,0 +1,62 @@
+{
+  "name": "dsh-workbench",
+  "version": "0.1.0",
+  "description": "DSH workbench panel: a startup-visible cross-session overview of sessions, tasks, and token/context usage.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-api-job-controller",
+        "@deepseek-ai/dsh-goal",
+        "@deepseek-ai/dsh-token-meter",
+        "@deepseek-ai/dsh-subagent",
+        "@deepseek-ai/dsh-experimental-agent-team",
+        "@deepseek-ai/dsh-schedule"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "watch": "tsdown --watch",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
+    "lightningcss": "^1.32.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsdown": "*"
+  },
+  "license": "MIT"
+}

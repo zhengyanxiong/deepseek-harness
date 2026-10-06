@@ -1,0 +1,875 @@
+.page {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* The whole dashboard scrolls as one region, with the stable scrollbar gutter
+   the sibling first-level pages use. */
+.pageScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  --dsh-scrollbar-width: 9px;
+  --dsh-scrollbar-thumb-border: 2px;
+}
+
+/* The Plugins page's centered column: the same 960px cap and
+   clamp(24-48px) inline / 48px bottom inset, so first-level pages share one
+   content frame at every width. */
+.pageContent {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 clamp(24px, 4vw, 48px) 48px;
+}
+
+/* The page name and a one-line description share one column. */
+.pageHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 28px;
+  margin-bottom: 24px;
+}
+
+/* macOS hiddenInset titlebar: the frame clearance sits above the page's own
+   28px inset, so the heading keeps the same total as the Plugins page. */
+:global([data-platform='darwin']) .pageHeading {
+  padding-top: calc(28px + var(--dsh-frame-top-clearance, 0px));
+}
+
+.pageHeading h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 500;
+}
+
+.pageSubtitle {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* Two cards per row, collapsing to one column below 760px. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+/* The session catalog and the token monitor are the widest readouts, so they
+   span the whole row. */
+.cardWide {
+  grid-column: 1 / -1;
+}
+
+/* The independent content card material: settings-card fill and stroke at R20,
+   a hairline header seam, and the card's own padding. */
+.card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+}
+
+.cardHeader {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.cardTitleGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cardTitleGroup svg {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.cardTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.cardCount {
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cardBody {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  padding: 6px 16px 12px;
+}
+
+/* The pager footer: two chevron buttons and a tabular page indicator, only on
+   cards whose list exceeds one page. */
+.pager {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.pagerLabel {
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every populated list shares one row: a leading status mark, a primary line
+   with a muted detail line, and a trailing badge cluster. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.row + .row {
+  border-top: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.rowDot {
+  flex: none;
+  margin-top: 1px;
+}
+
+.rowMain {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.rowTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.rowMeta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.rowSide {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The centered state every card without content shares, on tertiary 13px text. */
+.empty {
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* Token card: four equal metric tiles then a per-session context bar each. */
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* A per-session context occupancy readout: the row's leading text column, a
+   4px track with the brand fill, and a tabular percent on the right. */
+.barRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.barRow + .barRow {
+  border-top: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.barMain {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.barHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.barTrack {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.barFill {
+  width: var(--bar-width, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dsw-alias-state-business-primary);
+  transition: width 0.2s;
+}
+
+.barPercent {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ===== Workbench chrome (design §2): tab bar with palette/voice entries ===== */
+.workbenchTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.workbenchTopRight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ===== One tab view's vertical stack ===== */
+.tabView {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ===== 快捷操作: one row of registry-generated buttons ===== */
+.quickRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quickRow button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ===== The two summary columns above the card grid ===== */
+.summaryCols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+.summaryCols .cardBody {
+  min-height: 0;
+}
+
+/* ===== Clickable rows (cards upgraded from read-only, design §3) ===== */
+.rowClickable {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 -8px;
+  padding: 8px;
+  border-radius: var(--dsw-radius-md);
+  cursor: pointer;
+}
+
+.rowClickable:hover,
+.rowClickable:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+.rowClickable + .rowClickable {
+  margin-top: 2px;
+}
+
+/* Secondary row actions stay hidden until the row is hovered or focused. */
+.rowActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+.rowClickable:hover .rowActions,
+.rowClickable:focus-within .rowActions {
+  opacity: 1;
+}
+
+/* ===== 资源速览 strip above the composer ===== */
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+  padding: 10px 16px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.stripNums {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.stripNums b {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+
+/* ===== Composer seat (design §11.5: workspace picker + native InputBar) ===== */
+.composerArea {
+  position: sticky;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 10px 12px;
+}
+
+.topWorkspace {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.topWorkspace .workspaceSelect {
+  flex: none;
+  width: 220px;
+}
+
+.workspaceLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-caption);
+  flex-shrink: 0;
+}
+
+.workspaceSelect {
+  flex: 1;
+  min-width: 0;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 3px 8px;
+}
+
+.workspaceHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+  padding: 2px 4px;
+}
+
+/* The embedded native conversation seat: its ResizeObserver measures this
+   wrapper's parent, so keep a plain block with a modest minimum height. */
+.composerSeat {
+  min-height: 84px;
+}
+
+/* The / and @ trigger menu opens edge-to-edge above the InputBar, but the
+   host embedded-conversation shell (scrollBody / embeddedBody) is only as
+   tall as the composer itself and clips the popup. The composer seat has
+   no message stream above it, so let the menu overflow freely here. The
+   drawer is not inside .composerArea, so it keeps the host clipping. */
+.composerArea [class*='scrollBody'],
+.composerArea [class*='embeddedBody'] {
+  overflow: visible;
+}
+
+/* Greyed-out seat placeholder shown until a workspace pick binds the InputBar:
+   same footprint as the live seat so the layout does not jump on bind. */
+.composerDisabled {
+  min-height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1));
+  opacity: 0.65;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ===== Right drawer (design §11.2: shell only; content is native) ===== */
+.drawerOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 24%);
+  animation: drawerFade 160ms ease-out;
+}
+
+.drawer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 90%;
+  border-left: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  background: var(--dsw-alias-bg-base);
+  box-shadow: -12px 0 32px rgb(0 0 0 / 18%);
+  animation: drawerSlide 200ms ease-out;
+}
+
+.drawerResizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.drawerResizer:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.drawerHead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-settings-card-stroke);
+}
+
+.drawerTitle {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.drawerBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes drawerFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes drawerSlide {
+  from { transform: translateX(24px); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* ===== Command palette (design §5) ===== */
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 12px;
+}
+
+.paletteList {
+  display: flex;
+  max-height: 264px;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.paletteGroup {
+  padding: 8px 8px 4px;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.paletteItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.paletteItem svg {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.paletteItemActive {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.paletteItemLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paletteItemHint {
+  margin-inline-start: auto;
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+}
+
+/* ===== Toast (command feedback, design §5) ===== */
+.toast {
+  position: sticky;
+  bottom: 12px;
+  z-index: 3;
+  width: fit-content;
+  max-width: 100%;
+  margin: 16px auto 0;
+  border-radius: var(--dsw-radius-full, 999px);
+  background: var(--dsw-alias-toast-bg);
+  color: var(--dsw-alias-toast-label);
+  font-size: 13px;
+  line-height: 20px;
+  padding: 6px 16px;
+  animation: wbToastIn 0.18s ease-out;
+}
+
+.toastError {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+@keyframes wbToastIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ===== 资源趋势 (design §4: inline SVG sparklines, state-token colors) ===== */
+.trendWindows {
+  display: flex;
+  gap: 4px;
+  padding: 8px 0 4px;
+}
+
+.windowChip {
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.windowChip:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.windowChipActive {
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
+}
+
+.trends {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.trend {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trendHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trendLabel {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.trendValue {
+  color: var(--dsw-alias-label-primary);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 56px;
+}
+
+.trendDelta {
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 实时活动流 ===== */
+.streamWrap {
+  position: relative;
+  max-height: 218px;
+  overflow-y: auto;
+}
+
+.stream {
+  display: flex;
+  flex-direction: column;
+}
+
+.streamItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--dsw-radius-md);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.streamItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.streamTime {
+  flex: none;
+  width: 40px;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.streamText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.streamNew {
+  position: sticky;
+  top: 4px;
+  z-index: 1;
+  display: flex;
+  width: fit-content;
+  margin: 0 auto 4px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-full, 999px);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.streamEmpty {
+  padding: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+}
+
+/* ===== 任务 / 目标进度 ===== */
+.prog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+
+.progRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: center;
+}
+
+.progLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.progVal {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.progValWarn {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.progTrack {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.progFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dsw-alias-state-business-primary);
+  transition: width 0.2s;
+}
+
+.progFillWarn {
+  background: var(--dsw-alias-state-warn-primary);
+}
+
+@media (max-width: 760px) {
+  .summaryCols,
+  .trends {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
