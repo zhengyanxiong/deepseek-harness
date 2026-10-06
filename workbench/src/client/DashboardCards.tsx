@@ -15,7 +15,7 @@ import {
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
-  Card, GOAL_PHASE_KEY, GOAL_PHASE_TONE, PAGE_SIZE, fmt, pagerFooter, usePagination,
+  Card, GOAL_PHASE_KEY, GOAL_PHASE_TONE, PAGE_SIZE, fmt, pagerFooter, usePagination, PAGE_SIZE_LARGE,
 } from './WorkbenchPanel.tsx'
 import type { RemindersSnapshot } from './WorkbenchPanel.tsx'
 import type { WorkbenchKey } from './locales.ts'
@@ -56,6 +56,8 @@ export interface TokenRowContext {
 export interface DashboardSessionSummary {
   displayTitle: string
   running: boolean
+  /** Blank sessions (no durable title yet) are workspace shells; the overview hides them. */
+  blank: boolean
   projectionValues?: {
     subagentCatalog?: readonly { id: string; mode: string; label?: string }[]
     agentTeam?: { members: readonly { id: string; name: string; role: string; phase: string }[] }
@@ -166,7 +168,7 @@ export function DashboardCards(props: DashboardCardsProps) {
 
   const sessionRows = useMemo(() => ids.flatMap(id => {
     const summary = byId[id]
-    return summary === undefined ? [] : [{ id, displayTitle: summary.displayTitle, running: summary.running }]
+    return summary === undefined || summary.blank ? [] : [{ id, displayTitle: summary.displayTitle, running: summary.running }]
   }), [ids, byId])
 
   const subagentRows = useMemo(() => ids.flatMap(parentId => {
@@ -183,7 +185,7 @@ export function DashboardCards(props: DashboardCardsProps) {
     return team.members.map(member => ({ member, leadId }))
   }), [ids, byId])
 
-  const sessionsPage = usePagination(sessionRows, PAGE_SIZE)
+  const sessionsPage = usePagination(sessionRows, PAGE_SIZE_LARGE)
   const jobsPage = usePagination(jobRows, PAGE_SIZE)
   const workflowPage = usePagination(workflowRows, PAGE_SIZE)
   const goalsPage = usePagination(goalRows, PAGE_SIZE)
@@ -216,10 +218,10 @@ export function DashboardCards(props: DashboardCardsProps) {
           : sessionsPage.pageItems.length === 0
             ? <p className={css.empty}>{t('sessions.empty')}</p>
             : sessionsPage.pageItems.map(row => (
-                <ClickableRow key={row.id} dot={<StateDot className={css.rowDot} state={row.running ? 'ongoing' : 'idle'} />}
-                  title={row.displayTitle} meta={row.running ? t('sessions.running') : undefined}
-                  sessionId={row.id} onOpen={onOpenSession} />
-              ))}
+              <ClickableRow key={row.id} dot={<StateDot className={css.rowDot} state={row.running ? 'ongoing' : 'idle'} />}
+                title={row.displayTitle} meta={row.running ? t('sessions.running') : undefined}
+                sessionId={row.id} onOpen={onOpenSession} />
+            ))}
       </Card>
 
       <Card icon={<IconQueueOutlineRegular size={16} />} title={t('jobs.title')} count={jobRows.length}
@@ -241,12 +243,12 @@ export function DashboardCards(props: DashboardCardsProps) {
         {goalsPage.pageItems.length === 0
           ? <p className={css.empty}>{t('goals.empty')}</p>
           : goalsPage.pageItems.map(row => (
-              <ClickableRow key={row.id} title={row.objective} meta={row.title} sessionId={row.id} onOpen={onOpenSession}>
-                <div className={css.rowSide}>
-                  <Tag tone={GOAL_PHASE_TONE[row.goalPhase] ?? 'neutral'}>{t(GOAL_PHASE_KEY[row.goalPhase] ?? 'goals.phase.active')}</Tag>
-                </div>
-              </ClickableRow>
-            ))}
+            <ClickableRow key={row.id} title={row.objective} meta={row.title} sessionId={row.id} onOpen={onOpenSession}>
+              <div className={css.rowSide}>
+                <Tag tone={GOAL_PHASE_TONE[row.goalPhase] ?? 'neutral'}>{t(GOAL_PHASE_KEY[row.goalPhase] ?? 'goals.phase.active')}</Tag>
+              </div>
+            </ClickableRow>
+          ))}
       </Card>
 
       <Card icon={<IconAlarmClockOutlineRegular size={16} />} title={t('reminders.title')} count={reminders.records.length}
@@ -258,16 +260,16 @@ export function DashboardCards(props: DashboardCardsProps) {
             : remindersPage.pageItems.length === 0
               ? <p className={css.empty}>{t('reminders.empty')}</p>
               : remindersPage.pageItems.map(reminder => (
-                  <ClickableRow key={String(reminder.id)} title={reminder.title}
-                    meta={byId[reminder.sessionId]?.displayTitle ?? String(reminder.sessionId)}
-                    sessionId={reminder.sessionId} onOpen={onOpenSession}>
-                    <div className={css.rowSide}>
-                      <Tag tone={reminder.status === 'active' ? 'info' : 'neutral'}>
-                        {t(reminder.status === 'active' ? 'reminders.active' : 'reminders.inactive')}
-                      </Tag>
-                    </div>
-                  </ClickableRow>
-                ))}
+                <ClickableRow key={String(reminder.id)} title={reminder.title}
+                  meta={byId[reminder.sessionId]?.displayTitle ?? String(reminder.sessionId)}
+                  sessionId={reminder.sessionId} onOpen={onOpenSession}>
+                  <div className={css.rowSide}>
+                    <Tag tone={reminder.status === 'active' ? 'info' : 'neutral'}>
+                      {t(reminder.status === 'active' ? 'reminders.active' : 'reminders.inactive')}
+                    </Tag>
+                  </div>
+                </ClickableRow>
+              ))}
       </Card>
 
       <Card icon={<IconUserOutlineRegular size={16} />} title={t('subagents.title')} count={subagentRows.length}
@@ -275,13 +277,13 @@ export function DashboardCards(props: DashboardCardsProps) {
         {subagentsPage.pageItems.length === 0
           ? <p className={css.empty}>{t('subagents.empty')}</p>
           : subagentsPage.pageItems.map(({ child, parentId }) => (
-              <ClickableRow key={child.id} title={child.label ?? child.id} meta={byId[parentId]?.displayTitle ?? parentId}
-                sessionId={parentId} onOpen={onOpenSession}>
-                <div className={css.rowSide}>
-                  <Tag tone={SUBAGENT_MODE_TONE[child.mode] ?? 'outline'}>{t(SUBAGENT_MODE_KEY[child.mode] ?? 'subagents.mode.unknown')}</Tag>
-                </div>
-              </ClickableRow>
-            ))}
+            <ClickableRow key={child.id} title={child.label ?? child.id} meta={byId[parentId]?.displayTitle ?? parentId}
+              sessionId={parentId} onOpen={onOpenSession}>
+              <div className={css.rowSide}>
+                <Tag tone={SUBAGENT_MODE_TONE[child.mode] ?? 'outline'}>{t(SUBAGENT_MODE_KEY[child.mode] ?? 'subagents.mode.unknown')}</Tag>
+              </div>
+            </ClickableRow>
+          ))}
       </Card>
 
       <Card icon={<IconUsersOutlineRegular size={16} />} title={t('teams.title')} count={teamRows.length}
@@ -289,14 +291,14 @@ export function DashboardCards(props: DashboardCardsProps) {
         {teamsPage.pageItems.length === 0
           ? <p className={css.empty}>{t('teams.empty')}</p>
           : teamsPage.pageItems.map(({ member, leadId }) => (
-              <ClickableRow key={member.id} title={member.name} meta={byId[leadId]?.displayTitle ?? leadId}
-                sessionId={leadId} onOpen={onOpenSession}>
-                <div className={css.rowSide}>
-                  <Tag tone={TEAM_ROLE_TONE[member.role] ?? 'neutral'}>{t(TEAM_ROLE_KEY[member.role] ?? 'teams.role.teammate')}</Tag>
-                  <Tag tone={TEAM_PHASE_TONE[member.phase] ?? 'neutral'}>{t(TEAM_PHASE_KEY[member.phase] ?? 'teams.phase.active')}</Tag>
-                </div>
-              </ClickableRow>
-            ))}
+            <ClickableRow key={member.id} title={member.name} meta={byId[leadId]?.displayTitle ?? leadId}
+              sessionId={leadId} onOpen={onOpenSession}>
+              <div className={css.rowSide}>
+                <Tag tone={TEAM_ROLE_TONE[member.role] ?? 'neutral'}>{t(TEAM_ROLE_KEY[member.role] ?? 'teams.role.teammate')}</Tag>
+                <Tag tone={TEAM_PHASE_TONE[member.phase] ?? 'neutral'}>{t(TEAM_PHASE_KEY[member.phase] ?? 'teams.phase.active')}</Tag>
+              </div>
+            </ClickableRow>
+          ))}
       </Card>
 
       <Card wide icon={<IconGaugeOutlineRegular size={16} />} title={t('tokens.title')} count={tokenRows.length}
@@ -304,43 +306,43 @@ export function DashboardCards(props: DashboardCardsProps) {
         {tokenTotals.total === 0 && tokenRows.length === 0
           ? <p className={css.empty}>{t('tokens.empty')}</p>
           : (
-              <>
-                <div className={css.metricGrid}>
-                  <div className={css.metric}>
-                    <span className={css.metricValue}>{fmt(tokenTotals.input)}</span>
-                    <span className={css.metricLabel}>{t('tokens.input')}</span>
-                  </div>
-                  <div className={css.metric}>
-                    <span className={css.metricValue}>{fmt(tokenTotals.output)}</span>
-                    <span className={css.metricLabel}>{t('tokens.output')}</span>
-                  </div>
-                  <div className={css.metric}>
-                    <span className={css.metricValue}>{fmt(tokenTotals.cacheRead)}</span>
-                    <span className={css.metricLabel}>{t('tokens.cacheRead')}</span>
-                  </div>
-                  <div className={css.metric}>
-                    <span className={css.metricValue}>{fmt(tokenTotals.cacheWrite)}</span>
-                    <span className={css.metricLabel}>{t('tokens.cacheWrite')}</span>
-                  </div>
+            <>
+              <div className={css.metricGrid}>
+                <div className={css.metric}>
+                  <span className={css.metricValue}>{fmt(tokenTotals.input)}</span>
+                  <span className={css.metricLabel}>{t('tokens.input')}</span>
                 </div>
-                {tokensPage.pageItems.map(row => (
-                  <div key={row.id} className={css.barRow}>
-                    <div className={css.barMain}>
-                      <div className={css.barHead}>
-                        <span className={css.rowTitle}>{row.title}</span>
-                        {row.total !== undefined && <span className={css.rowMeta}>{fmt(row.total)}</span>}
-                      </div>
-                      {row.percent !== undefined && (
-                        <div className={css.barTrack}>
-                          <div className={css.barFill} style={{ '--bar-width': `${row.percent}%` } as CSSProperties} />
-                        </div>
-                      )}
+                <div className={css.metric}>
+                  <span className={css.metricValue}>{fmt(tokenTotals.output)}</span>
+                  <span className={css.metricLabel}>{t('tokens.output')}</span>
+                </div>
+                <div className={css.metric}>
+                  <span className={css.metricValue}>{fmt(tokenTotals.cacheRead)}</span>
+                  <span className={css.metricLabel}>{t('tokens.cacheRead')}</span>
+                </div>
+                <div className={css.metric}>
+                  <span className={css.metricValue}>{fmt(tokenTotals.cacheWrite)}</span>
+                  <span className={css.metricLabel}>{t('tokens.cacheWrite')}</span>
+                </div>
+              </div>
+              {tokensPage.pageItems.map(row => (
+                <div key={row.id} className={css.barRow}>
+                  <div className={css.barMain}>
+                    <div className={css.barHead}>
+                      <span className={css.rowTitle}>{row.title}</span>
+                      {row.total !== undefined && <span className={css.rowMeta}>{fmt(row.total)}</span>}
                     </div>
-                    {row.percent !== undefined && <span className={css.barPercent}>{row.percent}%</span>}
+                    {row.percent !== undefined && (
+                      <div className={css.barTrack}>
+                        <div className={css.barFill} style={{ '--bar-width': `${row.percent}%` } as CSSProperties} />
+                      </div>
+                    )}
                   </div>
-                ))}
-              </>
-            )}
+                  {row.percent !== undefined && <span className={css.barPercent}>{row.percent}%</span>}
+                </div>
+              ))}
+            </>
+          )}
       </Card>
     </div>
   )

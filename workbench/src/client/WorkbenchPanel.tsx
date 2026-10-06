@@ -13,8 +13,8 @@ import {
   IconMicrophoneOutlineRegular, IconRightUpOutlineRegular, IconSearchOutlineRegular, SegmentedTabs,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type { } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { JobsSnapshot } from '@deepseek-ai/dsh-api-job-controller/client'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -22,9 +22,9 @@ import type { DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ScheduleCatalogEntry } from '@deepseek-ai/dsh-schedule/client'
-import type {} from '@deepseek-ai/dsh-goal/client'
-import type {} from '@deepseek-ai/dsh-token-meter/client'
-import type {} from '@deepseek-ai/dsh-subagent/client'
+import type { } from '@deepseek-ai/dsh-goal/client'
+import type { } from '@deepseek-ai/dsh-token-meter/client'
+import type { } from '@deepseek-ai/dsh-subagent/client'
 import { createWorkbenchCommands } from './commands.ts'
 import type { CommandDeps, WorkbenchCommand } from './commands.ts'
 import { getWorkbenchStore } from './store.ts'
@@ -151,6 +151,7 @@ export type WorkbenchTab = 'command' | 'monitor'
 
 /** Rows shown per list card before the pager appears. */
 export const PAGE_SIZE = 5
+export const PAGE_SIZE_LARGE = 10
 
 /** One row of the 进行中 summary: a session or a live job. */
 export interface OngoingRow {
@@ -344,8 +345,8 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
     // host has not seen yet — without this gate the silent catch below
     // leaves the seat greyed forever (nothing re-triggers the effect).
     if (workspaces.phase !== 'ready'
-        || workspacePick === undefined
-        || !workspaces.items.some(w => w.workspaceId === workspacePick)) {
+      || workspacePick === undefined
+      || !workspaces.items.some(w => w.workspaceId === workspacePick)) {
       releaseComposer()
       setComposerReady(n => n + 1)
       return
@@ -549,7 +550,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
 
   const sessionRows = useMemo(() => ids.flatMap(id => {
     const summary = byId[id]
-    return summary === undefined ? [] : [summary]
+    return summary === undefined || summary.blank ? [] : [summary]
   }), [ids, byId])
 
   const jobRows = useMemo(() => Object.entries(jobRowsBySession).flatMap(([sessionId, jobs]) => {
@@ -782,21 +783,21 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
     <div className={css.composerArea}>
       {composerSeat !== null && composerSeat.wsId === effectiveWorkspaceId
         ? (
-            <div className={css.composerSeat}>
-              <SessionProvider session={composerSeat.ref}>
-                {renderSlot('workbench.composer.conversation', { mode: 'composer' })}
-              </SessionProvider>
-            </div>
-          )
+          <div className={css.composerSeat}>
+            <SessionProvider session={composerSeat.ref}>
+              {renderSlot('workbench.composer.conversation', { mode: 'composer' })}
+            </SessionProvider>
+          </div>
+        )
         : (
-            /* Seat placeholder: always visible, greyed out until a workspace
-               pick binds a blank Session into it. */
-            <div className={css.composerDisabled} aria-disabled="true">
-              <p className={css.workspaceHint}>
-                {workspaces.phase === 'ready' ? t('composer.workspaceHint') : t('composer.workspaceLoading')}
-              </p>
-            </div>
-          )}
+          /* Seat placeholder: always visible, greyed out until a workspace
+             pick binds a blank Session into it. */
+          <div className={css.composerDisabled} aria-disabled="true">
+            <p className={css.workspaceHint}>
+              {workspaces.phase === 'ready' ? t('composer.workspaceHint') : t('composer.workspaceLoading')}
+            </p>
+          </div>
+        )}
     </div>
   )
 
@@ -846,41 +847,41 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
 
           {tab === 'command'
             ? (
-                <CommandTab
-                  t={t}
-                  phase={phase}
-                  sessions={{ ids, byId, phase }}
-                  jobRows={jobRows}
-                  workflowRows={workflowRows}
-                  goalRows={goalRows}
-                  reminders={reminders}
-                  tokenRows={tokenRows}
-                  tokenTotals={tokenTotals}
-                  ongoingRows={ongoingRows}
-                  todayRows={todayRows}
-                  commands={commands}
-                  onRunCommand={runCommand}
-                  onOpenSession={sessionId => { openDrawer(sessionId) }}
-                  onStopJob={(sessionId, jobId) => {
-                    void actions.stopJob(sessionId, jobId).then(ok => {
-                      notify(ok ? t('cmd.done.stopJob') : t('cmd.failed.stopJob'), ok ? 'success' : 'error')
-                    })
-                  }}
-                  composer={composerArea}
-                  onOpenTrend={() => { setTab('monitor') }}
-                />
-              )
+              <CommandTab
+                t={t}
+                phase={phase}
+                sessions={{ ids, byId, phase }}
+                jobRows={jobRows}
+                workflowRows={workflowRows}
+                goalRows={goalRows}
+                reminders={reminders}
+                tokenRows={tokenRows}
+                tokenTotals={tokenTotals}
+                ongoingRows={ongoingRows}
+                todayRows={todayRows}
+                commands={commands}
+                onRunCommand={runCommand}
+                onOpenSession={sessionId => { openDrawer(sessionId) }}
+                onStopJob={(sessionId, jobId) => {
+                  void actions.stopJob(sessionId, jobId).then(ok => {
+                    notify(ok ? t('cmd.done.stopJob') : t('cmd.failed.stopJob'), ok ? 'success' : 'error')
+                  })
+                }}
+                composer={composerArea}
+                onOpenTrend={() => { setTab('monitor') }}
+              />
+            )
             : (
-                <MonitorTab
-                  t={t}
-                  useActivity={useActivity}
-                  useTrends={useTrends}
-                  trendsSampler={store.trends}
-                  workflowRows={workflowRows}
-                  goalRows={goalRows}
-                  tokenRows={tokenRows}
-                />
-              )}
+              <MonitorTab
+                t={t}
+                useActivity={useActivity}
+                useTrends={useTrends}
+                trendsSampler={store.trends}
+                workflowRows={workflowRows}
+                goalRows={goalRows}
+                tokenRows={tokenRows}
+              />
+            )}
 
           <Fragment>
             {toast !== null && (

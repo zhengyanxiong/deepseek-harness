@@ -129,8 +129,8 @@ const expect = [
 const missing = expect.filter(t => !html.includes(t))
 if (missing.length > 0) { console.log('MISSING:', JSON.stringify(missing)); process.exit(1) }
 
-// Pagination: six sessions → page 0 shows five, a "1 / 2" pager, and the sixth is hidden.
-const bigById = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`s${i + 1}`, {
+// Pagination: eleven sessions at PAGE_SIZE_LARGE (10) → page 0 shows ten, a "1 / 2" pager, and the eleventh is hidden.
+const bigById = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`s${i + 1}`, {
   id: `s${i + 1}`,
   displayTitle: `Session ${i + 1}`,
   running: false,
@@ -162,7 +162,7 @@ const bigProps = {
 const bigHtml = renderToString(createElement(component, bigProps)).replace(/<!-- -->/g, '')
 const paginationChecks = [
   ['first page item', 'Session 1'],
-  ['fifth page item', 'Session 5'],
+  ['tenth page item', 'Session 10'],
   ['pager indicator', '1 / 2'],
   ['prev label', 'pager.prev'],
   ['next label', 'pager.next'],
@@ -170,7 +170,7 @@ const paginationChecks = [
 for (const [label, needle] of paginationChecks) {
   if (!bigHtml.includes(needle)) { console.log('PAGINATION MISSING:', label, JSON.stringify(needle)); process.exit(1) }
 }
-if (bigHtml.includes('Session 6')) { console.log('PAGINATION BUG: sixth item leaked onto page 0'); process.exit(1) }
+if (bigHtml.includes('Session 11')) { console.log('PAGINATION BUG: eleventh item leaked onto page 0'); process.exit(1) }
 
 // Monitor tab: direct SSR render with stubbed hooks (regression net for the
 // cached-snapshot contract the tab's useSyncExternalStore bindings rely on).
@@ -191,5 +191,5 @@ if (monitorMissing.length > 0) { console.log('MONITOR MISSING:', JSON.stringify(
 
 console.log('inject face hooks:', JSON.stringify(Object.keys(mainOpts.inject().hooks)))
 console.log('rendered markers:', expect.length - missing.length, '/', expect.length, '| html bytes:', html.length)
-console.log('pagination: 5/6 visible, pager 1/2, 6th hidden | big html bytes:', bigHtml.length)
+console.log('pagination: 10/11 visible, pager 1/2, 11th hidden | big html bytes:', bigHtml.length)
 console.log('SMOKE OK: apply + populated render + pagination pass')

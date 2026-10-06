@@ -164,7 +164,7 @@
   padding: 8px 0;
 }
 
-.row + .row {
+.row+.row {
   border-top: 0.5px solid var(--dsw-alias-border-l4);
 }
 
@@ -260,7 +260,7 @@
   padding: 8px 0;
 }
 
-.barRow + .barRow {
+.barRow+.barRow {
   border-top: 0.5px solid var(--dsw-alias-border-l4);
 }
 
@@ -377,7 +377,7 @@
   outline: none;
 }
 
-.rowClickable + .rowClickable {
+.rowClickable+.rowClickable {
   margin-top: 2px;
 }
 
@@ -572,13 +572,25 @@
 }
 
 @keyframes drawerFade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes drawerSlide {
-  from { transform: translateX(24px); opacity: 0.6; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(24px);
+    opacity: 0.6;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 /* ===== Command palette (design §5) ===== */
@@ -669,8 +681,15 @@
 }
 
 @keyframes wbToastIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ===== 资源趋势 (design §4: inline SVG sparklines, state-token colors) ===== */
@@ -868,6 +887,7 @@
 }
 
 @media (max-width: 760px) {
+
   .summaryCols,
   .trends {
     grid-template-columns: minmax(0, 1fr);
