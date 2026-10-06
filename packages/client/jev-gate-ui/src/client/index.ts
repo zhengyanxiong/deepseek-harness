@@ -58,10 +58,8 @@ export function apply(ctx: ClientContext): void {
     order: 40,
     label: () => t('title'),
     locale: NS,
-    // 宿主插件条目的模块名（listPlugins 的 moduleName）。bundle 化后宿主以裸包名
-    // jev-gate 解析（profile node_modules -> jev-guard-plugin/），不再绑定仓库绝对路径；
-    // 声明后 Plugins 页卡片右侧出现启用开关（ui-plugin-manager 的 PluginItemMeta 契约）。
-    meta: { module: 'jev-gate' },
+    // 启用开关不在本卡片：bundle 化后由 listBundles 驱动的 bundle 卡片开关统一控制；
+    // item 开关走 setPluginEnabled 会写 patch 禁用行，与 bundle 选择互相打架，故移除 meta。
     inject: () => card.inject(),
   }, JevGateCard)), 'jev-gate-ui: page')
 }
