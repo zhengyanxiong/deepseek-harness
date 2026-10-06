@@ -7,6 +7,9 @@ packages:
   - native/system/packages/*
   # Product assemblies over the package tier; apps/cli owns the `dsh` bin.
   - apps/*
+  # DSH workbench panel (deepseek-harness/workbench): root-level plugin; its
+  # devDeps (react types, tsdown) only resolve once it is a workspace member.
+  - workbench
   # Private package owning repository-level benchmark dependencies.
   - benchmarks
   - website
