@@ -111,7 +111,6 @@ export function MonitorTab(props: MonitorTabProps) {
 
   const series = useMemo<TrendSeries>(
     () => trendsSampler.series(window),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [trendsSampler, window, activity],
   )
 
@@ -154,7 +153,6 @@ export function MonitorTab(props: MonitorTabProps) {
   useEffect(() => {
     // Mount: treat the initial batch as read.
     setLastSeenTs(events[0]?.ts ?? 0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* ---- progress rows ---- */
