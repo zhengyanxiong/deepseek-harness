@@ -71,6 +71,7 @@ const READY: PluginManagerState = {
   status: 'ready',
   refreshStatus: 'idle',
   packages: [],
+  plugins: [],
   busy: [],
   notice: null,
   install: IDLE_INSTALL,

@@ -10,10 +10,22 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { resolveSlotLabel, type HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from './slot-contract.ts'
 
-/** One official plugin as the page lists it: its registration id and its title in the active locale. */
+/**
+ * One official plugin as the page lists it: its registration id and its title
+ * in the active locale, plus the host module a `plugins.item` entry declares
+ * in its registration `meta` (`meta.module`), when it declares one — the card
+ * matches it against the Host's plugin entries for its enable switch.
+ */
 export interface OfficialItem {
   readonly id: string
   readonly label: string
+  readonly module?: string | undefined
+}
+
+/** The host module a `plugins.item` entry declares in `meta`, when it declares a non-empty one. */
+function itemModule(meta: Record<string, unknown> | undefined): string | undefined {
+  const module = meta?.module
+  return typeof module === 'string' && module !== '' ? module : undefined
 }
 
 /**
@@ -62,6 +74,7 @@ export function configLedgerSource(ctx: ClientContext): HostObservable<ConfigLed
             /* v8 ignore next -- list-slot registration requires id */
             id: entry.options.id ?? '',
             label: resolveSlotLabel(entry.options.label) ?? '',
+            ...itemModule(entry.options.meta) === undefined ? {} : { module: itemModule(entry.options.meta) },
           })),
           bundles: keysOf('plugins.bundle.config'),
           rows: keysOf('plugins.row.config'),

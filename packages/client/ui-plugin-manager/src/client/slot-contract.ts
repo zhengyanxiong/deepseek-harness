@@ -92,6 +92,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * (`view: 'page'`). OCCUPIED by the official settings pages, one companion
      * package per host-plane namespace; a bundle's configuration belongs in
      * `plugins.bundle.config` or `plugins.row.config` instead.
+     * An entry whose registration declares `meta: PluginItemMeta` with the
+     * host plugin's module specifier gains an enable switch on its card,
+     * matched against the Host's plugin entries (listPlugins' `moduleName`).
      */
     'plugins.item': { kind: 'list'; scope: 'root'; owner: PluginConfigViewProps }
     /**
@@ -135,4 +138,13 @@ export interface ConfigPageForm {
   readonly state: ConfigFormSnapshot<Record<string, unknown>>
   /** Submit all field edits together with the revision the editor read. */
   readonly mutate: ConfigForm<Record<string, unknown>>['mutate']
+}
+
+/**
+ * What a `plugins.item` entry declares in its registration `meta`: the host
+ * plugin its card switches. Read by the config ledger; kept JSON-serializable.
+ */
+export interface PluginItemMeta {
+  /** The module specifier the host's Loader entry imports (listPlugins' `moduleName`). */
+  module?: string
 }

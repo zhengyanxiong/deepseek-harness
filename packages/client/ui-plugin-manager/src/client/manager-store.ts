@@ -288,6 +288,12 @@ export interface PluginManagerState {
    */
   readonly refreshStatus: 'idle' | 'refreshing' | 'failed'
   readonly packages: readonly PackageView[]
+  /**
+   * The Host's running plugin entries (listPlugins), by module name: official
+   * item cards whose registration declares `meta.module` match one of these
+   * for their enable switch.
+   */
+  readonly plugins: readonly PluginInfo[]
   /** Package names and row keys with an action crossing the wire. */
   readonly busy: readonly string[]
   readonly notice: ManagerNotice | null
@@ -533,7 +539,7 @@ export class PluginManagerController {
     private readonly ctx: ClientContext,
   ) {
     this.store = createSnapshotStore<PluginManagerState>({
-      status: 'idle', refreshStatus: 'idle', packages: [], busy: [], notice: null,
+      status: 'idle', refreshStatus: 'idle', packages: [], plugins: [], busy: [], notice: null,
       install: IDLE_INSTALL, confirm: null, highlight: null,
     })
   }
@@ -786,7 +792,7 @@ export class PluginManagerController {
         }
         if (inventory.value.managementAvailable !== true) {
           this.hasCachedInventory = false
-          this.patch({ status: 'unavailable', packages: [] })
+          this.patch({ status: 'unavailable', packages: [], plugins: [] })
           continue
         }
         const [bundles, plugins] = await Promise.all([
@@ -803,6 +809,7 @@ export class PluginManagerController {
           status: 'ready',
           refreshStatus: this.getSnapshot().refreshStatus === 'refreshing' ? 'refreshing' : 'idle',
           packages: sortPackages(bundles.value.map(bundle => packageView(bundle, plugins.value))),
+          plugins: plugins.value,
         })
       } while (this.shouldRerun())
     } finally {

@@ -485,18 +485,48 @@ function PackageCard({ pkg, t, resolveText, busy, highlighted, onOpen, onSetEnab
 }
 
 /**
- * One official plugin as a card that opens its page: its icon, its title from
- * the registration, and the one-liner the entry renders in its summary view.
+ * The enable switch an item card shows when its registration declared the host
+ * plugin's module (plugins.item `meta.module`) and the Host lists that entry:
+ * the matched plugin row's state, and where the switch's write goes.
  */
-function ItemCard({ item, t, onOpen, renderSlot }: {
+interface ItemToggle {
+  readonly enabled: boolean
+  readonly busy: boolean
+  readonly readOnlyReason?: string
+  readonly onSetEnabled: (enabled: boolean) => void
+}
+
+/**
+ * One official plugin as a card that opens its page: its icon, its title from
+ * the registration, the one-liner the entry renders in its summary view, and —
+ * when the entry declared its host module — the entry's enable switch.
+ */
+function ItemCard({ item, t, onOpen, renderSlot, toggle }: {
   readonly item: OfficialItem
   readonly t: Translate
   readonly onOpen: () => void
   readonly renderSlot: RenderConfig
+  readonly toggle?: ItemToggle | undefined
 }): ReactNode {
   return (
     <li className={`${css.card} ${css.cardLink}`} data-plugin-item={item.id}>
-      <CardHead title={item.label} t={t} onOpen={onOpen} icon={itemArtwork(item.id)} description={renderSlot('plugins.item', { view: 'summary' }, { only: item.id })} />
+      <CardHead
+        title={item.label}
+        t={t}
+        onOpen={onOpen}
+        icon={itemArtwork(item.id)}
+        description={renderSlot('plugins.item', { view: 'summary' }, { only: item.id })}
+        {...toggle === undefined ? {} : {
+          end: (
+            <Switch
+              checked={toggle.enabled}
+              label={t('enableToggle', { name: item.label })}
+              disabled={toggle.busy || toggle.readOnlyReason !== undefined}
+              onChange={toggle.onSetEnabled}
+            />
+          ),
+        }}
+      />
     </li>
   )
 }
@@ -1377,6 +1407,19 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
     /* v8 ignore next -- a row without a live entry has its switch disabled */
     if (row.entryId !== undefined) props.setRowEnabled(row.entryId, enabled)
   }
+  // An official item's enable switch: its registration's host module names the
+  // plugin row; no declaration or no such row leaves the card without one.
+  const itemToggle = (item: OfficialItem): ItemToggle | undefined => {
+    if (item.module === undefined) return undefined
+    const row = state.plugins.find(plugin => plugin.moduleName === item.module)
+    if (row === undefined) return undefined
+    return {
+      enabled: row.enabled,
+      busy: state.busy.includes(rowKey(row.entryId)),
+      ...row.readOnlyReason === undefined ? {} : { readOnlyReason: row.readOnlyReason },
+      onSetEnabled: (enabled) => { props.setRowEnabled(row.entryId, enabled) },
+    }
+  }
   const configure = (pkg: PackageView): RowConfigure => ({
     has: row => ledger.rows.has(rowConfigKey(pkg.name, row.rowId)),
     open: (row) => { setView({ kind: 'row', name: pkg.name, rowId: row.rowId }) },
@@ -1397,7 +1440,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
   const officialCards = [
     ...official.map(packageCard),
     ...ledger.items.map(item => (
-      <ItemCard key={`item:${item.id}`} item={item} t={t} renderSlot={renderSlot} onOpen={() => { setView({ kind: 'item', id: item.id }) }} />
+      <ItemCard key={`item:${item.id}`} item={item} t={t} renderSlot={renderSlot} toggle={itemToggle(item)} onOpen={() => { setView({ kind: 'item', id: item.id }) }} />
     )),
   ]
   // One group of cards under its heading and count; the Official group comes first, and a group with nothing in it takes no room.

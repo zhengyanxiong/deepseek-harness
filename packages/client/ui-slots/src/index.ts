@@ -777,6 +777,12 @@ export type KindOptions<
       label?: SlotLabel
       /** Cell shadowing rank (ascending, default 0, lowest renders; same id + same priority throws — see {@link SlotCore.register}). */
       priority?: number
+      /**
+       * Opaque registrant payload carried verbatim to ledger readers
+       * (entry.options.meta; JSON-serializable; the core does not interpret
+       * it — slots like `plugins.item` use it to declare host-entry facts).
+       */
+      meta?: Record<string, unknown>
     }
       : SlotMap[K]['kind'] extends 'chain' ? {
         /** Routing selector, mandatory on chain entries; `M` (the component's `matched` prop) infers from its return. */
@@ -840,7 +846,7 @@ type BaseOptions<
  */
 export interface StoredEntry {
   component: unknown
-  options: { key?: string; id?: string; order?: number; label?: SlotLabel; priority?: number }
+  options: { key?: string; id?: string; order?: number; label?: SlotLabel; priority?: number; meta?: Record<string, unknown> }
   /** Chain routing selector (type-erased like `inject`; present exactly on chain-slot entries). */
   select?: ((owner: never) => unknown) | undefined
   /** Registrant business face; positional params derive from the declaration (sessionId?, actions?). */
@@ -880,6 +886,7 @@ interface ErasedOptions {
   label?: SlotLabel | undefined
   select?: ((owner: never) => unknown) | undefined
   priority?: number | undefined
+  meta?: Record<string, unknown> | undefined
   children?: Record<string, SlotSpec<SlotEntryDef>> | undefined
   store?: StoreDecl | undefined
   locale?: string | undefined
@@ -1266,6 +1273,7 @@ export class SlotCore {
         ...(options.order !== undefined ? { order: options.order } : {}),
         ...(options.label !== undefined ? { label: options.label } : {}),
         ...(options.priority !== undefined ? { priority: options.priority } : {}),
+        ...(options.meta !== undefined ? { meta: options.meta } : {}),
       },
       ...(options.select !== undefined ? { select: options.select } : {}),
       ...(options.inject !== undefined ? { inject: options.inject } : {}),
