@@ -1,5 +1,5 @@
 {
-  "name": "jev-gate-ui",
+  "name": "jev-gate",
   "description": "jev-gate 安全门禁插件的浏览器配置卡片（Settings → Plugins）",
   "version": "0.1.0",
   "private": true,

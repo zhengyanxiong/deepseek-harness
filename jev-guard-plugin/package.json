@@ -1,16 +1,23 @@
 {
-  "name": "jev-gate-ui",
-  "description": "jev-gate 安全门禁插件的浏览器配置卡片（Settings → Plugins）",
-  "version": "0.1.0",
+  "name": "jev-gate",
+  "description": "jev-gate 安全门禁：Jev 评估 bash/pwsh 命令危害，策略层映射为放行/送审/拦截（bundle 形态安装，含浏览器配置卡片）",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "main": "./src/gate.ts",
   "exports": {
+    ".": {
+      "default": "./src/gate.ts"
+    },
     "./client": {
       "default": "./lib/client.js"
     },
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [

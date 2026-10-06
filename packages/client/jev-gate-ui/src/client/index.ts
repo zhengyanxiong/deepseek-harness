@@ -58,10 +58,10 @@ export function apply(ctx: ClientContext): void {
     order: 40,
     label: () => t('title'),
     locale: NS,
-    // 宿主插件条目的模块名（listPlugins 的 moduleName，即挂载行的 file:// URL）：
+    // 宿主插件条目的模块名（listPlugins 的 moduleName）。bundle 化后宿主以裸包名
+    // jev-gate 解析（profile node_modules -> jev-guard-plugin/），不再绑定仓库绝对路径；
     // 声明后 Plugins 页卡片右侧出现启用开关（ui-plugin-manager 的 PluginItemMeta 契约）。
-    // 注意：与仓库路径绑定，repo 迁移后需同步改这里（否则开关不渲染，不影响其他功能）。
-    meta: { module: 'file:///home/bernie/workspace/repo/deepseek-harness/jev-guard-plugin/src/gate.ts' },
+    meta: { module: 'jev-gate' },
     inject: () => card.inject(),
   }, JevGateCard)), 'jev-gate-ui: page')
 }

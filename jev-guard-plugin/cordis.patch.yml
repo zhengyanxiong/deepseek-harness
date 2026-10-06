@@ -1,0 +1,12 @@
+# jev-gate bundle patch: one insert over the profile root. The row is
+# referenced by bare package name so the Loader resolves the installed code
+# (profile node_modules/jev-gate -> 本仓库 jev-guard-plugin/)；浏览器半面经
+# `dsh.client` 的 `./client` export 挂载到该行。config 为出厂默认，用户可在
+# Web Plugins 页改写（写入 profile patch，volatile HMR 即时生效）。
+- insert:
+    - id: jev-gate
+      name: jev-gate
+      config:
+        policy: calibrated
+        timeoutMs: 5000
+        traceNote: true

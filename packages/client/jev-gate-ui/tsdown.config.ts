@@ -7,4 +7,4 @@ import { clientBundle } from '../tsdown.client.ts'
 // 所以占位入口选纯 TS 的 locales.ts。产物 lib/index.js 无用（运行扫描器只
 // 消费 lib/client.js，由部署脚本拷到 jev-guard-plugin/lib/client.js——
 // 宿主条目挂的是 jev-guard-plugin 的 manifest）。
-export default clientBundle('jev-gate-ui', ['src/client/locales.ts'])
+export default clientBundle('jev-gate', ['src/client/locales.ts'])
