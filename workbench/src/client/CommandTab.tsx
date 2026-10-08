@@ -1,14 +1,13 @@
 /**
- * 指挥台 (design v2): the composer promoted into a 指挥舱 (command deck) at
- * the page's first surface with the quick actions docked inside it, the 实时
- * 脊线 (live spine) — a hairline-bounded activity band with the newest events
- * inline — then the section eyebrows (正在发生 / 参考数据) that replace the
- * old equal-weight card stack, the eight clickable data-source cards, and the
- * resource strip. The deck keeps the native InputBar seat supplied by the
- * panel as a ReactNode.
+ * 指挥台 (design v2): the 指挥舱 (command deck) — the quick actions as the
+ * page's first surface — the 实时脊线 (live spine), a hairline-bounded
+ * activity band with the newest events inline, then the section eyebrows
+ * (正在发生 / 参考数据) that replace the old equal-weight card stack, the
+ * eight clickable data-source cards, and the resource strip. Conversation
+ * lives in the panel's right drawer; this tab has no input surface.
  */
 
-import type { ReactNode } from 'react'
+import { useState } from 'react'
 import {
   Button, IconRightUpOutlineRegular, IconStopFillRegular, StateDot, Tag,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -16,9 +15,8 @@ import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkbenchCommand } from './commands.ts'
-import { DashboardCards } from './DashboardCards.tsx'
 import type { DashboardSessionSummary, GoalRowContext, JobRowContext, TokenRowContext } from './DashboardCards.tsx'
-import { Card, compact } from './WorkbenchPanel.tsx'
+import { Card, compact, pagerFooter, usePagination, PAGE_SIZE_LARGE } from './WorkbenchPanel.tsx'
 import type { OngoingRow, RemindersSnapshot, TodayRow } from './WorkbenchPanel.tsx'
 import type { ActivitySnapshot } from './store.ts'
 import type { WorkbenchKey } from './locales.ts'
@@ -51,8 +49,7 @@ export interface CommandTabProps {
   /** Card row clicks open the lightweight right drawer for that Session. */
   onOpenSession(sessionId: SessionId): void
   onStopJob(sessionId: SessionId, jobId: JobId): void
-  /** Composer seat surface (workspace picker + embedded native InputBar). */
-  composer: ReactNode
+  onOpenJob(sessionId: SessionId, jobId: JobId): void
   onOpenTrend(): void
 }
 
@@ -81,11 +78,38 @@ function Eyebrow({ name }: { name: string }) {
  */
 export function CommandTab(props: CommandTabProps) {
   const {
-    t, sessions, useActivity, ongoingRows, todayRows, jobRows, workflowRows, goalRows, reminders,
-    tokenRows, tokenTotals, commands, onRunCommand, onOpenSession, onStopJob,
-    composer, onOpenTrend,
+    t, sessions, useActivity, ongoingRows, todayRows, jobRows, goalRows,
+    tokenRows, tokenTotals, commands, onRunCommand, onOpenSession, onStopJob, onOpenJob,
+    onOpenTrend,
   } = props
 
+  const [query, setQuery] = useState('')
+  const [pins, setPins] = useState<readonly string[]>(() => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem('dsh-workbench.pins') ?? '[]')
+      return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : []
+    } catch (error) {
+      // Storage may be unavailable or contain an interrupted write.
+      return []
+    }
+  })
+  const togglePin = (id: SessionId): void => {
+    const next = pins.includes(id) ? pins.filter(value => value !== id) : [...pins, id]
+    setPins(next)
+    try { localStorage.setItem('dsh-workbench.pins', JSON.stringify(next)) } catch (error) {
+      // Pinning remains usable in memory when storage is unavailable.
+    }
+  }
+  const matches = (text: string): boolean => text.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+  const continuing = sessions.ids.flatMap(id => {
+    const row = sessions.byId[id]
+    return row === undefined || row.blank || !matches(row.displayTitle) ? [] : [{ ...row, id }]
+  }).sort((a, b) => Number(pins.includes(b.id)) - Number(pins.includes(a.id)))
+  const continuationPage = usePagination(continuing, PAGE_SIZE_LARGE)
+  const visibleOngoing = ongoingRows.filter(row => matches(`${row.title} ${row.meta}`))
+  const visibleToday = todayRows.filter(row => matches(`${row.title} ${row.meta}`))
+  const failures = jobRows.filter(row => row.job.status === 'failed' && matches(row.job.label))
+  const blocked = goalRows.filter(row => row.goalPhase === 'blocked' && matches(row.objective))
   const activity = useActivity(state => state)
   const spineEvents = activity.events.slice(0, SPINE_EVENTS)
 
@@ -94,9 +118,8 @@ export function CommandTab(props: CommandTabProps) {
 
   return (
     <div className={css.tabView}>
-      {/* 指挥舱: composer first, quick actions docked inside the deck */}
-      <div className={css.deck} aria-label={t('title')}>
-        {composer}
+      {/* 指挥舱: quick actions as the page's first surface */}
+      <div className={css.deck}>
         <div className={css.deckActions} aria-label={t('quick.aria')}>
           {commands.filter(command => command.common).map(command => {
             const Icon = command.icon
@@ -137,16 +160,28 @@ export function CommandTab(props: CommandTabProps) {
         </div>
       </div>
 
+      <input className={css.operationSearch} value={query} onChange={e => { setQuery(e.target.value) }} aria-label={t('op.search')} placeholder={t('op.search')} />
+      <Card icon={<StateDot state="error" />} title={t('op.attention')} count={failures.length + blocked.length}>
+        {failures.map(({ job, sessionId }) => <Button key={job.id} variant="ghost" onClick={() => { onOpenJob(sessionId, job.id) }}>{job.label}</Button>)}
+        {blocked.map(row => <Button key={row.id} variant="ghost" onClick={() => { onOpenSession(row.id) }}>{row.objective}</Button>)}
+        {failures.length + blocked.length === 0 && <p className={css.empty}>{t('ongoing.empty')}</p>}
+      </Card>
+      <Card icon={<StateDot state="ongoing" />} title={t('op.continue')} count={continuing.length} footer={pagerFooter(continuationPage, t('pager.prev'), t('pager.next'))}>
+        {continuationPage.pageItems.map(row => <div key={row.id} className={css.rowClickable}>
+          <Button variant="ghost" onClick={() => { onOpenSession(row.id) }}>{row.displayTitle}</Button>
+          <Button variant="ghost" size="sm" aria-pressed={pins.includes(row.id)} onClick={() => { togglePin(row.id) }}>{t(pins.includes(row.id) ? 'op.unpin' : 'op.pin')}</Button>
+        </div>)}
+      </Card>
       {/* 正在发生: the attention pair */}
       <Eyebrow name={t('eyebrow.happening')} />
       <div className={css.summaryCols}>
-        <Card icon={<StateDot state="ongoing" size={12} />} title={t('ongoing.title')} count={ongoingRows.length}>
-          {ongoingRows.length === 0
+        <Card icon={<StateDot state="ongoing" size={12} />} title={t('ongoing.title')} count={visibleOngoing.length}>
+          {visibleOngoing.length === 0
             ? <p className={css.empty}>{t('ongoing.empty')}</p>
-            : ongoingRows.slice(0, 8).map(row => (
+            : visibleOngoing.slice(0, 8).map(row => (
                 <div key={row.key} className={css.rowClickable} role="button" tabIndex={0}
-                  onClick={() => { onOpenSession(row.sessionId) }}
-                  onKeyDown={event => { if (event.key === 'Enter') onOpenSession(row.sessionId) }}>
+                  onClick={() => { row.jobId === undefined ? onOpenSession(row.sessionId) : onOpenJob(row.sessionId, row.jobId) }}
+                  onKeyDown={event => { if (event.key === 'Enter') { row.jobId === undefined ? onOpenSession(row.sessionId) : onOpenJob(row.sessionId, row.jobId) } }}>
                   <StateDot className={css.rowDot} state="ongoing" />
                   <div className={css.rowMain}>
                     <span className={css.rowTitle}>{row.title}</span>
@@ -163,10 +198,10 @@ export function CommandTab(props: CommandTabProps) {
               ))}
         </Card>
 
-        <Card icon={<StateDot state="warning" size={12} />} title={t('reminders.today')} count={todayRows.length}>
-          {todayRows.length === 0
+        <Card icon={<StateDot state="warning" size={12} />} title={t('reminders.today')} count={visibleToday.length}>
+          {visibleToday.length === 0
             ? <p className={css.empty}>{t('reminders.empty')}</p>
-            : todayRows.map(row => {
+            : visibleToday.map(row => {
                 const body = (
                   <>
                     <StateDot className={css.rowDot} state={row.kind === 'goal' && row.tone === 'danger' ? 'error' : row.kind === 'goal' ? 'ongoing' : 'warning'} />
@@ -192,20 +227,6 @@ export function CommandTab(props: CommandTabProps) {
         </Card>
       </div>
 
-      {/* 参考数据: the eight data-source cards */}
-      <Eyebrow name={t('eyebrow.reference')} />
-      <DashboardCards
-        t={t}
-        sessions={sessions}
-        jobRows={jobRows}
-        workflowRows={workflowRows}
-        goalRows={goalRows}
-        reminders={reminders}
-        tokenRows={tokenRows}
-        tokenTotals={tokenTotals}
-        onOpenSession={onOpenSession}
-        onStopJob={onStopJob}
-      />
 
       <div className={css.strip}>
         <div className={css.stripNums}>

@@ -1,13 +1,13 @@
 /**
  * Cross-session workbench body: 指挥台 (command dashboard with a command
- * palette, quick actions, clickable cards, and a floating composer) plus
- * 监控 (resource trends, a realtime activity stream, and progress). Client
+ * palette, quick actions, and clickable cards) plus 监控 (resource trends, a
+ * realtime activity stream, and progress). Client
  * aggregates live in one module-level store (see store.ts) so both tabs share
  * one subscription each, per the design's §6 state model.
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import {
   Button, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCloseOutlineRegular,
   IconMicrophoneOutlineRegular, IconRightUpOutlineRegular, IconSearchOutlineRegular, SegmentedTabs,
@@ -30,9 +30,13 @@ import type { CommandDeps, WorkbenchCommand } from './commands.ts'
 import { getWorkbenchStore } from './store.ts'
 import type { ActivityFeedState, ActivityStore, FeedJobRow, FeedSessionRow, TrendSampler } from './store.ts'
 import { diffActivityFeed } from './store.ts'
-import type { EmbedMode } from './ConversationEmbed.tsx'
 import { CommandPalette } from './CommandPalette.tsx'
 import { CommandTab } from './CommandTab.tsx'
+import { DashboardCards } from './DashboardCards.tsx'
+import type { JobRowContext } from './DashboardCards.tsx'
+import { OperationForm } from './OperationForm.tsx'
+import { emptyOperationDraft } from './operations.ts'
+import type { OperationDraft, OperationKind } from './operations.ts'
 import { MonitorTab } from './MonitorTab.tsx'
 import { WorkspaceDirectoryDialog } from './WorkspaceDirectoryDialog.tsx'
 import { NS, type WorkbenchKey } from './locales.ts'
@@ -58,9 +62,6 @@ export type DirectoryPickOutcome =
   | { kind: 'cancelled' }
   | { kind: 'error' }
 
-/** How the composer answered one command prime request (drives the toast). */
-export type PrimeOutcome = 'primed' | 'rebinding' | 'need-workspace'
-
 /** Activity source exposed as a hook: the store already is snapshot/subscribe shaped. */
 export type ActivitySource = Pick<ActivityStore, 'getSnapshot' | 'subscribe'>
 
@@ -84,9 +85,9 @@ export interface WorkbenchInjected {
     openSession(sessionId: SessionId): void
     /**
      * Resolve (reuse or create) the blank Session of one Workspace and retain
-     * it for the composer seat; navigation-free (design §11.5).
+     * it as an operation prepare target; navigation-free.
      */
-    connectComposerWorkspace(workspaceId: WorkspaceId): Promise<SessionReference>
+    connectWorkspaceSession(workspaceId: WorkspaceId): Promise<SessionReference>
     /** Retain one catalogued Session for the drawer seat; undefined when unknown. */
     acquireDrawerSession(sessionId: SessionId): SessionReference | undefined
     /**
@@ -101,22 +102,22 @@ export interface WorkbenchInjected {
     /** Adopt an absolute host path as a Workspace; undefined on failure. */
     adoptWorkspacePath(path: string): Promise<WorkspaceId | undefined>
     /**
-     * Replace the composer Session's draft with a command template (or clear
-     * it) and focus the native InputBar, without navigating away.
+     * Prime a Session's request draft (without overwriting existing text or
+     * attachments) and focus the embedded InputBar, without navigating away.
      */
-    primeComposerDraft(sessionId: SessionId, prompt?: string): boolean
+    primeSessionDraft(sessionId: SessionId, prompt?: string): boolean
     stopJob(sessionId: SessionId, jobId: JobId): Promise<boolean>
   }
 }
 
 /**
  * Runtime scope seat the renderer adds to the panel kit because its `main`
- * registration declares session-scope children (design §11). `SlotMap['main']`
- * is root-scoped, so these seats are typed locally instead of PropsRenderSlots.
+ * registration declares a session-scope child. `SlotMap['main']` is
+ * root-scoped, so these seats are typed locally instead of PropsRenderSlots.
  */
 interface ScopeSeat {
   SessionProvider: SessionProviderComponent
-  renderSlot(key: 'workbench.composer.conversation' | 'workbench.drawer.conversation', owner: { readonly mode: EmbedMode }): ReactNode
+  renderSlot(key: 'workbench.drawer.conversation', owner: object): ReactNode
 }
 
 /** Props for the workbench body: the framework global seat, the injected sources and actions, the panel's locale, and the children seats. */
@@ -285,6 +286,15 @@ export const GOAL_PHASE_KEY: Record<string, WorkbenchKey> = {
   complete: 'goals.phase.complete',
 }
 
+/** Locale key for each job status shown in the operation detail. */
+export const JOB_STATUS_KEY = {
+  running: 'op.status.running',
+  stopping: 'op.status.stopping',
+  completed: 'op.status.completed',
+  killed: 'op.status.killed',
+  failed: 'op.status.failed',
+} as const satisfies Record<JobRowContext['job']['status'], WorkbenchKey>
+
 /** Tag tone per durable goal phase. */
 export const GOAL_PHASE_TONE: Record<string, 'info' | 'warning' | 'danger' | 'success'> = {
   active: 'info',
@@ -328,11 +338,11 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
   const { ids, byId, phase } = sessionsState
   const { rows: jobRowsBySession } = jobsState
 
-  /* ---- workspace pick + composer seat binding (design §11.5) ----
+  /* ---- workspace pick ----
      The pick is cached in localStorage so a page switch or reload restores
-     the binding without a manual re-pick; once the workspace catalog is
-     ready the cached id is validated and dropped if it no longer exists.
-     Until a pick lands, the InputBar seat renders disabled-grey. */
+     it without a manual re-pick; once the workspace catalog is ready the
+     cached id is validated and dropped if it no longer exists. The pick is
+     the default target workspace for operation prepares. */
   const [workspacePick, setWorkspacePickState] = useState<WorkspaceId | undefined>(initialWorkspacePick)
   const setWorkspacePick = useCallback((id: WorkspaceId | undefined): void => {
     if (typeof localStorage !== 'undefined') {
@@ -343,52 +353,6 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
   }, [])
   const effectiveWorkspaceId = workspacePick
 
-  const composerHolder = useRef<{ wsId: WorkspaceId; ref: SessionReference } | null>(null)
-  const pendingPrime = useRef<{ prompt?: string | undefined } | null>(null)
-  // Bumping this state is what re-renders the seat when the async bind lands;
-  // without it the InputBar would only appear on the next unrelated render.
-  const [, setComposerReady] = useState(0)
-  const [rebindSeq, setRebindSeq] = useState(0)
-  const releaseComposer = useCallback(() => {
-    composerHolder.current?.ref.release()
-    composerHolder.current = null
-  }, [])
-
-  useEffect(() => {
-    // Gate on the workspace catalog: a cached pick restores before the
-    // catalog finishes loading, and connectWorkspace rejects for an id the
-    // host has not seen yet — without this gate the silent catch below
-    // leaves the seat greyed forever (nothing re-triggers the effect).
-    if (workspaces.phase !== 'ready'
-      || workspacePick === undefined
-      || !workspaces.items.some(w => w.workspaceId === workspacePick)) {
-      releaseComposer()
-      setComposerReady(n => n + 1)
-      return
-    }
-    let cancelled = false
-    actions.connectComposerWorkspace(workspacePick).then(ref => {
-      if (cancelled) {
-        ref.release()
-        return
-      }
-      releaseComposer()
-      composerHolder.current = { wsId: workspacePick, ref }
-      const prime = pendingPrime.current
-      pendingPrime.current = null
-      setComposerReady(n => n + 1)
-      // A command asked for a fresh composer session while rebinding: prime
-      // its template now that the new blank Session exists.
-      if (prime !== null) actions.primeComposerDraft(ref.sessionId, prime.prompt)
-    }).catch(() => {
-      setComposerReady(n => n + 1)
-      // keep the previous binding until the next pick lands
-    })
-    return () => { cancelled = true }
-  }, [workspacePick, workspaces.phase, workspaces.items, actions, releaseComposer, rebindSeq])
-
-  useEffect(() => () => { releaseComposer() }, [releaseComposer])
-
   // Drop a cached/stale pick whose workspace vanished from the catalog;
   // until the catalog is ready the cached id is given the benefit of doubt.
   useEffect(() => {
@@ -397,35 +361,6 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
       setWorkspacePick(undefined)
     }
   }, [workspaces.phase, workspaces.items, workspacePick, setWorkspacePick])
-
-  /**
-   * Workbench-local target behind the command registry's startSession dep:
-   * inject the command template into the composer Session's draft and focus
-   * the native InputBar instead of navigating anywhere (design §11.5). Owns
-   * every toast so the caller never reports a session the user cannot see.
-   */
-  const primeComposer = useCallback((prompt?: string, readyKey?: WorkbenchKey): PrimeOutcome => {
-    if (effectiveWorkspaceId === undefined) {
-      notify(t('toast.pickWorkspaceFirst'), 'error')
-      return 'need-workspace'
-    }
-    const holder = composerHolder.current
-    const sid = holder?.ref.sessionId
-    const blank = sid === undefined ? undefined : byId[sid]?.blank
-    if (holder === null || sid === undefined || blank === undefined || !blank) {
-      // Either the binding is still in flight (workspace picked moments ago)
-      // or 新会话 with an already-used composer Session: queue the template
-      // and rebind a fresh blank Session; the bind effect primes the draft.
-      pendingPrime.current = { prompt }
-      releaseComposer()
-      setRebindSeq(n => n + 1)
-      notify(t(readyKey ?? (prompt === undefined ? 'toast.composerReady' : 'toast.draftPrimed')), 'success')
-      return 'rebinding'
-    }
-    actions.primeComposerDraft(sid, prompt)
-    notify(t(readyKey ?? (prompt === undefined ? 'toast.composerReady' : 'toast.draftPrimed')), 'success')
-    return 'primed'
-  }, [actions, byId, effectiveWorkspaceId, notify, releaseComposer, t])
 
   /* ---- workspace add flow: native chooser, else in-app directory browser ---- */
   const [browseOpen, setBrowseOpen] = useState(false)
@@ -489,6 +424,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
   }, [actions, browseListing, finishAdopt])
 
   const onWorkspaceChange = (event: { target: { value: string } }): void => {
+    operationGeneration.current += 1
     const value = event.target.value
     if (value === NEW_WORKSPACE_VALUE) {
       startAddWorkspace()
@@ -500,20 +436,40 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
   /* ---- right drawer (design §11.2) ---- */
   const drawerHolder = useRef<SessionReference | null>(null)
   const [drawerSessionId, setDrawerSessionId] = useState<SessionId | null>(null)
+  const [previousSessionId, setPreviousSessionId] = useState<SessionId | null>(null)
+  const [selectedJob, setSelectedJob] = useState<{ sessionId: SessionId; jobId: JobId } | null>(null)
+  const currentWorkspace = useRef(effectiveWorkspaceId)
+  currentWorkspace.current = effectiveWorkspaceId
   const [drawerWidth, setDrawerWidth] = useState(initialDrawerWidth)
+  const [operation, setOperationState] = useState<OperationKind | null>(null)
+  const operationGeneration = useRef(0)
+  useEffect(() => () => { operationGeneration.current += 1 }, [])
+  const setOperation = useCallback((kind: OperationKind | null): void => {
+    operationGeneration.current += 1
+    setOperationState(kind)
+  }, [])
+  const [operationDrafts, setOperationDrafts] = useState<Record<OperationKind, OperationDraft>>(() => ({
+    'new-session': emptyOperationDraft(), 'run-workflow': emptyOperationDraft(), 'new-job': emptyOperationDraft(),
+    'add-todo': emptyOperationDraft(), 'set-reminder': emptyOperationDraft(),
+  }))
 
   const closeDrawer = useCallback(() => {
     drawerHolder.current?.release()
     drawerHolder.current = null
     setDrawerSessionId(null)
+    setPreviousSessionId(null)
   }, [])
   const openDrawer = useCallback((sessionId: SessionId) => {
+    setOperation(null)
+    setSelectedJob(null)
+    setTab('command')
     if (drawerHolder.current?.sessionId === sessionId) return
     const ref = actions.acquireDrawerSession(sessionId)
     if (ref === undefined) {
       notify(t('drawer.unavailable'), 'error')
       return
     }
+    setPreviousSessionId(drawerHolder.current?.sessionId ?? null)
     drawerHolder.current?.release()
     drawerHolder.current = ref
     setDrawerSessionId(ref.sessionId)
@@ -522,15 +478,29 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
   useEffect(() => () => { drawerHolder.current?.release() }, [])
 
   useEffect(() => {
-    if (drawerSessionId === null) return
+    if (operation === null && selectedJob === null) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      setOperation(null)
+      setSelectedJob(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey) }
+  }, [operation, selectedJob, setOperation])
+
+  useEffect(() => {
+    if (drawerSessionId === null || operation !== null || selectedJob !== null || tab !== 'command') return
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') closeDrawer()
     }
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('keydown', onKey) }
-  }, [drawerSessionId, closeDrawer])
+  }, [drawerSessionId, closeDrawer, operation, selectedJob, tab])
 
+  const resizeCleanup = useRef<(() => void) | null>(null)
+  useEffect(() => () => { resizeCleanup.current?.() }, [])
   const startResizing = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    resizeCleanup.current?.()
     event.preventDefault()
     const startX = event.clientX
     const startWidth = drawerWidth
@@ -539,29 +509,22 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
       setDrawerWidth(next)
     }
     const onUp = (): void => {
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
+      resizeCleanup.current?.()
+      resizeCleanup.current = null
       setDrawerWidth(width => {
         if (typeof localStorage !== 'undefined') localStorage.setItem(DRAWER_WIDTH_KEY, String(width))
         return width
       })
     }
+    resizeCleanup.current = () => {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
+    }
     document.addEventListener('pointermove', onMove)
     document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
   }, [drawerWidth])
-
-  // First turn in the composer seat slides the drawer open with that Session.
-  const composerSessionId = composerHolder.current?.ref.sessionId
-  const composerBlank = useSessions(state =>
-    composerSessionId === undefined ? undefined : state.byId[composerSessionId]?.blank)
-  const autoOpenedFor = useRef<SessionId | undefined>(undefined)
-  useEffect(() => {
-    if (composerBlank !== false || drawerSessionId !== null) return
-    const sid = composerHolder.current?.ref.sessionId
-    if (sid === undefined || autoOpenedFor.current === sid) return
-    autoOpenedFor.current = sid
-    openDrawer(sid)
-  }, [composerBlank, drawerSessionId, openDrawer])
 
   const sessionRows = useMemo(() => ids.flatMap(id => {
     const summary = byId[id]
@@ -738,10 +701,10 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
       .filter(({ job }) => job.status === 'running' || job.status === 'stopping')
       .map(({ job, sessionTitle, sessionId }) => ({ id: String(job.id), sessionId, label: `${job.label} · ${sessionTitle}` })),
     openSession: sessionId => { actions.openSession(sessionId) },
-    /** Command templates land in the workbench composer, not a new main-view session. */
-    startSession: (prompt, readyKey) => { primeComposer(prompt, readyKey) },
+    /** Creation commands open their operation form on the command tab. */
+    startOperation: kind => { setOperation(kind); setTab('command') },
     stopJob: (sessionId, jobId) => actions.stopJob(sessionId, jobId as JobId),
-    switchTab: setTab,
+    switchTab: next => { operationGeneration.current += 1; setTab(next) },
     summaryText: () => {
       const runningSessions = latest.current.sessionRows.filter(row => row.running).length
       const runningJobs = latest.current.ongoingRows.filter(row => row.kind === 'job').length
@@ -754,7 +717,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
         .replace('{ctx}', String(ctx))
     },
     notify,
-  }), [actions, t, notify, tokenRows, reminders.records, primeComposer])
+  }), [actions, t, notify, tokenRows, reminders.records, setOperation])
 
   const commands = useMemo<WorkbenchCommand[]>(() => createWorkbenchCommands(commandDeps), [commandDeps])
 
@@ -769,10 +732,8 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
     void command.run(target)
   }, [store])
 
-  /* ---- composer seat surface (design §11.5: native InputBar under the cards) ---- */
-  const composerSeat = composerHolder.current
-  // The workspace selector lives in the header's top-right (v4); the composer
-  // area keeps only the native InputBar (or the pick-a-workspace hint).
+  // The workspace selector lives in the header's top-right; it feeds the
+  // default target workspace for operation prepares.
   const workspaceSelect = (
     <select
       className={css.workspaceSelect}
@@ -794,32 +755,17 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
       <option value={NEW_WORKSPACE_VALUE}>{t('composer.newWorkspace')}</option>
     </select>
   )
-  const composerArea = (
-    <div className={css.composerArea}>
-      {composerSeat !== null && composerSeat.wsId === effectiveWorkspaceId
-        ? (
-          <div className={css.composerSeat}>
-            <SessionProvider session={composerSeat.ref}>
-              {renderSlot('workbench.composer.conversation', { mode: 'composer' })}
-            </SessionProvider>
-          </div>
-        )
-        : (
-          /* Seat placeholder: always visible, greyed out until a workspace
-             pick binds a blank Session into it. */
-          <div className={css.composerDisabled} aria-disabled="true">
-            <p className={css.workspaceHint}>
-              {workspaces.phase === 'ready' ? t('composer.workspaceHint') : t('composer.workspaceLoading')}
-            </p>
-          </div>
-        )}
-    </div>
-  )
-
   const drawerTitle = drawerSessionId === null ? '' : byId[drawerSessionId]?.displayTitle ?? ''
+  const targetWorkspace = drawerSessionId === null ? undefined : byId[drawerSessionId]?.cwd
+  const jobDetail = selectedJob === null ? undefined : jobRows.find(row => row.sessionId === selectedJob.sessionId && row.job.id === selectedJob.jobId)
+  const selectedWorkspace = workspaces.items.find(item => item.workspaceId === effectiveWorkspaceId)
+
+  // The right-side operation surface renders only while a form, a job detail,
+  // or the conversation drawer is open; the page is otherwise full-width.
+  const rightPanelOpen = tab === 'command' && (operation !== null || selectedJob !== null || drawerSessionId !== null)
 
   return (
-    <section className={css.page} aria-label={t('title')}>
+    <section className={cx(css.page, rightPanelOpen && css.operationsPage)} style={{ '--workbench-operation-width': `${drawerWidth}px` } as CSSProperties} aria-label={t('title')}>
       <div className={css.pageScroll}>
         <div className={css.pageContent}>
           <div className={css.pageHeading}>
@@ -834,7 +780,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
                 { value: 'monitor', label: t('tabs.monitor'), id: 'wb-tab', panelId: 'wb-panel-monitor' },
               ]}
               value={tab}
-              onChange={setTab}
+              onChange={next => { operationGeneration.current += 1; setTab(next) }}
             />
             <div className={css.workbenchTopRight}>
               <label className={css.topWorkspace}>
@@ -878,16 +824,17 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
                 commands={commands}
                 onRunCommand={runCommand}
                 onOpenSession={sessionId => { openDrawer(sessionId) }}
+                onOpenJob={(sessionId, jobId) => { setOperation(null); setSelectedJob({ sessionId, jobId }) }}
                 onStopJob={(sessionId, jobId) => {
                   void actions.stopJob(sessionId, jobId).then(ok => {
                     notify(ok ? t('cmd.done.stopJob') : t('cmd.failed.stopJob'), ok ? 'success' : 'error')
                   })
                 }}
-                composer={composerArea}
                 onOpenTrend={() => { setTab('monitor') }}
               />
             )
             : (
+              <>
               <MonitorTab
                 t={t}
                 useActivity={useActivity}
@@ -897,6 +844,11 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
                 goalRows={goalRows}
                 tokenRows={tokenRows}
               />
+              <DashboardCards t={t} sessions={{ ids, byId, phase }} jobRows={jobRows}
+                workflowRows={workflowRows} goalRows={goalRows} reminders={reminders} tokenRows={tokenRows}
+                tokenTotals={tokenTotals} onOpenSession={openDrawer}
+                onStopJob={(sid, jid) => { void actions.stopJob(sid, jid).then(ok => { notify(t(ok ? 'cmd.done.stopJob' : 'cmd.failed.stopJob'), ok ? 'success' : 'error') }) }} />
+              </>
             )}
 
           <Fragment>
@@ -920,7 +872,46 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
         </div>
       </div>
 
-      {drawerSessionId !== null && drawerHolder.current !== null && (
+      {tab === 'command' && operation !== null && (
+        <aside className={css.operationSurface} aria-label={t('op.target')}>
+          <OperationForm key={operation} kind={operation} draft={operationDrafts[operation]} t={t}
+            target={operation === 'new-session' || drawerSessionId === null ? `${t('op.newTarget')} · ${selectedWorkspace?.path ?? t('toast.pickWorkspaceFirst')}` : `${drawerTitle} · ${targetWorkspace ?? ''}`}
+            onChange={draft => { setOperationDrafts(previous => ({ ...previous, [operation]: draft })) }}
+            onClose={() => { setOperation(null) }}
+            onPrepare={async prompt => {
+              const generation = operationGeneration.current
+              if (operation === 'new-session' || drawerSessionId === null) {
+                if (effectiveWorkspaceId === undefined) return false
+                const ref = await actions.connectWorkspaceSession(effectiveWorkspaceId)
+                try {
+                  if (generation !== operationGeneration.current || currentWorkspace.current !== effectiveWorkspaceId) return false
+                  if (!actions.primeSessionDraft(ref.sessionId, prompt)) return false
+                  openDrawer(ref.sessionId)
+                  notify(t('op.ready'))
+                  return true
+                } finally { ref.release() }
+              }
+              if (!actions.primeSessionDraft(drawerSessionId, prompt)) return false
+              openDrawer(drawerSessionId)
+              notify(t('op.ready'))
+              return true
+            }} />
+        </aside>
+      )}
+      {tab === 'command' && operation === null && selectedJob !== null && (
+        <aside className={css.operationSurface} aria-label={t('jobs.title')}>
+          <div className={css.operationForm}>
+            <h2>{jobDetail?.job.label ?? t('jobs.empty')}</h2>
+            <p>{jobDetail?.sessionTitle}</p>
+            <p>{jobDetail === undefined ? '' : t(JOB_STATUS_KEY[jobDetail.job.status])}</p>
+            <p>{jobDetail?.job.progress}</p>
+            <pre className={css.operationHint}>{jobDetail?.job.detail}</pre>
+            <Button onClick={() => { openDrawer(selectedJob.sessionId) }}>{t('cmd.openSession')}</Button>
+            <Button onClick={() => { setSelectedJob(null) }}>{t('op.close')}</Button>
+          </div>
+        </aside>
+      )}
+      {tab === 'command' && operation === null && selectedJob === null && drawerSessionId !== null && drawerHolder.current !== null && (
         <div className={css.drawerOverlay} onClick={closeDrawer}>
           <aside
             className={css.drawer}
@@ -931,7 +922,8 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
           >
             <div className={css.drawerResizer} onPointerDown={startResizing} />
             <header className={css.drawerHead}>
-              <h2 className={css.drawerTitle}>{drawerTitle}</h2>
+              {previousSessionId !== null && <Button variant="ghost" size="sm" aria-label={t('pager.prev')} onClick={() => { openDrawer(previousSessionId) }} icon={<IconChevronLeftOutlineRegular size={14} />} />}
+              <div className={css.drawerTitle}><h2 className={css.drawerTitle}>{t('op.target')}: {drawerTitle}</h2><span className={css.operationHint}>{targetWorkspace}</span></div>
               <Button variant="ghost" size="sm" aria-label={t('drawer.openMain')}
                 onClick={() => { actions.openSession(drawerSessionId) }}
                 icon={<IconRightUpOutlineRegular size={14} />} />
@@ -941,7 +933,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
             </header>
             <div className={css.drawerBody}>
               <SessionProvider session={drawerHolder.current}>
-                {renderSlot('workbench.drawer.conversation', { mode: 'drawer' })}
+                {renderSlot('workbench.drawer.conversation', {})}
               </SessionProvider>
             </div>
           </aside>

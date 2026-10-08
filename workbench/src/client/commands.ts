@@ -13,6 +13,7 @@ import {
   IconStopFillRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkbenchKey } from './locales.ts'
+import type { OperationKind } from './operations.ts'
 
 /** A parameterized command resolves its target from a dynamic option list. */
 export interface CommandOption {
@@ -45,12 +46,11 @@ export interface CommandDeps {
   runningJobOptions(): readonly (CommandOption & { readonly sessionId: SessionId })[]
   openSession(sessionId: SessionId): void
   /**
-   * Prime the workbench composer with a command template (or a fresh blank
-   * session for 新会话); the panel owns the toasts so commands never report
-   * work the user cannot see. The ready key names the command-specific toast
-   * so each quick action reports what it actually staged.
+   * Open the operation form for one creation kind on the command tab; the
+   * form prepares the request draft in the target session, so no command
+   * reports business work directly.
    */
-  startSession(prompt?: string, readyKey?: WorkbenchKey): void
+  startOperation(kind: OperationKind): void
   stopJob(sessionId: SessionId, jobId: string): Promise<boolean>
   switchTab(tab: 'command' | 'monitor'): void
   summaryText(): string
@@ -88,7 +88,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: true,
       icon: IconNewChatOutlineRegular,
       run: () => {
-        deps.startSession(undefined, 'toast.cmd.newSession')
+        deps.startOperation('new-session')
       },
     },
     {
@@ -116,7 +116,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: true,
       icon: IconPlayOutlineRegular,
       run: () => {
-        deps.startSession(t('cmd.prompt.workflow'), 'toast.cmd.runWorkflow')
+        deps.startOperation('run-workflow')
       },
     },
     {
@@ -127,7 +127,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: false,
       icon: IconQueueOutlineRegular,
       run: () => {
-        deps.startSession(t('cmd.prompt.newJob'))
+        deps.startOperation('new-job')
       },
     },
     {
@@ -138,7 +138,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: true,
       icon: IconChecklistOutlineRegular,
       run: () => {
-        deps.startSession(t('cmd.prompt.todo'), 'toast.cmd.addTodo')
+        deps.startOperation('add-todo')
       },
     },
     {
@@ -149,7 +149,7 @@ export function createWorkbenchCommands(deps: CommandDeps): WorkbenchCommand[] {
       common: true,
       icon: IconAlarmClockOutlineRegular,
       run: () => {
-        deps.startSession(t('cmd.prompt.reminder'), 'toast.cmd.setReminder')
+        deps.startOperation('set-reminder')
       },
     },
     {

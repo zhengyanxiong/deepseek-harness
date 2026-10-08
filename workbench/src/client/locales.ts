@@ -5,6 +5,11 @@
 
 /** Workbench panel copy keys. */
 export type WorkbenchKey =
+  | 'op.status.running' | 'op.status.stopping' | 'op.status.completed' | 'op.status.failed' | 'op.status.killed'
+  | 'op.target' | 'op.newTarget' | 'op.content' | 'op.date' | 'op.time' | 'op.repeat' | 'op.once' | 'op.daily'
+  | 'op.prepare' | 'op.pending' | 'op.explain' | 'op.invalidContent' | 'op.invalidTime' | 'op.failed'
+  | 'op.ready' | 'op.close' | 'op.search' | 'op.attention' | 'op.continue' | 'op.pin' | 'op.unpin'
+  | 'op.timePrompt' | 'op.repeatPrompt'
   | 'panel'
   | 'title'
   | 'subtitle'
@@ -80,19 +85,12 @@ export type WorkbenchKey =
   | 'composer.workspace'
   | 'composer.workspaceLoading'
   | 'composer.workspacePlaceholder'
-  | 'composer.workspaceHint'
   | 'composer.newWorkspace'
   | 'drawer.openMain'
   | 'drawer.close'
   | 'drawer.unavailable'
   | 'toast.voiceP2'
   | 'toast.pickWorkspaceFirst'
-  | 'toast.composerReady'
-  | 'toast.draftPrimed'
-  | 'toast.cmd.newSession'
-  | 'toast.cmd.runWorkflow'
-  | 'toast.cmd.addTodo'
-  | 'toast.cmd.setReminder'
   | 'toast.workspaceCreated'
   | 'toast.workspacePickFailed'
   | 'dlg.browseTitle'
@@ -154,6 +152,17 @@ export type WorkbenchKey =
 export const NS = 'workbench' as const
 
 export const zh: Record<WorkbenchKey, string> = {
+  'op.status.running': '运行中', 'op.status.stopping': '正在停止', 'op.status.completed': '已完成', 'op.status.failed': '失败', 'op.status.killed': '已停止',
+  'op.target': '目标会话', 'op.newTarget': '当前工作区的空白会话', 'op.content': '内容与要求',
+  'op.date': '日期', 'op.time': '时间', 'op.repeat': '重复', 'op.once': '仅一次', 'op.daily': '每天',
+  'op.prepare': '生成请求草稿', 'op.pending': '正在准备草稿…',
+  'op.explain': '此操作会生成请求草稿，由你在右侧会话确认发送，再由助手执行；不会直接创建任务或提醒。已有会话草稿不会被覆盖。',
+  'op.invalidContent': '请填写内容', 'op.invalidTime': '请选择有效的未来时间',
+  'op.failed': '无法准备草稿，目标可能已有草稿或正在处理中；内容已保留',
+  'op.ready': '请求草稿已就绪，请在目标会话确认发送', 'op.close': '关闭操作区',
+  'op.search': '搜索会话、任务或目标…',
+  'op.attention': '需要处理', 'op.continue': '继续工作', 'op.pin': '置顶', 'op.unpin': '取消置顶',
+  'op.timePrompt': '首次触发时间：{instant}；时区：{zone}', 'op.repeatPrompt': '重复方式：{repeat}',
   panel: '工作台',
   title: '工作台',
   subtitle: '跨会话总览：会话、任务、目标、提醒、工作流、子代理、团队与 token 占用',
@@ -229,19 +238,12 @@ export const zh: Record<WorkbenchKey, string> = {
   'composer.workspace': '工作区',
   'composer.workspaceLoading': '正在加载工作区…',
   'composer.workspacePlaceholder': '选择工作区…',
-  'composer.workspaceHint': '先在右上角选择工作区，即可在此输入',
   'composer.newWorkspace': '＋ 新建工作区…',
   'drawer.openMain': '在主视图打开',
   'drawer.close': '关闭',
   'drawer.unavailable': '无法打开该会话（可能已归档或删除）',
   'toast.voiceP2': '语音命令（P2）：将复用 STT 管线，未识别时回退插入草稿',
   'toast.pickWorkspaceFirst': '请先选择工作区',
-  'toast.composerReady': '新会话已就绪，在指挥舱输入框继续',
-  'toast.draftPrimed': '已填入指挥舱输入框，回车发送',
-  'toast.cmd.newSession': '已开启新会话 · 在指挥舱输入第一条指令',
-  'toast.cmd.runWorkflow': '已备好工作流模板 · 补充参数后回车发送',
-  'toast.cmd.addTodo': '已备好待办模板 · 写入内容后回车发送',
-  'toast.cmd.setReminder': '已备好提醒模板 · 设定时间后回车发送',
   'toast.workspaceCreated': '工作区已创建',
   'toast.workspacePickFailed': '目录选择失败，请稍后重试',
   'dlg.browseTitle': '选择工作区目录',
@@ -301,6 +303,17 @@ export const zh: Record<WorkbenchKey, string> = {
 }
 
 export const en: Record<WorkbenchKey, string> = {
+  'op.status.running': 'Running', 'op.status.stopping': 'Stopping', 'op.status.completed': 'Completed', 'op.status.failed': 'Failed', 'op.status.killed': 'Stopped',
+  'op.target': 'Target session', 'op.newTarget': 'Blank session in the current workspace', 'op.content': 'Content and requirements',
+  'op.date': 'Date', 'op.time': 'Time', 'op.repeat': 'Repeat', 'op.once': 'Once', 'op.daily': 'Daily',
+  'op.prepare': 'Prepare request draft', 'op.pending': 'Preparing draft…',
+  'op.explain': 'Prepare a request for you to review and send in the target conversation. The assistant then carries it out; this does not directly create tasks or reminders. Existing session drafts are not overwritten.',
+  'op.invalidContent': 'Enter the content', 'op.invalidTime': 'Choose a valid future time',
+  'op.failed': 'Unable to prepare the draft. The target may have a draft or be busy; your input is retained.',
+  'op.ready': 'Request draft ready — review and send in the target conversation', 'op.close': 'Close operation panel',
+  'op.search': 'Search sessions, jobs or goals…',
+  'op.attention': 'Needs attention', 'op.continue': 'Continue work', 'op.pin': 'Pin', 'op.unpin': 'Unpin',
+  'op.timePrompt': 'First occurrence: {instant}; time zone: {zone}', 'op.repeatPrompt': 'Repeat: {repeat}',
   panel: 'Workbench',
   title: 'Workbench',
   subtitle: 'Cross-session overview: sessions, jobs, goals, reminders, workflows, subagents, teams, and token usage',
@@ -376,19 +389,12 @@ export const en: Record<WorkbenchKey, string> = {
   'composer.workspace': 'Workspace',
   'composer.workspaceLoading': 'Loading workspaces…',
   'composer.workspacePlaceholder': 'Choose workspace…',
-  'composer.workspaceHint': 'Pick a workspace (top right) to type here.',
   'composer.newWorkspace': '＋ New workspace…',
   'drawer.openMain': 'Open in main view',
   'drawer.close': 'Close',
   'drawer.unavailable': 'Cannot open that session (archived or removed)',
   'toast.voiceP2': 'Voice commands (P2): will reuse the STT pipeline, falling back to draft insertion',
   'toast.pickWorkspaceFirst': 'Pick a workspace first',
-  'toast.composerReady': 'New session ready — continue in the command deck input',
-  'toast.draftPrimed': 'Placed in the command deck input — press Enter to send',
-  'toast.cmd.newSession': 'New session started — type your first instruction in the command deck',
-  'toast.cmd.runWorkflow': 'Workflow template ready — fill in the parameters and press Enter',
-  'toast.cmd.addTodo': 'Todo template ready — write the item and press Enter',
-  'toast.cmd.setReminder': 'Reminder template ready — set the time and press Enter',
   'toast.workspaceCreated': 'Workspace created',
   'toast.workspacePickFailed': 'Directory picking failed — please try again',
   'dlg.browseTitle': 'Select Workspace Directory',

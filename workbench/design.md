@@ -236,6 +236,17 @@
   Composer.tsx 已删除（原生 InputBar 取代）。package.json `dsh.client.inject` 增补
   ui-conversation / ui-workspace / api-workspace-controller。
 - **P2 未做**：语音命令（STT 入口已留，点击提示 P2）、规划 tab。
+- **v3.1 调整（2026-10-06）**：右侧面板默认收起——进入页面只剩左列工作队列，
+  常驻 composer 座位（§11.5）整体移除；右侧仅在打开操作表单 / 任务详情 / 会话
+  抽屉时渲染，Esc 链（先关表单再关抽屉）与手动关闭不变。随之删除：
+  `workbench.composer.conversation` slot、命令依赖 `startSession`、
+  `toast.cmd.*` / `toast.composerReady` / `toast.draftPrimed` /
+  `composer.workspaceHint` / `op.empty` 文案。命令改为直接声明
+  `startOperation(kind)` 打开表单（`runCommand`/`paletteRun` 的 id 拦截删除，
+  命令因此会进入最近使用列表）；「新建任务」并入表单流，成为第五种
+  OperationKind。`connectComposerWorkspace`/`primeComposerDraft` 更名
+  `connectWorkspaceSession`/`primeSessionDraft`（retain source `workbenchComposer`
+  同步改名 `workbenchOperation`）。抽屉成为本面板唯一会话输入面。
 
 
 ---

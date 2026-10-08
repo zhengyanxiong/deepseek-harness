@@ -88,18 +88,18 @@ const props = {
   renderFactorySlot: () => null,
   actions: {
     openSession: () => {},
-    connectComposerWorkspace: async () => ({ sessionId: 's1', release: () => {} }),
+    connectWorkspaceSession: async () => ({ sessionId: 's1', release: () => {} }),
     acquireDrawerSession: () => ({ sessionId: 's1', release: () => {} }),
     pickWorkspaceDirectory: async () => ({ kind: 'cancelled' }),
     browseWorkspaceDirectory: async () => undefined,
     createWorkspaceDirectory: async () => undefined,
     adoptWorkspacePath: async () => undefined,
     stopJob: async () => true,
-    primeComposerDraft: () => true,
+    primeSessionDraft: () => true,
   },
   t: (key) => key,
 }
-const html = renderToString(createElement(component, props))
+const html = renderToString(createElement(component, props)).replace(/<!-- -->/g, '')
 const expect = [
   'subtitle',
   'tabs.command',
@@ -108,7 +108,7 @@ const expect = [
   'spine.empty',
   'spine.more',
   'eyebrow.happening',
-  'eyebrow.reference',
+  'op.attention', 'op.continue', 'op.search',
   'ongoing.title',
   'reminders.today',
   'cmd.newSession',
@@ -118,19 +118,16 @@ const expect = [
   'cmd.gotoMonitor',
   'composer.workspace',
   'composer.workspacePlaceholder',
-  'composer.workspaceHint',
   'composer.newWorkspace',
   'strip.trend',
-  'sessions.title', 'sessions.running',
-  'jobs.title', 'Run task', 'Pipeline',
-  'workflow.title',
-  'goals.title', 'goals.phase.active',
-  'reminders.title', 'reminders.active',
-  'subagents.title', 'subagents.mode.continuable',
-  'teams.title', 'teams.role.lead', 'teams.phase.active',
-  'tokens.title', 'tokens.input', 'tokens.output', 'tokens.cacheRead', 'tokens.cacheWrite',
+  'Session One', 'Run task',
   '60%',
 ]
+// The right panel is collapsed by default: no operation surface, no drawer,
+// no composer seat renders on load.
+const absent = ['op.target', 'op.newTarget', 'composer.workspaceHint', 'composer.workspaceLoading']
+const present = absent.filter(marker => html.includes(marker))
+if (present.length > 0) { console.log('RIGHT PANEL LEAKED ON LOAD:', JSON.stringify(present)); process.exit(1) }
 const missing = expect.filter(t => !html.includes(t))
 if (missing.length > 0) { console.log('MISSING:', JSON.stringify(missing)); process.exit(1) }
 
@@ -153,14 +150,14 @@ const bigProps = {
   renderFactorySlot: () => null,
   actions: {
     openSession: () => {},
-    connectComposerWorkspace: async () => ({ sessionId: 's1', release: () => {} }),
+    connectWorkspaceSession: async () => ({ sessionId: 's1', release: () => {} }),
     acquireDrawerSession: () => ({ sessionId: 's1', release: () => {} }),
     pickWorkspaceDirectory: async () => ({ kind: 'cancelled' }),
     browseWorkspaceDirectory: async () => undefined,
     createWorkspaceDirectory: async () => undefined,
     adoptWorkspacePath: async () => undefined,
     stopJob: async () => true,
-    primeComposerDraft: () => true,
+    primeSessionDraft: () => true,
   },
   t: (key) => key,
 }

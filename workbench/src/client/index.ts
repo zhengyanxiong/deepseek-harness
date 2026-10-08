@@ -4,15 +4,16 @@
  * cross-session job card stays current, reads the host reminder catalog
  * through the Remote API, owns the client-side activity/trend store, and wires
  * the click-to-execute actions onto uiWorkspace navigation and jobs.kill.
- * Design §11 (v3): the panel also hosts two embedded NATIVE conversation
- * surfaces — the composer InputBar and the right drawer — through the
- * `conversation.content` factory slot bound to explicitly retained Session
- * references (the ui-subagent sidebar-chat architecture).
+ * Design §11 (v3.1): the panel also hosts one embedded NATIVE conversation
+ * surface — the right drawer — through the `conversation.content` factory
+ * slot bound to explicitly retained Session references (the ui-subagent
+ * sidebar-chat architecture).
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
@@ -43,17 +44,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     workbench: WorkbenchKey
   }
   interface SlotMap {
-    /** Embedded native conversation bound by the workbench composer seat. */
-    'workbench.composer.conversation': { kind: 'single'; scope: 'session'; owner: { readonly mode: 'composer' } }
     /** Embedded native conversation bound by the workbench drawer seat. */
-    'workbench.drawer.conversation': { kind: 'single'; scope: 'session'; owner: { readonly mode: 'drawer' } }
+    'workbench.drawer.conversation': { kind: 'single'; scope: 'session' }
   }
 }
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap {
-    /** Workbench composer InputBar seat. */
-    workbenchComposer: unknown
+    /** Transient retain on an operation form's prepare target while its draft is primed. */
+    workbenchOperation: unknown
     /** Workbench right-drawer conversation seat. */
     workbenchDrawer: unknown
   }
@@ -148,16 +147,17 @@ export function apply(ctx: ClientContext): void {
 
   /**
    * Resolve the reusable or newly created blank Session of one Workspace and
-   * retain it for the composer seat. Navigation-free: the workbench panel
-   * stays visible while the native InputBar binds to the returned reference.
+   * retain it as an operation prepare target. Navigation-free: the workbench
+   * panel stays visible while the caller primes the returned Session's draft
+   * and opens it in the drawer.
    * @param workspaceId - chosen Workspace.
-   * @returns the retained Session reference (caller releases on switch/unmount).
+   * @returns the retained Session reference (caller releases after priming).
    */
-  const connectComposerWorkspace = async (workspaceId: WorkspaceId): Promise<SessionReference> => {
+  const connectWorkspaceSession = async (workspaceId: WorkspaceId): Promise<SessionReference> => {
     const uiWorkspace = ctx.get('uiWorkspace')
     if (uiWorkspace === undefined) throw new Error('workbench: uiWorkspace unavailable')
     const sessionId = await uiWorkspace.connectWorkspace(workspaceId)
-    return ctx.sessions.retain(sessionId, { source: 'workbenchComposer' })
+    return ctx.sessions.retain(sessionId, { source: 'workbenchOperation' })
   }
 
   /**
@@ -234,22 +234,22 @@ const adoptWorkspacePath = async (path: string): Promise<WorkspaceId | undefined
 }
 
   /**
-   * Prime the workbench composer Session's native input machine: replace the
-   * draft with a command template (or clear it for a fresh session) and return
-   * the keyboard to the InputBar — all without leaving the workbench panel.
-   * @param sessionId - bound composer Session.
-   * @param prompt - command template text; undefined clears the draft.
+   * Prime a Session's request draft without replacing existing text or
+   * attachments and return the keyboard to the embedded InputBar — all
+   * without leaving the workbench panel.
+   * @param sessionId - target Session whose draft is primed.
+   * @param prompt - request template text; undefined preserves the draft.
    * @returns false when the input machine is busy or unavailable.
    */
-  const primeComposerDraft = (sessionId: SessionId, prompt?: string): boolean => {
+  const primeSessionDraft = (sessionId: SessionId, prompt?: string): boolean => {
     const conversation = ctx.get('conversation')
     const binding = conversation === undefined ? undefined : ctx.sessions.binding(sessionId)
     if (conversation === undefined || binding === undefined) return false
     const result = conversation.input.requestDraftInitialization(binding, {
       ...(prompt === undefined ? {} : { prompt }),
-      clearPreviousDraft: true,
+      clearPreviousDraft: false,
     })
-    if (result === 'blocked') return false
+    if (result !== 'applied') return false
     try {
       conversation.input.for(binding.ctx).focus()
     } catch {
@@ -275,7 +275,6 @@ const adoptWorkspacePath = async (path: string): Promise<WorkspaceId | undefined
       key: PANEL_ID,
       locale: NS,
       children: {
-        'workbench.composer.conversation': { kind: 'single', scope: 'session' },
         'workbench.drawer.conversation': { kind: 'single', scope: 'session' },
       },
       inject: (): WorkbenchInjected => ({
@@ -289,15 +288,15 @@ const adoptWorkspacePath = async (path: string): Promise<WorkspaceId | undefined
           // uiWorkspace is registered by the ui-workspace client plugin; the
           // bundle load order is not guaranteed, so resolve it per call.
           openSession: sessionId => { ctx.get('uiWorkspace')?.openSession(sessionId) },
-          connectComposerWorkspace,
+          connectWorkspaceSession,
           acquireDrawerSession,
           /** New-workspace directory picking: native chooser, else in-app browse. */
           pickWorkspaceDirectory,
           browseWorkspaceDirectory,
           createWorkspaceDirectory,
           adoptWorkspacePath,
-          /** Inject a command template into the composer input machine (design §11.5). */
-          primeComposerDraft,
+          /** Prime the target Session's request draft (design §11). */
+          primeSessionDraft,
           stopJob: async (sessionId, jobId) => (await ctx.jobs.kill(sessionId, jobId)).ok,
         },
       }),
@@ -305,11 +304,8 @@ const adoptWorkspacePath = async (path: string): Promise<WorkspaceId | undefined
     selectWorkbenchOnStartup()
     return dispose
   })
-  // Embedded native conversation seats (design §11): one component, two slot
-  // surfaces; the panel binds each through its own explicit SessionProvider.
-  ctx.slots.inject('workbench.composer.conversation', () => ctx.slots.register({
-    name: 'workbench.composer.conversation',
-  }, ConversationEmbed))
+  // Embedded native conversation seat (design §11): the drawer's session-scope
+  // child; the panel binds it through its own explicit SessionProvider.
   ctx.slots.inject('workbench.drawer.conversation', () => ctx.slots.register({
     name: 'workbench.drawer.conversation',
   }, ConversationEmbed))

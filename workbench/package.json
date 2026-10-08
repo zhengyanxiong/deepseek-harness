@@ -42,7 +42,7 @@
   "scripts": {
     "build": "tsdown",
     "watch": "tsdown --watch",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -b tsconfig.json"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",

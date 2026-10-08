@@ -1,6 +1,25 @@
+@media (min-width: 1100px) {
+  .operationsPage { padding-right: calc(var(--workbench-operation-width) + 20px); }
+  .operationsPage .pageContent { padding-inline: 24px; }
+  .operationsPage .operationSurface { width: var(--workbench-operation-width); }
+  .operationsPage .drawerOverlay { left: auto; top: 80px; right: 16px; bottom: 16px; width: var(--workbench-operation-width); background: transparent; pointer-events: none; }
+  .operationsPage .drawer { pointer-events: auto; max-width: 100%; border-radius: var(--dsw-radius-xl); overflow: visible; box-shadow: var(--dsw-elevation-soft); }
+}
+.operationSurface { position: absolute; inset: 80px 16px 16px auto; width: min(520px, calc(100% - 32px)); overflow: auto; z-index: 5; background: var(--dsw-alias-bg-layer-1); border-radius: var(--dsw-radius-xl); box-shadow: var(--dsw-elevation-soft); }
+.operationSearch { width: 100%; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); padding: 10px 12px; font: inherit; }
+.operationForm { display: flex; flex-direction: column; gap: 16px; padding: 20px; }
+.operationForm h2 { font-size: 16px; font-weight: 500; margin: 0; }
+.operationForm p { margin: 0; }
+.operationHint { color: var(--dsw-alias-label-secondary); font-size: 13px; }
+.operationFields { display: flex; flex-direction: column; gap: 16px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.operationFields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.operationFields input, .operationFields textarea, .operationFields select { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); padding: 10px; font: inherit; }
+.operationFields textarea { min-height: 140px; resize: vertical; }
+
 .page {
   position: relative;
   display: flex;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -428,15 +447,24 @@
   font-weight: 500;
 }
 
-/* ===== 指挥舱 (design v2): the composer promoted to the page's first
-   surface. Same material family as the native InputBar card — panel radius,
-   hairline stroke inside the elevation shadow, no separate border. ===== */
+/* ===== 指挥舱 (design v2): quick actions as the page's first surface, in
+   the InputBar card's material — panel radius, hairline stroke inside the
+   elevation shadow, no separate border. ===== */
 .deck {
   border: 0;
   border-radius: var(--dsw-radius-panel);
   background: var(--dsw-alias-bg-layer-1);
   box-shadow: var(--dsw-elevation-soft);
   padding: 12px 14px;
+}
+
+/* The deck hosts only the quick actions now, so the composer separator
+   (border-top + top spacing that .deckActions keeps for the operation
+   form's button row) does not apply here. */
+.deck .deckActions {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
 }
 
 .deckActions {
@@ -588,18 +616,8 @@
   border-top: 0.5px solid var(--dsw-alias-border-l4);
 }
 
-/* ===== Composer seat (design §11.5: workspace picker + native InputBar) ===== */
-.composerArea {
-  position: sticky;
-  bottom: 12px;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: transparent;
-  padding: 0;
-}
-
+/* ===== Header workspace picker: the default target workspace for operation
+   prepares (no resident input surface on this page) ===== */
 .topWorkspace {
   display: flex;
   align-items: center;
@@ -629,44 +647,6 @@
   font-size: 12px;
   line-height: 18px;
   padding: 3px 8px;
-}
-
-.workspaceHint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-caption);
-  padding: 2px 4px;
-}
-
-/* The embedded native conversation seat: its ResizeObserver measures this
-   wrapper's parent, so keep a plain block with a modest minimum height. */
-.composerSeat {
-  min-height: 84px;
-}
-
-/* The / and @ trigger menu opens edge-to-edge above the InputBar, but the
-   host embedded-conversation shell (scrollBody / embeddedBody) is only as
-   tall as the composer itself and clips the popup. The composer seat has
-   no message stream above it, so let the menu overflow freely here. The
-   drawer is not inside .composerArea, so it keeps the host clipping. */
-.composerArea [class*='scrollBody'],
-.composerArea [class*='embeddedBody'] {
-  overflow: visible;
-}
-
-/* Greyed-out seat placeholder shown until a workspace pick binds the InputBar:
-   same footprint as the live seat so the layout does not jump on bind. */
-.composerDisabled {
-  min-height: 84px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1));
-  opacity: 0.65;
-  pointer-events: none;
-  user-select: none;
 }
 
 /* ===== Right drawer (design §11.2: shell only; content is native) ===== */

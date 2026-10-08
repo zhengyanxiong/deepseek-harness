@@ -8,7 +8,34 @@
     "sourceMap": false,
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "react"
+    "jsxImportSource": "react",
+    "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../packages/client/ui-primitives" },
+    { "path": "../packages/api/gateway/tsconfig.client.json" },
+    { "path": "../packages/client/file-upload/tsconfig.client.json" },
+    { "path": "../packages/client/ui-theme/tsconfig.client.json" },
+    { "path": "../packages/client/ui-sidebar" },
+    { "path": "../packages/client/ui-workspace" },
+    { "path": "../packages/client/ui-conversation/tsconfig.client.json" },
+    { "path": "../packages/client/ui-layout" },
+    { "path": "../packages/client/ui-session" },
+    { "path": "../packages/client/ui-slots" },
+    { "path": "../packages/client/ui-renderer" },
+    { "path": "../packages/client/locale/tsconfig.client.json" },
+    { "path": "../packages/client/connection/tsconfig.client.json" },
+    { "path": "../packages/api/session-controller/tsconfig.client.json" },
+    { "path": "../packages/api/job-controller/tsconfig.client.json" },
+    { "path": "../packages/api/remotes/tsconfig.client.json" },
+    { "path": "../packages/api/workspace-controller/tsconfig.client.json" },
+    { "path": "../packages/goal/goal" },
+    { "path": "../packages/llm/token-meter" },
+    { "path": "../packages/subagent/subagent" },
+    { "path": "../packages/schedule/schedule" },
+    { "path": "../packages/core/session" },
+    { "path": "../packages/jobs/jobs" },
+    { "path": "../vendor/cordis" }
+  ]
 }

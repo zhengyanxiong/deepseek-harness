@@ -4,13 +4,10 @@ An independent DSH **bundle** that adds a Workbench panel to the Web client: an
 executable + monitorable personal workbench per `docs/design.md` v2, organized
 into two tabs:
 
-- **指挥台** — a command palette (`Ctrl/⌘+K`, fuzzy match + MRU + dynamic
-  parameter candidates), quick actions generated from the same command
-  registry, clickable cards (open session, hover-revealed job stop), the
-  resource strip, and a floating composer that feeds the session draft pipe.
+- **指挥台** — quick-action forms, failed-job and blocked-goal attention rows, searchable sessions with persistent pins, running work, and today's reminders. The right-side operation surface (operation form, job detail, or the conversation drawer) is collapsed by default and opens only on demand within the visible workbench width; forms retain their input while switching panels.
 - **监控** — 30s-sampled resource-trend sparklines (1h/6h/24h windows), a
   realtime activity stream derived from session/job snapshot diffs (coalesced,
-  capped, pinned scroll), and task/goal/context progress bars.
+  capped, pinned scroll), task/goal/context progress bars, and the reference cards for sessions, jobs, workflows, goals, reminders, subagents, teams, and token usage.
 
 The panel still aggregates, per session where applicable:
 
@@ -57,13 +54,14 @@ reach the body through the slot inject face:
   (token input/output, avg context occupancy, running-job count) into a
   96-point hot ring plus a `localStorage` day-long series the wider windows
   downsample.
-- Actions — `openSession` / `startSession(prompt)` resolve through
-  `ctx.uiWorkspace` (navigation plus draft initialization) and `stopJob`
-  through `ctx.jobs.kill`.
+- Actions — `openSession` / `connectWorkspaceSession` / `acquireDrawerSession`
+  resolve through `ctx.uiWorkspace` navigation and session retention,
+  `primeSessionDraft` initializes a Session's request draft without
+  overwriting it, and `stopJob` through `ctx.jobs.kill`.
 
 ## Build and install
 
-The package is not part of the monorepo workspace; it builds standalone.
+The package is not part of the monorepo workspace; it builds standalone. Run `pnpm run typecheck` from this directory to build the referenced Client declarations and check the workbench; `pnpm run build` bundles JavaScript but does not typecheck.
 
 ```sh
 tsdown                              # emit lib/index.js (host half) + lib/client.js (browser half)
@@ -83,10 +81,11 @@ name.
   `dsh-css-modules-inline` preset.
 - The panel shows an empty state per section when the corresponding session
   projections have not yet been pushed by the host; there is no retry surface.
-- The composer ships text through `uiWorkspace.startSession`'s draft
-  initialization: the message lands prefilled in the reused-blank/new session's
-  composer, one Enter away from being sent. The model/context/attachment chips
-  are presentational until they bind the session composer's selectors.
+- Quick-action forms prepare a request in an empty native Session draft; they do not submit messages or create business records. Existing text or attachments cause preparation to refuse without replacing them. The user reviews and sends through the native InputBar inside the right drawer. Reminder creation is assistant-mediated because the Client schedule remote exposes no create method; workflow, todo, and new-job forms follow the same explicit request-draft path.
+- The right panel stays collapsed on page load and opens only for an operation form, a job detail, or the conversation drawer (session cards, quick-action forms, card rows). Visibility is not persisted across reloads. The header workspace picker chooses the default target workspace for new-session prepares.
+- Form fields survive panel switches while the workbench stays mounted, not a page reload. Native conversation drafts use the conversation subsystem's per-Session persistence. Pins persist locally. Session rows follow catalog order with pinned entries first; there is no separate recent-access ordering or workspace membership filter.
+- Reminder times use the browser's IANA time zone and show an ISO instant before preparation; invalid dates, DST gaps, and past instants are rejected. Daily recurrence is included in the assistant request, not scheduled by the browser.
+- Attention rows currently cover failed jobs and explicitly blocked goals. Waiting-question and approval projections are not consumed. Job details show the available status/progress/detail fields and a link to the owning session, not a separate live-output stream or retry operation.
 - Voice entry points announce the P2 STT integration; the trend sampler's
   persisted series lives in `localStorage` (the Web client's lightweight
   host storage), trimmed to one day.
