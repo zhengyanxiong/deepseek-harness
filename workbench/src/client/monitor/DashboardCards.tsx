@@ -14,12 +14,12 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { fmt } from './shared/format.ts'
-import { Card, PAGE_SIZE, pagerFooter, usePagination, PAGE_SIZE_LARGE } from './shared/presentation.tsx'
-import { GOAL_PHASE_KEY, GOAL_PHASE_TONE } from './shared/rows.ts'
-import type { DashboardSessionSummary, GoalRowContext, JobRowContext, RemindersSnapshot, TokenRowContext } from './shared/rows.ts'
-import type { WorkbenchKey } from './locales.ts'
-import css from './WorkbenchPanel.module.css'
+import { fmt } from '../shared/format.ts'
+import { Card, PAGE_SIZE, pagerFooter, usePagination, PAGE_SIZE_LARGE } from '../shared/presentation.tsx'
+import { GOAL_PHASE_KEY, GOAL_PHASE_TONE } from '../shared/rows.ts'
+import type { DashboardSessionSummary, GoalRowContext, JobRowContext, RemindersSnapshot, TokenRowContext } from '../shared/rows.ts'
+import type { WorkbenchKey } from '../locales.ts'
+import css from '../WorkbenchPanel.module.css'
 
 /** Props for the eight-card dashboard. */
 export interface DashboardCardsProps {

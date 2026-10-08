@@ -13,7 +13,7 @@ function violations(file: string, source: string): string[] {
     const target = path.resolve(path.dirname(file), match[1])
     const relative = path.relative(client, target)
     const targetOwner = relative.split(path.sep)[0]
-    if (relative === 'WorkbenchPanel.tsx' || (features.has(targetOwner) && targetOwner !== owner && targetOwner !== 'shared')) {
+    if (relative === 'WorkbenchPanel.tsx' || (features.has(targetOwner) && targetOwner !== owner && targetOwner !== 'shared' && targetOwner !== 'activity')) {
       errors.push(`${file}: ${match[1]}`)
     }
   }

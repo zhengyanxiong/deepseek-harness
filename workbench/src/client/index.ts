@@ -31,9 +31,9 @@ import type { DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
 import { WorkbenchPanel, type DirectoryPickOutcome, type WorkbenchInjected } from './WorkbenchPanel.tsx'
 import type { RemindersSnapshot } from './shared/rows.ts'
 import { ConversationEmbed } from './ConversationEmbed.tsx'
-import { MonitorTab } from './MonitorTab.tsx'
+import { MonitorTab } from './monitor/MonitorTab.tsx'
 import { WorkbenchIcon } from './WorkbenchIcon.tsx'
-import { getWorkbenchStore } from './store.ts'
+import { getWorkbenchStore } from './activity/store.ts'
 import { en, NS, zh, type WorkbenchKey } from './locales.ts'
 
 /** Stable panel id the sidebar entry and the `main` keyed slot share. */

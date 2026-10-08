@@ -18,7 +18,7 @@ import type { WorkbenchCommand } from './commands.ts'
 import { compact } from '../shared/format.ts'
 import { Card, pagerFooter, usePagination, PAGE_SIZE_LARGE } from '../shared/presentation.tsx'
 import type { DashboardSessionSummary, GoalRowContext, JobRowContext, OngoingRow, RemindersSnapshot, TodayRow, TokenRowContext } from '../shared/rows.ts'
-import type { ActivitySnapshot } from '../store.ts'
+import type { ActivitySnapshot } from '../activity/store.ts'
 import type { WorkbenchKey } from '../locales.ts'
 import css from '../WorkbenchPanel.module.css'
 
