@@ -2,7 +2,7 @@
  * Cross-session workbench body: 指挥台 (command dashboard with a command
  * palette, quick actions, and clickable cards) plus 监控 (resource trends, a
  * realtime activity stream, and progress). Client
- * aggregates live in one module-level store (see store.ts) so both tabs share
+ * aggregates live in one module-level store (see activity/store.ts) so both tabs share
  * one subscription each, per the design's §6 state model.
  */
 
