@@ -3,6 +3,9 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ScheduleCatalogEntry } from '@deepseek-ai/dsh-schedule/client'
 import type { WorkbenchKey } from '../locales.ts'
 
+/** Workbench operation kinds used by the command registry and operation forms. */
+export type OperationKind = 'new-session' | 'run-workflow' | 'new-job' | 'add-todo' | 'set-reminder'
+
 /** Read-only host reminder catalog snapshot. */
 export interface RemindersSnapshot {
   records: readonly ScheduleCatalogEntry[]
