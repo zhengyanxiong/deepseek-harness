@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-08-workbench-directory-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-08-workbench-directory-design.md
+/workbench:
+  en: aa5d5106769752ce
+  zh: 3b084ad26346c2b7
+/workbench/section:
+  en: b228c76fb33598cd
+  zh: b228c76fb33598cd
+/workbench/section~2:
+  en: d6dfd954b73d3783
+  zh: d6dfd954b73d3783
+/workbench/section~3:
+  en: dece9599232e0495
+  zh: dece9599232e0495
+/workbench/section~4:
+  en: e7833e33ad17ec02
+  zh: e7833e33ad17ec02

@@ -1,6 +1,6 @@
 # Workbench 单包目录重组设计
 
-English | [中文](2026-10-08-workbench-directory-design.zh.md)
+[English](2026-10-08-workbench-directory-design.md) | 中文
 
 状态：待用户审阅。本文是拟议目录，不描述已落地的结构。
 
