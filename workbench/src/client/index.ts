@@ -30,7 +30,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import type { DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
 import { WorkbenchPanel, type DirectoryPickOutcome, type WorkbenchInjected } from './WorkbenchPanel.tsx'
 import type { RemindersSnapshot } from './shared/rows.ts'
-import { ConversationEmbed } from './ConversationEmbed.tsx'
+import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { MonitorTab } from './monitor/MonitorTab.tsx'
 import { WorkbenchIcon } from './WorkbenchIcon.tsx'
 import { getWorkbenchStore } from './activity/store.ts'
