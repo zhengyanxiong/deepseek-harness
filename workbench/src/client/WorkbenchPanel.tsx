@@ -9,7 +9,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import {
-  Button, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCloseOutlineRegular,
+  Button, IconChevronLeftOutlineRegular, IconCloseOutlineRegular,
   IconMicrophoneOutlineRegular, IconRightUpOutlineRegular, IconSearchOutlineRegular, SegmentedTabs,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
@@ -21,7 +21,6 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import type { DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ScheduleCatalogEntry } from '@deepseek-ai/dsh-schedule/client'
 import type { } from '@deepseek-ai/dsh-goal/client'
 import type { } from '@deepseek-ai/dsh-token-meter/client'
 import type { } from '@deepseek-ai/dsh-subagent/client'
@@ -33,20 +32,16 @@ import { diffActivityFeed } from './store.ts'
 import { CommandPalette } from './CommandPalette.tsx'
 import { CommandTab } from './CommandTab.tsx'
 import { DashboardCards } from './DashboardCards.tsx'
-import type { JobRowContext } from './DashboardCards.tsx'
 import { OperationForm } from './OperationForm.tsx'
 import { emptyOperationDraft } from './operations.ts'
 import type { OperationDraft, OperationKind } from './operations.ts'
 import { MonitorTab } from './MonitorTab.tsx'
 import { WorkspaceDirectoryDialog } from './WorkspaceDirectoryDialog.tsx'
 import { NS, type WorkbenchKey } from './locales.ts'
+import { cx, hhmmOf } from './shared/format.ts'
+import { GOAL_PHASE_KEY, GOAL_PHASE_TONE } from './shared/rows.ts'
+import type { JobRowContext, OngoingRow, RemindersSnapshot, TodayRow } from './shared/rows.ts'
 import css from './WorkbenchPanel.module.css'
-
-/** Read-only host reminder catalog snapshot. */
-export interface RemindersSnapshot {
-  records: readonly ScheduleCatalogEntry[]
-  status: 'loading' | 'ready' | 'error'
-}
 
 /**
  * Outcome of one "new workspace" request (design §11.5).
@@ -153,139 +148,6 @@ function initialWorkspacePick(): WorkspaceId | undefined {
 /** The two workbench tabs. */
 export type WorkbenchTab = 'command' | 'monitor'
 
-/** Rows shown per list card before the pager appears. */
-export const PAGE_SIZE = 5
-export const PAGE_SIZE_LARGE = 10
-
-/** One row of the 进行中 summary: a session or a live job. */
-export interface OngoingRow {
-  readonly key: string
-  readonly kind: 'session' | 'job'
-  readonly title: string
-  readonly meta: string
-  readonly running: boolean
-  readonly sessionId: SessionId
-  readonly jobId?: JobId
-}
-
-/** One row of the 今日提醒 / 到期目标 summary. */
-export interface TodayRow {
-  readonly key: string
-  readonly kind: 'reminder' | 'goal'
-  readonly title: string
-  readonly meta: string
-  readonly tone: 'info' | 'warning' | 'danger' | 'neutral' | 'success'
-  readonly tag: string
-  readonly sessionId: SessionId | undefined
-}
-
-/** Join CSS-module class candidates, dropping falsy entries. */
-export function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(' ')
-}
-
-/** Render a tabular count with locale separators. */
-export function fmt(value: number): string {
-  return value.toLocaleString()
-}
-
-/** Format an RFC 3339 instant as a local HH:mm label. */
-export function hhmmOf(instant: string): string {
-  const date = new Date(instant)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
-/** Compact million/thousand label for the resource strip. */
-export function compact(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (value >= 1_000) return `${Math.round(value / 1_000)}K`
-  return String(value)
-}
-
-/** Page window over a list, kept clamped when the list shrinks. */
-export interface Pagination<T> {
-  current: number
-  totalPages: number
-  pageItems: readonly T[]
-  setPage: (page: number) => void
-}
-
-/** Component-private page cursor: a fixed-size slice of a list, no subscription. */
-export function usePagination<T>(items: readonly T[], pageSize: number): Pagination<T> {
-  const [page, setPage] = useState(0)
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
-  const current = Math.min(page, totalPages - 1)
-  const start = current * pageSize
-  return { current, totalPages, pageItems: items.slice(start, start + pageSize), setPage }
-}
-
-/** The pager footer: two chevron buttons flanking a tabular page indicator. */
-export function Pager({ current, totalPages, prevLabel, nextLabel, onPrev, onNext }: {
-  current: number
-  totalPages: number
-  prevLabel: string
-  nextLabel: string
-  onPrev: () => void
-  onNext: () => void
-}) {
-  return (
-    <footer className={css.pager}>
-      <Button variant="ghost" size="sm" aria-label={prevLabel} disabled={current === 0} onClick={onPrev}
-        icon={<IconChevronLeftOutlineRegular size={14} />} />
-      <span className={css.pagerLabel}>{current + 1} / {totalPages}</span>
-      <Button variant="ghost" size="sm" aria-label={nextLabel} disabled={current >= totalPages - 1} onClick={onNext}
-        icon={<IconChevronRightOutlineRegular size={14} />} />
-    </footer>
-  )
-}
-
-/** Build the pager footer for a page, or nothing when the list fits one page. */
-export function pagerFooter<T>(page: Pagination<T>, prevLabel: string, nextLabel: string): ReactNode {
-  if (page.totalPages <= 1) return undefined
-  return (
-    <Pager current={page.current} totalPages={page.totalPages} prevLabel={prevLabel} nextLabel={nextLabel}
-      onPrev={() => page.setPage(page.current - 1)} onNext={() => page.setPage(page.current + 1)} />
-  )
-}
-
-/** A card's shell: the settings-card material with a title, optional count, header extra, body, and optional pager. */
-export function Card({ wide, icon, title, count, headerExtra, footer, children }: {
-  wide?: boolean
-  icon: ReactNode
-  title: string
-  /** Tabular count in the header; omitted when undefined (e.g. trend card shows window chips instead). */
-  count?: number
-  /** Trailing header content rendered beside the count (e.g. window chips). */
-  headerExtra?: ReactNode
-  footer?: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <section className={cx(css.card, wide && css.cardWide)}>
-      <header className={css.cardHeader}>
-        <div className={css.cardTitleGroup}>
-          {icon}
-          <h2 className={css.cardTitle}>{title}</h2>
-        </div>
-        {headerExtra}
-        {count !== undefined && <span className={css.cardCount}>{count}</span>}
-      </header>
-      <div className={css.cardBody}>{children}</div>
-      {footer}
-    </section>
-  )
-}
-
-
-/** Locale key per durable goal phase. */
-export const GOAL_PHASE_KEY: Record<string, WorkbenchKey> = {
-  active: 'goals.phase.active',
-  paused: 'goals.phase.paused',
-  blocked: 'goals.phase.blocked',
-  complete: 'goals.phase.complete',
-}
-
 /** Locale key for each job status shown in the operation detail. */
 export const JOB_STATUS_KEY = {
   running: 'op.status.running',
@@ -294,14 +156,6 @@ export const JOB_STATUS_KEY = {
   killed: 'op.status.killed',
   failed: 'op.status.failed',
 } as const satisfies Record<JobRowContext['job']['status'], WorkbenchKey>
-
-/** Tag tone per durable goal phase. */
-export const GOAL_PHASE_TONE: Record<string, 'info' | 'warning' | 'danger' | 'success'> = {
-  active: 'info',
-  paused: 'warning',
-  blocked: 'danger',
-  complete: 'success',
-}
 
 /**
  * Render the two-tab workbench and own the client aggregates' lifecycle.
