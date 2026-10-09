@@ -1,6 +1,6 @@
 /** Retained operation form; submitting prepares a request, never reports business completion. */
 import { useState } from 'react'
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconPaperPlaneOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkbenchKey } from '../locales.ts'
 import { reminderInstant, validateOperation } from './operations.ts'
 import type { OperationDraft, OperationKind } from './operations.ts'
@@ -56,6 +56,6 @@ export function OperationForm({ kind, draft, target, t, onChange, onPrepare, onC
       </>}
     </fieldset>
     {error !== null && <p role="alert">{t(error)}</p>}
-    <div className={css.deckActions}><Button type="submit" disabled={busy}>{t(busy ? 'op.pending' : 'op.prepare')}</Button><Button type="button" disabled={busy} onClick={onClose}>{t('op.close')}</Button></div>
+    <div className={css.deckActions}><Button type="submit" variant="primary" disabled={busy} icon={<IconPaperPlaneOutlineRegular size={13} />}>{t(busy ? 'op.pending' : 'op.prepare')}</Button><Button type="button" variant="outline" disabled={busy} onClick={onClose}>{t('op.close')}</Button></div>
   </form>
 }

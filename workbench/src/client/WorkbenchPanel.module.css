@@ -403,19 +403,18 @@
   margin-top: 2px;
 }
 
-/* Secondary row actions stay hidden until the row is hovered or focused. */
+/* Secondary row actions render inline at all times; touch and keyboard users
+   must be able to discover them without hovering the row first. */
 .rowActions {
   display: flex;
   flex: none;
   align-items: center;
   gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s ease-out;
 }
 
-.rowClickable:hover .rowActions,
-.rowClickable:focus-within .rowActions {
-  opacity: 1;
+/* Active toggle state (pinned session) raises the icon above ghost-button ink. */
+.rowActionActive {
+  color: var(--dsw-alias-label-primary);
 }
 
 /* ===== 资源速览 strip above the composer ===== */

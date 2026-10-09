@@ -760,8 +760,7 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
             <p>{jobDetail === undefined ? '' : t(JOB_STATUS_KEY[jobDetail.job.status])}</p>
             <p>{jobDetail?.job.progress}</p>
             <pre className={css.operationHint}>{jobDetail?.job.detail}</pre>
-            <Button onClick={() => { openDrawer(selectedJob.sessionId) }}>{t('cmd.openSession')}</Button>
-            <Button onClick={() => { setSelectedJob(null) }}>{t('op.close')}</Button>
+            <div className={css.deckActions}><Button variant="primary" onClick={() => { openDrawer(selectedJob.sessionId) }}>{t('cmd.openSession')}</Button><Button variant="outline" onClick={() => { setSelectedJob(null) }}>{t('op.close')}</Button></div>
           </div>
         </aside>
       )}

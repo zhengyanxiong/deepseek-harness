@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 import {
-  Button, IconRightUpOutlineRegular, IconStopFillRegular, StateDot, Tag,
+  Button, IconPinFillRegular, IconPinOutlineRegular, IconRightUpOutlineRegular, IconStopFillRegular, StateDot, Tag,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
@@ -169,7 +169,10 @@ export function CommandTab(props: CommandTabProps) {
       <Card icon={<StateDot state="ongoing" />} title={t('op.continue')} count={continuing.length} footer={pagerFooter(continuationPage, t('pager.prev'), t('pager.next'))}>
         {continuationPage.pageItems.map(row => <div key={row.id} className={css.rowClickable}>
           <Button variant="ghost" onClick={() => { onOpenSession(row.id) }}>{row.displayTitle}</Button>
-          <Button variant="ghost" size="sm" aria-pressed={pins.includes(row.id)} onClick={() => { togglePin(row.id) }}>{t(pins.includes(row.id) ? 'op.unpin' : 'op.pin')}</Button>
+          <Button variant="ghost" size="sm" className={pins.includes(row.id) ? css.rowActionActive : undefined}
+            aria-pressed={pins.includes(row.id)} aria-label={t(pins.includes(row.id) ? 'op.unpin' : 'op.pin')}
+            onClick={() => { togglePin(row.id) }}
+            icon={pins.includes(row.id) ? <IconPinFillRegular size={13} /> : <IconPinOutlineRegular size={13} />} />
         </div>)}
       </Card>
       {/* 正在发生: the attention pair */}
