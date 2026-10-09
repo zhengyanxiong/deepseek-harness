@@ -12,8 +12,8 @@ import {
   IconNewChatOutlineRegular, IconPlayOutlineRegular, IconQueueOutlineRegular,
   IconStopFillRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { WorkbenchKey } from './locales.ts'
-import type { OperationKind } from './operations.ts'
+import type { WorkbenchKey } from '../locales.ts'
+import type { OperationKind } from '../shared/rows.ts'
 
 /** A parameterized command resolves its target from a dynamic option list. */
 export interface CommandOption {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { emptyOperationDraft, reminderInstant, validateOperation } from '../src/client/operations.ts'
+import { emptyOperationDraft, reminderInstant, validateOperation } from '../src/client/operations/operations.ts'
 
 test('independent form drafts do not share edits', () => {
   const a = emptyOperationDraft(), b = emptyOperationDraft()

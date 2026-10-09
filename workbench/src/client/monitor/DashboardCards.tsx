@@ -14,55 +14,12 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import {
-  Card, GOAL_PHASE_KEY, GOAL_PHASE_TONE, PAGE_SIZE, fmt, pagerFooter, usePagination, PAGE_SIZE_LARGE,
-} from './WorkbenchPanel.tsx'
-import type { RemindersSnapshot } from './WorkbenchPanel.tsx'
-import type { WorkbenchKey } from './locales.ts'
-import css from './WorkbenchPanel.module.css'
-
-/** Job row with its owning session context. */
-export interface JobRowContext {
-  job: {
-    readonly id: JobId
-    readonly kind: string
-    readonly label: string
-    readonly status: 'running' | 'stopping' | 'completed' | 'killed' | 'failed'
-    readonly progress?: string
-    readonly detail?: string
-  }
-  sessionTitle: string
-  sessionId: SessionId
-}
-
-/** Goal row with its owning session context. */
-export interface GoalRowContext {
-  id: SessionId
-  title: string
-  objective: string
-  goalPhase: string
-  rounds: number
-}
-
-/** One token/context row (kept from the read-only dashboard). */
-export interface TokenRowContext {
-  id: SessionId
-  title: string
-  total?: number | undefined
-  percent?: number | undefined
-}
-
-/** Session summary slice the cards read (structural subset of the host row). */
-export interface DashboardSessionSummary {
-  displayTitle: string
-  running: boolean
-  /** Blank sessions (no durable title yet) are workspace shells; the overview hides them. */
-  blank: boolean
-  projectionValues?: {
-    subagentCatalog?: readonly { id: string; mode: string; label?: string }[]
-    agentTeam?: { members: readonly { id: string; name: string; role: string; phase: string }[] }
-  }
-}
+import { fmt } from '../shared/format.ts'
+import { Card, PAGE_SIZE, pagerFooter, usePagination, PAGE_SIZE_LARGE } from '../shared/presentation.tsx'
+import { GOAL_PHASE_KEY, GOAL_PHASE_TONE } from '../shared/rows.ts'
+import type { DashboardSessionSummary, GoalRowContext, JobRowContext, RemindersSnapshot, TokenRowContext } from '../shared/rows.ts'
+import type { WorkbenchKey } from '../locales.ts'
+import css from '../WorkbenchPanel.module.css'
 
 /** Props for the eight-card dashboard. */
 export interface DashboardCardsProps {

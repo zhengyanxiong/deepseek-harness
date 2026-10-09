@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { OperationForm } from '../src/client/OperationForm.tsx'
-import type { OperationDraft } from '../src/client/operations.ts'
+import { OperationForm } from '../src/client/operations/OperationForm.tsx'
+import type { OperationDraft } from '../src/client/operations/operations.ts'
 import { zh } from '../src/client/locales.ts'
 
 const t = (key: keyof typeof zh): string => zh[key]

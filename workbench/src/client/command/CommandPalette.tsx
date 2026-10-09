@@ -9,8 +9,8 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import { Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import { scoreCommand } from './commands.ts'
 import type { CommandOption, WorkbenchCommand } from './commands.ts'
-import type { WorkbenchKey } from './locales.ts'
-import css from './WorkbenchPanel.module.css'
+import type { WorkbenchKey } from '../locales.ts'
+import css from '../WorkbenchPanel.module.css'
 
 /** A palette row: either a command or one of its parameter candidates. */
 type PaletteItem =

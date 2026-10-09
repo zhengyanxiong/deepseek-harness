@@ -1,5 +1,6 @@
 /** Workbench operation drafts and validation, independent of Session mutation. */
-export type OperationKind = 'new-session' | 'run-workflow' | 'new-job' | 'add-todo' | 'set-reminder'
+import type { OperationKind } from '../shared/rows.ts'
+export type { OperationKind } from '../shared/rows.ts'
 
 /** User-owned fields retained while switching operation panels. */
 export interface OperationDraft {

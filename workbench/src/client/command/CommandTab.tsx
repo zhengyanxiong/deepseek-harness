@@ -15,12 +15,12 @@ import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkbenchCommand } from './commands.ts'
-import type { DashboardSessionSummary, GoalRowContext, JobRowContext, TokenRowContext } from './DashboardCards.tsx'
-import { Card, compact, pagerFooter, usePagination, PAGE_SIZE_LARGE } from './WorkbenchPanel.tsx'
-import type { OngoingRow, RemindersSnapshot, TodayRow } from './WorkbenchPanel.tsx'
-import type { ActivitySnapshot } from './store.ts'
-import type { WorkbenchKey } from './locales.ts'
-import css from './WorkbenchPanel.module.css'
+import { compact } from '../shared/format.ts'
+import { Card, pagerFooter, usePagination, PAGE_SIZE_LARGE } from '../shared/presentation.tsx'
+import type { DashboardSessionSummary, GoalRowContext, JobRowContext, OngoingRow, RemindersSnapshot, TodayRow, TokenRowContext } from '../shared/rows.ts'
+import type { ActivitySnapshot } from '../activity/store.ts'
+import type { WorkbenchKey } from '../locales.ts'
+import css from '../WorkbenchPanel.module.css'
 
 /** How many newest events the spine shows inline. */
 const SPINE_EVENTS = 4

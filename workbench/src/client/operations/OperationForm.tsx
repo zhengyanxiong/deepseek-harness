@@ -1,10 +1,10 @@
 /** Retained operation form; submitting prepares a request, never reports business completion. */
 import { useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { WorkbenchKey } from './locales.ts'
+import type { WorkbenchKey } from '../locales.ts'
 import { reminderInstant, validateOperation } from './operations.ts'
 import type { OperationDraft, OperationKind } from './operations.ts'
-import css from './WorkbenchPanel.module.css'
+import css from '../WorkbenchPanel.module.css'
 
 const TITLE: Record<OperationKind, WorkbenchKey> = {
   'new-session': 'cmd.newSession', 'run-workflow': 'cmd.runWorkflow', 'new-job': 'cmd.newJob',

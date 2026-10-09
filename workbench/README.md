@@ -38,8 +38,13 @@ installs into the `web` profile as a local-directory bundle. It has two halves:
 The body is a `PropsRuntime<'main'>` shell with two tab views, styled after the
 Web styling reference: one `WorkbenchPanel.module.css` (compiled by
 lightningcss inside the bundle), `--dsw-*` semantic tokens, and `Tag` /
-`StateDot` / icon atoms from `ui-primitives`. Cross-session data and actions
-reach the body through the slot inject face:
+`StateDot` / icon atoms from `ui-primitives`. `src/client/index.ts` registers
+slots and supplies actions; `WorkbenchPanel.tsx` owns page state and composes
+`command/`, `monitor/`, `operations/`, `conversation/`, and `workspace/` views.
+`activity/store.ts` owns the existing client aggregates, while `shared/` holds
+cross-view rows, formatting, and presentation helpers. Feature modules import
+shared helpers, not the page component or sibling views. Cross-session data and
+actions reach the body through the slot inject face:
 
 - `useSessions` — `SessionSummary.projectionValues` carries `goal`, `tokenUsage`,
   `contextPressure`, `subagentCatalog`, and `agentTeam` for every listed session.
@@ -48,7 +53,7 @@ reach the body through the slot inject face:
 - `ctx.remote.schedule.catalog()` (bound as `useReminders`) — the host reminder
   catalog, read lazily and refreshed on `schedule/changed` and
   `connection/reset`.
-- Client aggregates (`store.ts`, design §6) — the realtime **activity stream**
+- Client aggregates (`activity/store.ts`, design §6) — the realtime **activity stream**
   is derived by diffing successive session/job snapshots (250ms same-source
   coalescing, 200-row cap), and the **trend sampler** writes a 30s point
   (token input/output, avg context occupancy, running-job count) into a

@@ -9,7 +9,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import { JOB_STATUS_KEY, WorkbenchPanel } from '../src/client/WorkbenchPanel.tsx'
 import type { WorkbenchPanelProps } from '../src/client/WorkbenchPanel.tsx'
 import { zh } from '../src/client/locales.ts'
-import type { JobRowContext } from '../src/client/DashboardCards.tsx'
+import type { JobRowContext } from '../src/client/shared/rows.ts'
 
 // Use the real button so the click path includes the browser primitive.
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', async importOriginal => {

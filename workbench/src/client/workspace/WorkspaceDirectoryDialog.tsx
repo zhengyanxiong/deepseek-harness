@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { Button, IconFolderCloseRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
-import type { WorkbenchKey } from './locales.ts'
+import type { WorkbenchKey } from '../locales.ts'
 import css from './WorkspaceDirectoryDialog.module.css'
 
 /** Owner seat: the panel holds the browsing state and the Host actions. */
