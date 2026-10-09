@@ -8,6 +8,7 @@ export type WorkbenchKey =
   | 'op.status.running' | 'op.status.stopping' | 'op.status.completed' | 'op.status.failed' | 'op.status.killed'
   | 'op.target' | 'op.newTarget' | 'op.content' | 'op.date' | 'op.time' | 'op.repeat' | 'op.once' | 'op.daily'
   | 'op.prepare' | 'op.pending' | 'op.explain' | 'op.invalidContent' | 'op.invalidTime' | 'op.failed'
+  | 'op.preserved' | 'op.replaceDraft' | 'op.busy'
   | 'op.ready' | 'op.close' | 'op.search' | 'op.attention' | 'op.continue' | 'op.pin' | 'op.unpin'
   | 'op.timePrompt' | 'op.repeatPrompt'
   | 'panel'
@@ -158,7 +159,9 @@ export const zh: Record<WorkbenchKey, string> = {
   'op.prepare': '生成请求草稿', 'op.pending': '正在准备草稿…',
   'op.explain': '此操作会生成请求草稿，由你在右侧会话确认发送，再由助手执行；不会直接创建任务或提醒。已有会话草稿不会被覆盖。',
   'op.invalidContent': '请填写内容', 'op.invalidTime': '请选择有效的未来时间',
-  'op.failed': '无法准备草稿，目标可能已有草稿或正在处理中；内容已保留',
+  'op.failed': '无法准备草稿，请稍后重试；内容已保留',
+  'op.preserved': '目标会话已有未发送的草稿，为避免覆盖已保留。可替换后重新生成：',
+  'op.replaceDraft': '替换目标草稿并生成', 'op.busy': '目标会话正在处理中，请稍后重试',
   'op.ready': '请求草稿已就绪，请在目标会话确认发送', 'op.close': '关闭操作区',
   'op.search': '搜索会话、任务或目标…',
   'op.attention': '需要处理', 'op.continue': '继续工作', 'op.pin': '置顶', 'op.unpin': '取消置顶',
@@ -309,7 +312,9 @@ export const en: Record<WorkbenchKey, string> = {
   'op.prepare': 'Prepare request draft', 'op.pending': 'Preparing draft…',
   'op.explain': 'Prepare a request for you to review and send in the target conversation. The assistant then carries it out; this does not directly create tasks or reminders. Existing session drafts are not overwritten.',
   'op.invalidContent': 'Enter the content', 'op.invalidTime': 'Choose a valid future time',
-  'op.failed': 'Unable to prepare the draft. The target may have a draft or be busy; your input is retained.',
+  'op.failed': 'Unable to prepare the draft. Try again in a moment; your input is retained.',
+  'op.preserved': 'The target session already holds an unsent draft, kept to avoid overwriting. Replace it and regenerate:',
+  'op.replaceDraft': 'Replace target draft and regenerate', 'op.busy': 'The target session is busy; try again shortly',
   'op.ready': 'Request draft ready — review and send in the target conversation', 'op.close': 'Close operation panel',
   'op.search': 'Search sessions, jobs or goals…',
   'op.attention': 'Needs attention', 'op.continue': 'Continue work', 'op.pin': 'Pin', 'op.unpin': 'Unpin',

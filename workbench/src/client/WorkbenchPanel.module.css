@@ -11,6 +11,8 @@
 .operationForm h2 { font-size: 16px; font-weight: 500; margin: 0; }
 .operationForm p { margin: 0; }
 .operationHint { color: var(--dsw-alias-label-secondary); font-size: 13px; }
+/* Draft-conflict notice: inline text plus the explicit replace action. */
+.operationConflict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 13px; }
 .operationFields { display: flex; flex-direction: column; gap: 16px; border: 0; padding: 0; margin: 0; min-width: 0; }
 .operationFields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .operationFields input, .operationFields textarea, .operationFields select { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); padding: 10px; font: inherit; }

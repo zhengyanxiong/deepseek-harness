@@ -22,26 +22,34 @@ export function OperationForm({ kind, draft, target, t, onChange, onPrepare, onC
   target: string
   t(key: WorkbenchKey): string
   onChange(draft: OperationDraft): void
-  onPrepare(prompt: string): Promise<boolean>
+  onPrepare(prompt: string, options?: { readonly replaceExisting?: boolean }): Promise<boolean | 'preserved' | 'blocked'>
   onClose(): void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<WorkbenchKey | null>(null)
+  const [replacePrompt, setReplacePrompt] = useState(false)
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const update = (patch: Partial<OperationDraft>): void => { onChange({ ...draft, ...patch }); setError(null) }
+  const update = (patch: Partial<OperationDraft>): void => { onChange({ ...draft, ...patch }); setError(null); setReplacePrompt(false) }
   const instant = reminderInstant(draft)
   const timing = instant === undefined ? '' : t('op.timePrompt').replace('{instant}', instant.toISOString()).replace('{zone}', zone)
+  const submit = (options?: { readonly replaceExisting?: boolean }): void => {
+    setBusy(true)
+    setReplacePrompt(false)
+    const prefix = PREFIX[kind]
+    const prompt = [prefix === undefined ? '' : t(prefix), draft.content.trim(),
+      ...(kind === 'set-reminder' ? [timing, t('op.repeatPrompt').replace('{repeat}', t(draft.repeat === 'daily' ? 'op.daily' : 'op.once'))] : []),
+    ].filter(Boolean).join('\n')
+    void onPrepare(prompt, options).then(outcome => {
+      if (outcome === 'preserved') { setReplacePrompt(true); setError(null) }
+      else if (outcome !== true) setError(outcome === 'blocked' ? 'op.busy' : 'op.failed')
+    }, () => { setError('op.failed') }).finally(() => { setBusy(false) })
+  }
   return <form className={css.operationForm} onSubmit={event => {
     event.preventDefault()
     if (busy) return
     const issue = validateOperation(kind, draft, Date.now())
     if (issue !== undefined) { setError(issue === 'content' ? 'op.invalidContent' : 'op.invalidTime'); return }
-    const prefix = PREFIX[kind]
-    const prompt = [prefix === undefined ? '' : t(prefix), draft.content.trim(),
-      ...(kind === 'set-reminder' ? [timing, t('op.repeatPrompt').replace('{repeat}', t(draft.repeat === 'daily' ? 'op.daily' : 'op.once'))] : []),
-    ].filter(Boolean).join('\n')
-    setBusy(true)
-    void onPrepare(prompt).then(ok => { if (!ok) setError('op.failed') }, () => { setError('op.failed') }).finally(() => { setBusy(false) })
+    submit()
   }}>
     <h2>{t(TITLE[kind])}</h2>
     <p>{t('op.target')}: {target}</p>
@@ -56,6 +64,9 @@ export function OperationForm({ kind, draft, target, t, onChange, onPrepare, onC
       </>}
     </fieldset>
     {error !== null && <p role="alert">{t(error)}</p>}
+    {replacePrompt && !busy && <p role="alert" className={css.operationConflict}>{t('op.preserved')}
+      <Button type="button" variant="outline" size="sm" onClick={() => { submit({ replaceExisting: true }) }}>{t('op.replaceDraft')}</Button>
+    </p>}
     <div className={css.deckActions}><Button type="submit" variant="primary" disabled={busy} icon={<IconPaperPlaneOutlineRegular size={13} />}>{t(busy ? 'op.pending' : 'op.prepare')}</Button><Button type="button" variant="outline" disabled={busy} onClick={onClose}>{t('op.close')}</Button></div>
   </form>
 }

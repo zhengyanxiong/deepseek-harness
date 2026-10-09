@@ -60,6 +60,9 @@ export type DirectoryPickOutcome =
 /** Activity source exposed as a hook: the store already is snapshot/subscribe shaped. */
 export type ActivitySource = Pick<ActivityStore, 'getSnapshot' | 'subscribe'>
 
+/** Outcome of priming a target Session's request draft; null = input unavailable. */
+export type PrimeResult = 'applied' | 'preserved' | 'blocked' | null
+
 /** Registration-side business face for the workbench body. */
 export interface WorkbenchInjected {
   hooks: {
@@ -98,9 +101,10 @@ export interface WorkbenchInjected {
     adoptWorkspacePath(path: string): Promise<WorkspaceId | undefined>
     /**
      * Prime a Session's request draft (without overwriting existing text or
-     * attachments) and focus the embedded InputBar, without navigating away.
+     * attachments, unless replaceExisting) and focus the embedded InputBar,
+     * without navigating away.
      */
-    primeSessionDraft(sessionId: SessionId, prompt?: string): boolean
+    primeSessionDraft(sessionId: SessionId, prompt?: string, options?: { readonly replaceExisting?: boolean }): PrimeResult
     stopJob(sessionId: SessionId, jobId: JobId): Promise<boolean>
   }
 }
@@ -732,20 +736,22 @@ export function WorkbenchPanel(props: WorkbenchPanelProps) {
             target={operation === 'new-session' || drawerSessionId === null ? `${t('op.newTarget')} · ${selectedWorkspace?.path ?? t('toast.pickWorkspaceFirst')}` : `${drawerTitle} · ${targetWorkspace ?? ''}`}
             onChange={draft => { setOperationDrafts(previous => ({ ...previous, [operation]: draft })) }}
             onClose={() => { setOperation(null) }}
-            onPrepare={async prompt => {
+            onPrepare={async (prompt, options) => {
               const generation = operationGeneration.current
               if (operation === 'new-session' || drawerSessionId === null) {
                 if (effectiveWorkspaceId === undefined) return false
                 const ref = await actions.connectWorkspaceSession(effectiveWorkspaceId)
                 try {
                   if (generation !== operationGeneration.current || currentWorkspace.current !== effectiveWorkspaceId) return false
-                  if (!actions.primeSessionDraft(ref.sessionId, prompt)) return false
+                  const result = actions.primeSessionDraft(ref.sessionId, prompt, options)
+                  if (result !== 'applied') return result ?? false
                   openDrawer(ref.sessionId)
                   notify(t('op.ready'))
                   return true
                 } finally { ref.release() }
               }
-              if (!actions.primeSessionDraft(drawerSessionId, prompt)) return false
+              const result = actions.primeSessionDraft(drawerSessionId, prompt, options)
+              if (result !== 'applied') return result ?? false
               openDrawer(drawerSessionId)
               notify(t('op.ready'))
               return true

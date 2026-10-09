@@ -28,7 +28,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { DirectoryListing } from '@deepseek-ai/dsh-api-remotes/client'
-import { WorkbenchPanel, type DirectoryPickOutcome, type WorkbenchInjected } from './WorkbenchPanel.tsx'
+import { WorkbenchPanel, type DirectoryPickOutcome, type PrimeResult, type WorkbenchInjected } from './WorkbenchPanel.tsx'
 import type { RemindersSnapshot } from './shared/rows.ts'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { MonitorTab } from './monitor/MonitorTab.tsx'
@@ -240,23 +240,27 @@ const adoptWorkspacePath = async (path: string): Promise<WorkspaceId | undefined
    * without leaving the workbench panel.
    * @param sessionId - target Session whose draft is primed.
    * @param prompt - request template text; undefined preserves the draft.
-   * @returns false when the input machine is busy or unavailable.
+   * @param options.replaceExisting - also prime when the target already holds
+   * unsent text, replacing it (explicit user confirmation only).
+   * @returns the underlying result, or null when conversation/binding is
+   * unavailable: 'applied', 'preserved' (target had a draft), 'blocked'
+   * (pending submission), null (input machine unavailable).
    */
-  const primeSessionDraft = (sessionId: SessionId, prompt?: string): boolean => {
+  const primeSessionDraft = (sessionId: SessionId, prompt?: string, options?: { readonly replaceExisting?: boolean }): PrimeResult => {
     const conversation = ctx.get('conversation')
     const binding = conversation === undefined ? undefined : ctx.sessions.binding(sessionId)
-    if (conversation === undefined || binding === undefined) return false
+    if (conversation === undefined || binding === undefined) return null
     const result = conversation.input.requestDraftInitialization(binding, {
       ...(prompt === undefined ? {} : { prompt }),
-      clearPreviousDraft: false,
+      clearPreviousDraft: options?.replaceExisting === true,
     })
-    if (result !== 'applied') return false
+    if (result !== 'applied') return result
     try {
       conversation.input.for(binding.ctx).focus()
     } catch {
       // The embedded InputBar has not mounted yet; the draft still lands.
     }
-    return true
+    return 'applied'
   }
 
   const t = ctx.locale.bind(NS)

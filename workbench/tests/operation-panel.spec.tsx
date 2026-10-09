@@ -68,7 +68,7 @@ function fixture() {
     createWorkspaceDirectory: vi.fn(async () => undefined),
     adoptWorkspacePath: vi.fn(async () => undefined),
     stopJob: vi.fn(async () => true),
-    primeSessionDraft: vi.fn((_id: SessionId, _prompt?: string) => true),
+    primeSessionDraft: vi.fn((_id: SessionId, _prompt?: string, _options?: { readonly replaceExisting?: boolean }) => 'applied' as const),
   }
   const sessions = {
     ids: [composerId, targetId, lateId], phase: 'ready' as const, projectionsBySession: {},
@@ -180,7 +180,7 @@ describe('WorkbenchPanel operation forms', () => {
     expect(within(drawer).getByText('会话输入区')).not.toBeNull()
     expect(actions.connectWorkspaceSession).toHaveBeenCalledTimes(1)
     expect(actions.connectWorkspaceSession).toHaveBeenCalledWith(workspaceId)
-    expect(actions.primeSessionDraft).toHaveBeenCalledWith(composerId, '准备测试请求')
+    expect(actions.primeSessionDraft).toHaveBeenCalledWith(composerId, '准备测试请求', undefined)
     expect(screen.queryByRole('complementary', { name: zh['op.target'] })).toBeNull()
     expect(screen.getByRole('status').textContent).toBe(zh['op.ready'])
   })
@@ -192,24 +192,52 @@ describe('WorkbenchPanel operation forms', () => {
     openAction('cmd.addTodo')
     submitContent('不能丢失的待办')
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe(zh['op.ready']))
-    expect(actions.primeSessionDraft).toHaveBeenCalledWith(targetId, `${zh['cmd.prompt.todo']}\n不能丢失的待办`)
+    expect(actions.primeSessionDraft).toHaveBeenCalledWith(targetId, `${zh['cmd.prompt.todo']}\n不能丢失的待办`, undefined)
     expect(screen.getByRole('dialog', { name: '会话 A' })).not.toBeNull()
     expect(screen.queryByRole('complementary', { name: zh['op.target'] })).toBeNull()
   })
 
-  it.each(['new', 'existing'] as const)('does not report success when priming the %s target returns false', async destination => {
+  it.each(['new', 'existing'] as const)('does not report success when priming the %s target returns null', async destination => {
     const { actions } = fixture()
     if (destination === 'new') selectWorkspace()
     else fireEvent.click(screen.getByRole('button', { name: '会话 A', exact: true }))
-    actions.primeSessionDraft.mockReturnValue(false)
+    actions.primeSessionDraft.mockReturnValue(null)
     openAction('cmd.addTodo')
     submitContent('不能丢失的待办')
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(zh['op.failed']))
     expect(actions.primeSessionDraft).toHaveBeenCalledWith(destination === 'new' ? composerId : targetId,
-      `${zh['cmd.prompt.todo']}\n不能丢失的待办`)
+      `${zh['cmd.prompt.todo']}\n不能丢失的待办`, undefined)
     expect(screen.getByDisplayValue('不能丢失的待办')).not.toBeNull()
     expect(screen.queryByText(zh['op.ready'])).toBeNull()
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('offers an explicit replace action when the target already holds an unsent draft', async () => {
+    const { actions } = fixture()
+    fireEvent.click(screen.getByRole('button', { name: '会话 A', exact: true }))
+    actions.primeSessionDraft.mockReturnValueOnce('preserved').mockReturnValue('applied')
+    openAction('cmd.setReminder')
+    fireEvent.change(screen.getByLabelText(zh['op.content']), { target: { value: '覆盖旧草稿' } })
+    fireEvent.change(screen.getByLabelText(zh['op.date']), { target: { value: '2099-12-31' } })
+    fireEvent.change(screen.getByLabelText(zh['op.time']), { target: { value: '09:30' } })
+    fireEvent.click(screen.getByRole('button', { name: zh['op.prepare'] }))
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain(zh['op.preserved']))
+    expect(screen.queryByText(zh['op.ready'])).toBeNull()
+    // One explicit confirmation replaces the target's existing draft.
+    fireEvent.click(screen.getByRole('button', { name: zh['op.replaceDraft'] }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe(zh['op.ready']))
+    expect(actions.primeSessionDraft).toHaveBeenLastCalledWith(targetId, expect.any(String), { replaceExisting: true })
+  })
+
+  it('reports the busy outcome separately from a preserved draft', async () => {
+    const { actions } = fixture()
+    fireEvent.click(screen.getByRole('button', { name: '会话 A', exact: true }))
+    actions.primeSessionDraft.mockReturnValue('blocked')
+    openAction('cmd.addTodo')
+    submitContent('正在处理中')
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(zh['op.busy']))
+    expect(screen.queryByText(zh['op.preserved'])).toBeNull()
   })
 
   it('escape closes the operation form first and the drawer second', () => {

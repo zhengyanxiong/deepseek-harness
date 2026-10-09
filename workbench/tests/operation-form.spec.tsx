@@ -12,7 +12,7 @@ function renderForm(overrides: Partial<{
   kind: 'new-session' | 'run-workflow' | 'add-todo' | 'set-reminder'
   draft: OperationDraft
   onChange: (draft: OperationDraft) => void
-  onPrepare: (prompt: string) => Promise<boolean>
+  onPrepare: (prompt: string, options?: { readonly replaceExisting?: boolean }) => Promise<boolean | 'preserved' | 'blocked'>
   onClose: () => void
 }> = {}) {
   const props = {
@@ -72,6 +72,29 @@ describe('OperationForm', () => {
     expect(screen.getByDisplayValue(draft.content)).not.toBeNull()
   })
 
+  it('shows a replace action when the target already holds a draft and retries with replaceExisting', async () => {
+    const onPrepare = vi.fn(async (_prompt: string, options?: { readonly replaceExisting?: boolean }) =>
+      options?.replaceExisting === true ? true : 'preserved')
+    renderForm({ draft: { ...emptyDraft(), content: '新草稿' }, onPrepare })
+    fireEvent.submit(screen.getByRole('button', { name: zh['op.prepare'] }).closest('form')!)
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain(zh['op.preserved']))
+    expect(onPrepare).toHaveBeenNthCalledWith(1, '新草稿', undefined)
+
+    fireEvent.click(screen.getByRole('button', { name: zh['op.replaceDraft'] }))
+    await waitFor(() => expect(onPrepare).toHaveBeenNthCalledWith(2, '新草稿', { replaceExisting: true }))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('reports the busy outcome without offering a replace action', async () => {
+    const onPrepare = vi.fn(async () => 'blocked' as const)
+    renderForm({ draft: { ...emptyDraft(), content: '忙碌目标' }, onPrepare })
+    fireEvent.submit(screen.getByRole('button', { name: zh['op.prepare'] }).closest('form')!)
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(zh['op.busy']))
+    expect(screen.queryByRole('button', { name: zh['op.replaceDraft'] })).toBeNull()
+  })
+
   it('ignores repeated submits while busy and re-enables after settlement', async () => {
     let resolve!: (value: boolean) => void
     const pending = new Promise<boolean>(res => { resolve = res })
@@ -97,7 +120,7 @@ describe('OperationForm', () => {
     fireEvent.submit(screen.getByRole('button', { name: zh['op.prepare'] }).closest('form')!)
 
     await waitFor(() => expect(onPrepare).toHaveBeenCalledTimes(1))
-    expect(onPrepare).toHaveBeenCalledWith(`${zh['cmd.prompt.todo']}\n写周报`)
+    expect(onPrepare).toHaveBeenCalledWith(`${zh['cmd.prompt.todo']}\n写周报`, undefined)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByText(zh['op.explain'])).not.toBeNull()
   })
