@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for 2026-10-15-workbench-tab-slot-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-15-workbench-tab-slot-design.md
+/workbench-tab-extension-slot-design:
+  en: 0d661a10ee3efec8
+  zh: cc4ff3a9f0832b98
+/workbench-tab-extension-slot-design/goals-and-scope:
+  en: 391a7f66cbc9c959
+  zh: 8fa8669d5999fedb
+/workbench-tab-extension-slot-design/slot-contract:
+  en: 8e13d6e45be05e15
+  zh: 69b31fe6c141403f
+/workbench-tab-extension-slot-design/host-changes-workbenchpanel-and-apply:
+  en: 63124cbd0e680e03
+  zh: 2d7b8a3efff9f5a7
+/workbench-tab-extension-slot-design/command-palette-linkage:
+  en: ae87c2f9d6fe6112
+  zh: c256532352908600
+/workbench-tab-extension-slot-design/error-handling:
+  en: 8d220803f6f69ee7
+  zh: 91559d11c05ec3bf
+/workbench-tab-extension-slot-design/verification:
+  en: 1d1d2ec2fb4e18b1
+  zh: 264525a9bd9c4c7d
