@@ -32,7 +32,8 @@ it('renders an existing project in the edit form instead of a creation trigger',
     t, open: true, project, create: async () => ({ ok: true, value: project }), update: async () => ({ ok: true, value: project }), onCreated: () => undefined,
   }))
   expect(markup).toContain('value="Shop"')
-  expect(markup).toContain('>Save<')
+  expect(markup).toContain(`>${en['form.next']}<`)
+  expect(markup).not.toContain(`>${en['form.save']}<`)
   expect(markup).toContain(en['project.step.sources'])
   expect(markup).toContain(en['project.step.preview'])
   expect(markup).not.toContain(en['project.new'])

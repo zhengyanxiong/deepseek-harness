@@ -261,7 +261,7 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   }
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
-    if (!editing && step !== 'preview') {
+    if (step !== 'preview') {
       if (!advance()) setFailure('invalid_form')
       return
     }
@@ -277,7 +277,7 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
       setFailure(error instanceof Error ? error.message : String(error))
     } finally { setBusy(false) }
   }
-  const primaryLabel = busy ? t('form.submitPending') : editing ? t('form.save') : step === 'preview' ? t('form.create') : t('form.next')
+  const primaryLabel = busy ? t('form.submitPending') : step === 'preview' ? (editing ? t('form.save') : t('form.create')) : t('form.next')
   return <form style={formStyle} onSubmit={event => { void submit(event) }}>
     <ol aria-label={t('project.steps')} style={{ ...stepRail, gridTemplateColumns: `repeat(${String(PROJECT_STEPS.length)}, minmax(0, 1fr))` }}>
       {PROJECT_STEPS.map((candidate, index) => {
@@ -364,7 +364,7 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
       <Button type="button" variant="ghost" onClick={reset}>{t('form.cancel')}</Button>
       <span style={footerSpacer} />
       {stepIndex > 0 && <Button type="button" variant="outline" icon={<IconChevronLeftOutlineRegular />} onClick={back}>{t('form.back')}</Button>}
-      <Button type="submit" variant="primary" disabled={busy || (editing ? request === undefined : !canVisit(PROJECT_STEPS[stepIndex + 1]?.key ?? 'preview'))}>{primaryLabel}</Button>
+      <Button type="submit" variant="primary" disabled={busy || (step === 'preview' ? request === undefined : !canVisit(PROJECT_STEPS[stepIndex + 1]?.key ?? 'preview'))}>{primaryLabel}</Button>
     </div>
   </form>
 }

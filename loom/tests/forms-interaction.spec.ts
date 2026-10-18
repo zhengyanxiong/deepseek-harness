@@ -2,8 +2,10 @@
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, it } from 'vitest'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { ProjectForm } from '../src/client/LoomForms.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
+import type { ProjectRecord } from 'dsh-workloom/types'
 
 const t = (key: LoomKey) => en[key]
 let root: Root | undefined
@@ -39,4 +41,43 @@ it('advances from the name step with only a name before repositories are filled'
   expect(container.textContent).toContain(en['source.hint'])
   expect(container.textContent).not.toContain('invalid_form')
   expect(container.querySelector('input[aria-label="Project name"]')).toBeNull()
+})
+
+it('walks an edited project through every step and saves only from the preview', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  const project: ProjectRecord = {
+    id: brandString<ProjectRecord['id']>('p1'),
+    config: { name: 'Shop', sources: [{ id: brandString<'loom.source'>('web'), repo: '/repo/shop', path: 'shop' }], modules: [] },
+  }
+  let updates = 0
+  let savedName = ''
+  container = document.createElement('div')
+  document.body.append(container)
+  root = createRoot(container)
+  await act(async () => {
+    root?.render(createElement(ProjectForm, {
+      t, open: true, project,
+      create: async () => ({ ok: false, error: { code: 'unused', message: 'unused' } }),
+      update: async request => { updates += 1; savedName = request.config.name; return { ok: true, value: project } },
+      onCreated: () => undefined,
+    }))
+  })
+  const find = (label: string) => [...(container?.querySelectorAll('button') ?? [])].find(button => button.textContent === label)
+  const click = async (label: string) => {
+    const target = find(label)
+    expect(target).toBeDefined()
+    await act(async () => { target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  }
+  expect(find(en['form.save'])).toBeUndefined()
+  await click(en['form.next'])
+  expect(container.textContent).toContain(en['source.hint'])
+  await click(en['form.next'])
+  expect(container.textContent).toContain(en['module.optional'])
+  await click(en['form.next'])
+  expect(container.textContent).toContain(en['project.previewHint'])
+  expect(find(en['form.save'])).toBeDefined()
+  expect(updates).toBe(0)
+  await click(en['form.save'])
+  expect(updates).toBe(1)
+  expect(savedName).toBe('Shop')
 })
