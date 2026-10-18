@@ -144,13 +144,17 @@ interface ProjectFormProps {
   t: Translate
   create(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
   onCreated(project: ProjectRecord): void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 type ProjectStep = 'basics' | 'modules' | 'preview'
 
 /** Create one project with its repositories, optional modules and a preview before saving. */
-export function ProjectForm({ t, create, onCreated }: ProjectFormProps) {
-  const [open, setOpen] = useState(false)
+export function ProjectForm({ t, create, onCreated, open: controlledOpen, onOpenChange }: ProjectFormProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
   const [step, setStep] = useState<ProjectStep>('basics')
   const [name, setName] = useState('')
   const [sources, setSources] = useState<SourceDraft[]>([emptySourceRow()])
@@ -235,11 +239,15 @@ interface VersionFormProps {
   project: ProjectRecord
   create(request: CreateVersionRequest): Promise<RemoteResult<VersionRecord>>
   onCreated(version: VersionRecord): void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /** Create one version with a ref per project repository; Lock generation stays separate. */
-export function VersionForm({ t, project, create, onCreated }: VersionFormProps) {
-  const [open, setOpen] = useState(false)
+export function VersionForm({ t, project, create, onCreated, open: controlledOpen, onOpenChange }: VersionFormProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
   const [name, setName] = useState('')
   const [refs, setRefs] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -273,11 +281,15 @@ interface TaskFormProps {
   version: VersionRecord
   create(request: CreateTaskRequest): Promise<RemoteResult<TaskRecord>>
   onCreated(task: TaskRecord): void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /** Create one task under the selected version. */
-export function TaskForm({ t, version, create, onCreated }: TaskFormProps) {
-  const [open, setOpen] = useState(false)
+export function TaskForm({ t, version, create, onCreated, open: controlledOpen, onOpenChange }: TaskFormProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)

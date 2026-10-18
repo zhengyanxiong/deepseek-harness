@@ -1,16 +1,22 @@
-/** Loom workbench: catalog-driven projects/tasks beside the native Session surface. */
+/** Loom workbench shell: project tree, native conversation, context and kanban. */
 import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord, WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord } from 'dsh-loom/types'
-import { TaskBoard } from './TaskBoard.tsx'
+import type {
+  AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock,
+  PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord,
+  WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord,
+} from 'dsh-loom/types'
 import { LockButton, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
-import { LoomDiff } from './LoomDiff.tsx'
-import type { BoardFilter, BoardTask } from './board.ts'
+import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
+import { LoomContextPanel } from './LoomContextPanel.tsx'
+import { LoomKanban, LoomKanbanAside } from './LoomKanban.tsx'
+import { activeWorkspaceCount, boundSessions, currentWorkspace, type ShellFilter } from './projection.ts'
+import { COLORS, metaLine, pill, select, shortCommit, STATUS_META } from './shell.ts'
 import { NS } from './locales.ts'
 
 /** Host catalog access owned by the registration context. */
@@ -40,32 +46,59 @@ type CatalogState =
   | { readonly status: 'loading' }
   | { readonly status: 'error' }
   | { readonly status: 'ready'; readonly snapshot: CatalogSnapshot }
+type View = 'workbench' | 'kanban'
+type CreateKind = 'project' | 'version' | 'task'
 
-const frame: CSSProperties = { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: 'var(--dsw-alias-label-primary)', background: 'var(--dsw-alias-bg-base)', fontSize: 13 }
-const line: CSSProperties = { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '12px 16px', borderBottom: '0.5px solid var(--dsw-alias-border-l4)' }
-const side: CSSProperties = { minWidth: 160, flex: '0 1 220px', overflow: 'auto', padding: 16 }
-const note: CSSProperties = { padding: 12, borderRadius: 8, color: 'var(--dsw-alias-label-secondary)', background: 'var(--dsw-alias-bg-layer-1)', lineHeight: 1.6 }
-const button: CSSProperties = { color: 'inherit', background: 'transparent', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', font: 'inherit' }
-const sectionTitle: CSSProperties = { fontSize: 13, fontWeight: 500, margin: '12px 0' }
-const bottomKeys = ['diff', 'terminal', 'tests', 'audit', 'costs'] as const
+const frame: CSSProperties = { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: COLORS.text, background: COLORS.bg, fontSize: 13, overflow: 'hidden' }
+const topbar: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, height: 44, padding: '0 12px', background: COLORS.panel, borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none', position: 'relative', zIndex: 20 }
+const sidebar: CSSProperties = { width: 230, flex: 'none', background: COLORS.panel, borderRight: `0.5px solid ${COLORS.border}`, overflowY: 'auto', padding: '8px 0' }
+const center: CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: COLORS.bg }
+const aside: CSSProperties = { width: 272, flex: 'none', display: 'flex', flexDirection: 'column', borderLeft: `0.5px solid ${COLORS.border}`, background: COLORS.panel }
+const convHeader: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '9px 16px', borderBottom: `0.5px solid ${COLORS.border}`, minHeight: 40, flex: 'none' }
+const note: CSSProperties = { padding: 12, borderRadius: 8, color: COLORS.dim, background: COLORS.panel2, lineHeight: 1.6, margin: 0 }
 
-/** Render the native conversation inside an independently retained session scope.
- * @param props - Locale, native catalog, session acquisition, catalog reads, and renderer seats.
- * @returns Loom's workbench; unconnected capabilities stay labeled instead of showing mock data.
+function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?: string; badge?: string; label: string; color?: string; count?: string; onClick: () => void }) {
+  const { depth, active, arrow, icon, badge, label, color, count, onClick } = props
+  return <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left', background: active === true ? COLORS.panel3 : 'transparent', border: 'none', borderLeft: `2px solid ${active === true ? COLORS.accent : 'transparent'}`, padding: `5px 12px 5px ${String(14 + depth * 13)}px`, color: active === true ? COLORS.text : COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: depth === 2 ? 12 : 13 }}>
+    {arrow !== undefined && <span style={{ fontSize: 9, color: COLORS.faint, width: 9 }}>{arrow}</span>}
+    {icon !== undefined && <span>{icon}</span>}
+    {badge !== undefined && <span style={{ fontSize: 10, color: COLORS.cyan, background: 'rgba(57,197,207,.12)', padding: '0 5px', borderRadius: 4 }}>{badge}</span>}
+    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+    {count !== undefined && <span style={{ marginLeft: 'auto', ...metaLine }}>{count}</span>}
+    {color !== undefined && <span style={{ marginLeft: count === undefined ? 'auto' : 0, color, fontSize: 10 }}>●</span>}
+  </button>
+}
+
+/**
+ * Render the Loom shell. Every card and counter comes from the Host catalog; unwired
+ * integrations stay labeled instead of showing mock data.
+ * @param props - locale, native catalog, session acquisition, catalog actions, and renderer seats.
+ * @returns the whole Loom page.
  */
 export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, cleanupWorkspace, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
+  const [view, setView] = useState<View>('workbench')
+  const [project, setProject] = useState<ProjectRecord['id']>()
+  const [version, setVersion] = useState<VersionRecord['id']>()
+  const [task, setTask] = useState<TaskRecord>()
   const [selected, setSelected] = useState<SessionId>()
+  const [dismissed, setDismissed] = useState<TaskRecord['id']>()
   const [held, setHeld] = useState<{ id: SessionId; reference: SessionReference }>()
   const [failure, setFailure] = useState<SessionId>()
   const [search, setSearch] = useState('')
-  const [view, setView] = useState<'workbench' | 'board'>('workbench')
-  const [bottom, setBottom] = useState<typeof bottomKeys[number]>()
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
-  const [project, setProject] = useState<ProjectRecord['id']>()
-  const [version, setVersion] = useState<VersionRecord['id']>()
-  const [task, setTask] = useState<BoardTask>()
+  const [asideOpen, setAsideOpen] = useState(true)
+  const [bottomCollapsed, setBottomCollapsed] = useState(true)
+  const [pane, setPane] = useState<LoomBottomPane>('diff')
+  const [kbMode, setKbMode] = useState<'flat' | 'grouped'>('grouped')
+  const [filterProject, setFilterProject] = useState('')
+  const [filterVersion, setFilterVersion] = useState('')
+  const [kbSearch, setKbSearch] = useState('')
+  const [expandedProjects, setExpandedProjects] = useState<ReadonlySet<string>>(new Set())
+  const [expandedVersions, setExpandedVersions] = useState<ReadonlySet<string>>(new Set())
+  const [create, setCreate] = useState<CreateKind>()
+  const [menuOpen, setMenuOpen] = useState(false)
   useEffect(() => {
     let active = true
     setCatalog({ status: 'loading' })
@@ -79,166 +112,254 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     if (selected === undefined) return
     let reference: SessionReference
     try { reference = retainSession(selected) }
-    catch (error) { setFailure(selected); return }
+    catch { setFailure(selected); return }
     let active = true
     setFailure(undefined)
     setHeld({ id: selected, reference })
-    void reference.ready.catch((_error: unknown) => { if (active) setFailure(selected) })
+    void reference.ready.catch(() => { if (active) setFailure(selected) })
     return () => { active = false; reference.release() }
   }, [selected, retainSession])
   useEffect(() => {
-    if (task === undefined || selected !== undefined || catalog.status !== 'ready') return
+    if (task === undefined || selected !== undefined || dismissed === task.id || catalog.status !== 'ready') return
     const record = catalog.snapshot.tasks.find(candidate => candidate.id === task.id)
     const bound = record?.attempts.at(-1)?.sessionIds.at(-1)
     if (bound !== undefined) setSelected(bound)
-  }, [task, selected, catalog])
+  }, [task, selected, dismissed, catalog])
+  const snapshot = catalog.status === 'ready' ? catalog.snapshot : undefined
+  const currentProject = snapshot?.projects.find(candidate => candidate.id === project)
+  const currentVersion = snapshot?.versions.find(candidate => candidate.id === version)
+  const boundRows = snapshot === undefined ? [] : boundSessions(snapshot)
+  const boundIds = new Set(boundRows.map(row => row.sessionId))
+  const looseSessions = sessions.ids.filter(id => !boundIds.has(id) && (sessions.byId[id]?.displayTitle.toLowerCase().includes(search.toLowerCase()) ?? false))
+  const detailTask = task === undefined ? undefined : snapshot?.tasks.find(candidate => candidate.id === task.id) ?? task
+  const taskVersion = detailTask === undefined || snapshot === undefined ? undefined : snapshot.versions.find(candidate => candidate.id === detailTask.versionId)
+  const displayProject = currentProject ?? (taskVersion === undefined ? undefined : snapshot?.projects.find(candidate => candidate.id === taskVersion.projectId))
+  const displayVersion = currentVersion ?? taskVersion
+  const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
+  const activeCount = snapshot === undefined ? 0 : activeWorkspaceCount(snapshot)
   const available = held !== undefined && held.id === selected && failure !== selected
-  const currentProject = catalog.status === 'ready' ? catalog.snapshot.projects.find(candidate => candidate.id === project) : undefined
-  const currentVersion = catalog.status === 'ready' ? catalog.snapshot.versions.find(candidate => candidate.id === version) : undefined
-  const detailTask = task === undefined ? undefined : (catalog.status === 'ready' ? catalog.snapshot.tasks.find(candidate => candidate.id === task.id) ?? task : task)
-  const refresh = () => setAttempt(current => current + 1)
-  const execution: ExecutionActions = { prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, cleanupWorkspace, onSession: id => { setSelected(id); setView('workbench') }, onChanged: refresh }
-  const detailWorkspaceId = detailTask?.attempts.at(-1)?.workspaceId
-  const scopedTasks = catalog.status === 'ready' ? catalog.snapshot.tasks.filter(candidate => currentVersion === undefined ? true : candidate.versionId === currentVersion.id) : []
-  const currentAttempt = detailTask?.attempts.at(-1)
-  const currentWorkspace = currentAttempt === undefined || catalog.status !== 'ready' ? undefined : catalog.snapshot.workspaces.find(candidate => candidate.id === currentAttempt.workspaceId)
+  const execution: ExecutionActions = {
+    prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, cleanupWorkspace,
+    onSession: id => { setSelected(id); setView('workbench') },
+    onChanged: () => setAttempt(current => current + 1),
+  }
+  const selectTask = (record: TaskRecord): void => {
+    if (snapshot !== undefined) {
+      const owner = snapshot.versions.find(candidate => candidate.id === record.versionId)
+      if (owner !== undefined) { setProject(owner.projectId); setVersion(owner.id) }
+    }
+    setDismissed(undefined)
+    setTask(record); setSelected(undefined); setView('workbench')
+  }
+  const selectSession = (id: SessionId, owner?: TaskRecord): void => {
+    if (owner !== undefined) setTask(owner)
+    setSelected(id); setView('workbench')
+  }
+  const toggle = (set: ReadonlySet<string>, apply: (next: ReadonlySet<string>) => void, id: string): void => {
+    const next = new Set(set)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    apply(next)
+  }
   async function transition(target: TransitionTaskRequest['target'], actor: TransitionTaskRequest['actor']): Promise<void> {
     if (detailTask === undefined) return
     try {
       const result = await transitionTask({ taskId: detailTask.id, target, actor })
-      if (result.ok) refresh()
+      if (result.ok) setAttempt(current => current + 1)
     } catch { /* the next snapshot keeps the authoritative status */ }
   }
+  function openCreate(kind: CreateKind): void { setCreate(kind); setMenuOpen(false) }
+  const selectedSessionTitle = selected === undefined ? undefined : sessions.byId[selected]?.displayTitle
+  const headerTitle = detailTask?.title ?? selectedSessionTitle ?? t('conv.titleFallback')
+  const filter: ShellFilter = {
+    ...(filterProject === '' ? {} : { projectId: filterProject as ProjectRecord['id'] }),
+    ...(filterVersion === '' ? {} : { versionId: filterVersion as VersionRecord['id'] }),
+    ...(kbSearch.trim() === '' ? {} : { search: kbSearch }),
+  }
+  const createVersionFor = (projectRecord: ProjectRecord): VersionRecord | undefined => snapshot?.versions.filter(candidate => candidate.projectId === projectRecord.id).at(-1)
+  const createDisabledVersion = currentProject === undefined
+  const createDisabledTask = currentVersion === undefined
   return <div style={frame}>
-    <header style={line}>
-      <span style={{ fontSize: 18, fontWeight: 500 }}>{t('panel')}</span>
-      <button style={button} aria-pressed={view === 'workbench'} onClick={() => setView('workbench')}>{t('workbench')}</button>
-      <button style={button} aria-pressed={view === 'board'} onClick={() => setView('board')}>{t('view.kanban')}</button>
+    <header style={topbar}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 14 }}>
+        <span style={{ width: 20, height: 20, borderRadius: 5, background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.purple})`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff' }}>织</span>
+        {t('brand')}
+      </span>
+      <label style={{ ...pill, padding: '3px 8px', background: COLORS.panel2 }}>
+        <span style={metaLine}>{t('top.project')}</span>
+        <select aria-label={t('top.project')} value={project ?? ''} onChange={(event) => { const next = event.target.value; setProject(next === '' ? undefined : next as ProjectRecord['id']); setVersion(undefined); setTask(undefined); setSelected(undefined) }} style={{ background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+          <option value="">{t('top.allProjects')}</option>
+          {(snapshot?.projects ?? []).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.config.name}</option>)}
+        </select>
+      </label>
+      <label style={{ ...pill, padding: '3px 8px', background: COLORS.panel2 }}>
+        <span style={metaLine}>{t('top.version')}</span>
+        <select aria-label={t('top.version')} value={version ?? ''} onChange={(event) => {
+          const next = event.target.value
+          if (next === '') { setVersion(undefined); setTask(undefined); setSelected(undefined); return }
+          const owner = snapshot?.versions.find(candidate => candidate.id === next)
+          if (owner !== undefined) setProject(owner.projectId)
+          setVersion(next as VersionRecord['id']); setTask(undefined); setSelected(undefined)
+        }} style={{ background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+          <option value="">{t('top.allVersions')}</option>
+          {(snapshot?.versions ?? []).filter(candidate => project === undefined || candidate.projectId === project).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+        </select>
+      </label>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: COLORS.dim, fontSize: 12 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 999, background: COLORS.green, boxShadow: `0 0 6px ${COLORS.green}` }} />
+        {activeCount} {t('top.activeWorkspaces')}
+      </span>
+      <div style={{ display: 'flex', border: `0.5px solid ${COLORS.border}`, borderRadius: 7, overflow: 'hidden' }}>
+        <button type="button" aria-pressed={view === 'workbench'} onClick={() => setView('workbench')} style={{ background: view === 'workbench' ? COLORS.panel3 : 'none', border: 'none', color: view === 'workbench' ? COLORS.text : COLORS.dim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: view === 'workbench' ? 600 : 400 }}>{t('workbench')}</button>
+        <button type="button" aria-pressed={view === 'kanban'} onClick={() => setView('kanban')} style={{ background: view === 'kanban' ? COLORS.panel3 : 'none', border: 'none', color: view === 'kanban' ? COLORS.text : COLORS.dim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: view === 'kanban' ? 600 : 400 }}>{t('view.kanban')}</button>
+      </div>
+      <span style={{ flex: 1 }} />
+      <div style={{ position: 'relative' }}>
+        <button type="button" aria-label={t('top.new')} aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: COLORS.accent, color: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700 }}>＋</button>
+        {menuOpen && <div style={{ position: 'absolute', top: 32, right: 0, width: 160, background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, padding: 4, display: 'flex', flexDirection: 'column', zIndex: 40, boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
+          <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px' }} onClick={() => openCreate('project')}>{t('top.newProject')}</button>
+          <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px', opacity: createDisabledVersion ? 0.45 : 1 }} disabled={createDisabledVersion} onClick={() => openCreate('version')}>{t('top.newVersion')}</button>
+          <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px', opacity: createDisabledTask ? 0.45 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>{t('top.newTask')}</button>
+        </div>}
+      </div>
+      <button type="button" aria-label={t('top.settings')} aria-pressed={asideOpen} onClick={() => setAsideOpen(value => !value)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer', fontSize: 14 }}>⚙</button>
     </header>
-    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'auto' }}>
-      <aside style={{ ...side, borderRight: '0.5px solid var(--dsw-alias-border-l4)' }}>
-        <h2 style={sectionTitle}>{t('project.title')}</h2>
-        {catalog.status === 'loading' && <p style={note}>{t('state.loading')}</p>}
-        {catalog.status === 'error' && <p role="alert" style={note}>{t('state.error')} <button style={{ ...button, marginTop: 8 }} onClick={() => setAttempt(current => current + 1)}>{t('form.retry')}</button></p>}
-        {catalog.status === 'ready' && catalog.snapshot.projects.length === 0 && <p style={note}>{t('project.empty')}</p>}
-        {catalog.status === 'ready' && catalog.snapshot.projects.map(project => <ProjectNode key={project.id} project={project}
-          versions={catalog.snapshot.versions.filter(candidate => candidate.projectId === project.id)}
-          locks={catalog.snapshot.locks} selected={version} onSelect={setVersion}
-          selectedProject={currentProject?.id} onProject={id => { setProject(current => current === id ? undefined : id); setVersion(undefined) }} t={t} />)}
-        {catalog.status === 'ready' && <>
-          <ProjectForm t={t} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); refresh() }} />
-          {currentProject !== undefined && <VersionForm t={t} project={currentProject} create={createVersion} onCreated={created => { setVersion(created.id); setTask(undefined); setSelected(undefined); refresh() }} />}
-          {currentVersion !== undefined && <>
-            <TaskForm t={t} version={currentVersion} create={createTask} onCreated={created => { setTask(created); setView('workbench'); refresh() }} />
-            <LockButton t={t} version={currentVersion} generate={generateLock} onCreated={refresh} />
-          </>}
-        </>}
-        <h2 style={sectionTitle}>{t('task.title')}</h2>
-        {catalog.status === 'ready' && scopedTasks.length === 0 && <p style={note}>{t('task.empty')}</p>}
-        {scopedTasks.map(candidate => <button key={candidate.id} aria-pressed={task?.id === candidate.id} style={{ ...button, display: 'block', width: '100%', textAlign: 'left', marginTop: 6, overflowWrap: 'anywhere', background: task?.id === candidate.id ? 'var(--dsw-alias-bg-layer-1)' : 'transparent' }} onClick={() => {
-          if (catalog.status === 'ready') {
-            const owner = catalog.snapshot.versions.find(version => version.id === candidate.versionId)
-            if (owner !== undefined) { setProject(owner.projectId); setVersion(owner.id) }
-          }
-          setTask(candidate); setSelected(undefined); setView('workbench')
-        }}>{candidate.title} · {t(STATUS_KEY[candidate.status])}</button>)}
-        <h2 style={sectionTitle}>{t('sessions')}</h2>
-        <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...button, boxSizing: 'border-box', width: '100%', cursor: 'text' }} />
-        {sessions.ids.length === 0 && <p style={note}>{t('noSessions')}</p>}
-        {sessions.ids.filter(id => sessions.byId[id]?.displayTitle.toLowerCase().includes(search.toLowerCase())).map(id => <button key={id} aria-pressed={selected === id} style={{ ...button, display: 'block', textAlign: 'left', width: '100%', marginTop: 8, overflowWrap: 'anywhere', background: selected === id ? 'var(--dsw-alias-bg-layer-1)' : 'transparent' }} onClick={() => { setSelected(id); setView('workbench') }}>{sessions.byId[id]?.displayTitle || t('untitledSession')}</button>)}
+    <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <aside style={sidebar}>
+        <section style={{ marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>📌 {t('side.pinned')}</div>
+          {snapshot === undefined || snapshot.tasks.every(candidate => candidate.status !== 'running' && candidate.status !== 'review') ? <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.empty')}</p> : null}
+          {(snapshot?.projects ?? []).filter(candidate => (snapshot?.tasks ?? []).some(item => (item.status === 'running' || item.status === 'review') && snapshot?.versions.some(v => v.id === item.versionId && v.projectId === candidate.id))).map(candidate => <div key={candidate.id}>
+            <TreeRow depth={0} icon="📁" label={candidate.config.name} arrow={expandedProjects.has(candidate.id) ? '▾' : '▸'} color={COLORS.green} onClick={() => { setProject(candidate.id); toggle(expandedProjects, setExpandedProjects, candidate.id) }} />
+            {(snapshot?.tasks ?? []).filter(item => (item.status === 'running' || item.status === 'review') && snapshot?.versions.some(v => v.id === item.versionId && v.projectId === candidate.id)).map(item => <TreeRow key={item.id} depth={2} icon="💬" label={item.title} active={task?.id === item.id} color={COLORS.green} onClick={() => selectTask(item)} />)}
+          </div>)}
+        </section>
+        <section style={{ marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>{t('side.projects')} <span style={{ marginLeft: 'auto', fontWeight: 400 }}>{String(snapshot?.projects.length ?? 0)}</span></div>
+          {(snapshot?.projects ?? []).map(candidate => {
+            const versions = (snapshot?.versions ?? []).filter(item => item.projectId === candidate.id)
+            const open = expandedProjects.has(candidate.id)
+            return <div key={candidate.id}>
+              <TreeRow depth={0} arrow={open ? '▾' : '▸'} icon="📁" label={candidate.config.name} active={project === candidate.id} count={String(versions.length)} onClick={() => { setProject(candidate.id); setVersion(undefined); setTask(undefined); toggle(expandedProjects, setExpandedProjects, candidate.id) }} />
+              {open && versions.map(item => {
+                const tasks = (snapshot?.tasks ?? []).filter(candidateTask => candidateTask.versionId === item.id)
+                const openVersion = expandedVersions.has(item.id)
+                return <div key={item.id}>
+                  <TreeRow depth={1} arrow={openVersion ? '▾' : '▸'} badge={item.name} label="" active={version === item.id && task === undefined} onClick={() => { setProject(candidate.id); setVersion(item.id); setTask(undefined); toggle(expandedVersions, setExpandedVersions, item.id) }} />
+                  {openVersion && tasks.map(itemTask => <TreeRow key={itemTask.id} depth={2} icon="💬" label={itemTask.title} active={task?.id === itemTask.id} color={itemTask.status === 'running' ? COLORS.green : COLORS.faint} onClick={() => selectTask(itemTask)} />)}
+                  {openVersion && tasks.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 2px 40px' }}>{t('task.empty')}</p>}
+                </div>
+              })}
+            </div>
+          })}
+          <button type="button" style={{ margin: '6px 12px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: 'pointer' }} onClick={() => openCreate('project')}>＋ {t('side.newProject')}</button>
+        </section>
+        <section style={{ marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>{t('side.tasks')}</div>
+          {looseSessions.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.empty')}</p>}
+          {looseSessions.map(id => <TreeRow key={id} depth={2} icon="💬" label={sessions.byId[id]?.displayTitle || t('untitledSession')} active={selected === id && detailTask === undefined} color={COLORS.purple} onClick={() => { setSelected(id); setTask(undefined); setView('workbench') }} />)}
+          <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...select, cursor: 'text', width: 'calc(100% - 24px)', margin: '2px 12px 6px', boxSizing: 'border-box' }} />
+          <button type="button" style={{ margin: '2px 12px 8px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: createDisabledTask ? 'not-allowed' : 'pointer', opacity: createDisabledTask ? 0.5 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>＋ {t('side.newTask')}</button>
+        </section>
+        {currentVersion !== undefined && <section style={{ margin: '4px 12px 12px', padding: 8, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.panel2 }}>
+          <div style={{ ...metaLine, marginBottom: 4 }}>{t('top.version')}: {currentVersion.name} · {activeCount} {t('ctx.workspace')}</div>
+          <LockButton t={t} version={currentVersion} generate={generateLock} onCreated={() => setAttempt(current => current + 1)} />
+        </section>}
       </aside>
-      <main style={{ flex: '1 0 320px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {view === 'board'
-          ? <div style={{ padding: 20, overflow: 'auto' }}>{catalog.status === 'ready'
-            ? <TaskBoard tasks={catalog.snapshot.tasks} filter={boardFilter(version, search)} t={t} onSelect={candidate => { setTask(candidate); setView('workbench') }} />
-            : <p style={note}>{t('state.loading')}</p>}</div>
-          : <>
-            <div style={line}>
-              <span style={{ fontWeight: 500, overflowWrap: 'anywhere' }}>{detailTask === undefined ? t('unboundSession') : detailTask.title}</span>
-              {detailTask !== undefined && <span style={{ color: 'var(--dsw-alias-label-secondary)' }}>{t(STATUS_KEY[detailTask.status])}</span>}
-              <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {view === 'kanban'
+        ? <LoomKanban
+            t={t}
+            snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [] }}
+            filter={filter}
+            mode={kbMode}
+            projectValue={filterProject}
+            versionValue={filterVersion}
+            searchValue={kbSearch}
+            onMode={setKbMode}
+            onProject={(value) => { setFilterProject(value); setFilterVersion('') }}
+            onVersion={setFilterVersion}
+            onSearch={setKbSearch}
+            onSelect={selectTask}
+            onNewCard={(projectRecord) => {
+              const latest = createVersionFor(projectRecord)
+              setProject(projectRecord.id)
+              if (latest !== undefined) { setVersion(latest.id); setCreate('task') }
+            }}
+          />
+        : <main style={center}>
+            <div style={convHeader}>
+              <span style={{ fontWeight: 700, fontSize: 13, overflowWrap: 'anywhere' }}>{headerTitle}</span>
+              {displayProject !== undefined && <span style={{ ...pill, color: '#7db3ff', borderColor: 'rgba(47,129,247,.45)' }}>{displayProject.config.name}</span>}
+              {displayVersion !== undefined && <span style={{ ...pill, color: COLORS.cyan, borderColor: 'rgba(57,197,207,.4)' }}>{displayVersion.name}</span>}
+              {displayProject?.config.modules.slice(0, 2).map(module => <span key={module.id} style={pill}>{module.id}</span>)}
+              {shortCommit(detailTask?.attempts.at(-1)?.lock) !== undefined && <span style={pill}>🔒 {shortCommit(detailTask?.attempts.at(-1)?.lock)}</span>}
+              {detailTask !== undefined && <span style={pill}>{t('task.status')}: {t(STATUS_META[detailTask.status].key)}</span>}
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {detailTask?.status === 'running' && <>
-                  <button style={button} onClick={() => { void transition('review', 'agent') }}>{t('task.review')}</button>
-                  <button style={button} onClick={() => { void transition('failed', 'human') }}>{t('task.fail')}</button>
+                  <button style={select} onClick={() => { void transition('review', 'agent') }}>{t('task.review')}</button>
+                  <button style={select} onClick={() => { void transition('failed', 'human') }}>{t('task.fail')}</button>
                 </>}
                 {detailTask?.status === 'review' && <>
-                  <button style={button} onClick={() => { void transition('completed', 'human') }}>{t('task.accept')}</button>
-                  <button style={button} onClick={() => { void transition('running', 'human') }}>{t('task.continue')}</button>
-                  <button style={button} onClick={() => { void transition('failed', 'human') }}>{t('task.fail')}</button>
+                  <button style={select} onClick={() => { void transition('completed', 'human') }}>{t('task.accept')}</button>
+                  <button style={select} onClick={() => { void transition('running', 'human') }}>{t('task.continue')}</button>
+                  <button style={select} onClick={() => { void transition('failed', 'human') }}>{t('task.fail')}</button>
                 </>}
-                {selected !== undefined && <button style={button} onClick={() => setSelected(undefined)}>{t('session.close')}</button>}
+                {selected !== undefined && <button style={select} onClick={() => { setDismissed(detailTask?.id); setSelected(undefined) }}>{t('session.close')}</button>}
               </span>
             </div>
-            {failure !== undefined && failure === selected
-              ? <p role="alert" style={{ ...note, margin: 20 }}>{t('session.unavailable')}</p>
-              : available
-                ? <SessionProvider key={held.id} session={held.reference}>{renderSlot('loom.conversation', {})}</SessionProvider>
-                : selected !== undefined
-                  ? <p style={{ ...note, margin: 20 }}>{t('session.loading')}</p>
-                  : detailTask === undefined
-                    ? <p style={{ ...note, margin: 20 }}>{t('chooseTask')}</p>
-                    : <div style={{ padding: 20, overflow: 'auto' }}>
-                        <h2 style={sectionTitle}>{t('task.details')}</h2>
-                        {catalog.status === 'ready' && <ExecutionPanel t={t} task={detailTask} snapshot={catalog.snapshot} selectedSession={selected} actions={execution} />}
-                      </div>}
-          </>}
-      </main>
-      <aside style={{ ...side, borderLeft: '0.5px solid var(--dsw-alias-border-l4)' }}>
-        <h2 style={sectionTitle}>{t('task.details')}</h2>
-        {detailTask === undefined ? <p style={note}>{t('task.select')}</p> : <>
-          <TaskDetails task={detailTask} t={t} />
-          {currentWorkspace !== undefined && <p style={{ margin: '8px 0 0', overflowWrap: 'anywhere' }}>{t('workspace.path')}: {currentWorkspace.path}</p>}
-          {currentAttempt !== undefined && <p style={{ margin: '8px 0 0', overflowWrap: 'anywhere' }}>{t('attempt.title')}: {detailTask.attempts.length} · {t('session.title')}: {currentAttempt.sessionIds.length}</p>}
-        </>}
-        <h2 style={sectionTitle}>{t('context')}</h2>
-        {selected !== undefined && <p style={{ overflowWrap: 'anywhere' }}>{sessions.byId[selected]?.displayTitle ?? selected}</p>}
-      </aside>
+            {selected !== undefined
+              ? (available
+                  ? <SessionProvider key={held.id} session={held.reference}>{renderSlot('loom.conversation', {})}</SessionProvider>
+                  : failure === selected
+                    ? <p role="alert" style={{ ...note, margin: 20 }}>{t('session.unavailable')}</p>
+                    : <p style={{ ...note, margin: 20 }}>{t('session.loading')}</p>)
+              : detailTask !== undefined
+                ? <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
+                    <div style={{ maxWidth: 720, margin: '0 auto', background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 16 }}>
+                      <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>{detailTask.title}</h3>
+                      {snapshot !== undefined && <ExecutionPanel t={t} task={detailTask} snapshot={snapshot} selectedSession={selected} actions={execution} />}
+                    </div>
+                  </div>
+                : <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+                    <div style={{ maxWidth: 380, textAlign: 'center', color: COLORS.dim }}>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>🧶</div>
+                      <p style={{ margin: '0 0 6px', fontWeight: 600, color: COLORS.text }}>{t('conv.titleFallback')}</p>
+                      <p style={{ ...note, margin: '0 0 12px' }}>{t('chooseTask')}</p>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                        <button style={select} onClick={() => openCreate('project')}>＋ {t('top.newProject')}</button>
+                        <button style={select} disabled={createDisabledTask} onClick={() => openCreate('task')}>＋ {t('top.newTask')}</button>
+                      </div>
+                    </div>
+                  </div>}
+          </main>}
+      {asideOpen && <aside style={aside}>
+        {view === 'kanban'
+          ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
+          : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [] }} project={displayProject} version={displayVersion} task={detailTask} />}
+      </aside>}
     </div>
-    {bottom === 'diff' && <section style={{ ...note, borderRadius: 0, padding: 0 }} aria-label={t('diff')}><LoomDiff t={t} workspaceId={detailWorkspaceId} loadChanges={workspaceChanges} renderFactorySlot={renderFactorySlot} /></section>}
-    {bottom !== undefined && bottom !== 'diff' && <section style={{ ...note, borderRadius: 0 }} aria-label={t(bottom)}>{t('integrationUnavailable')}</section>}
-    <footer style={{ ...line, borderBottom: 0, borderTop: '0.5px solid var(--dsw-alias-border-l4)' }}>{bottomKeys.map(key => <button key={key} style={button} aria-expanded={bottom === key} onClick={() => setBottom(current => current === key ? undefined : key)}>{t(key)}</button>)}</footer>
-  </div>
-}
-
-/** One project row with its versions and Lock availability. */
-function ProjectNode({ project, versions, locks, selected, onSelect, selectedProject, onProject, t }: {
-  project: ProjectRecord
-  versions: readonly VersionRecord[]
-  locks: CatalogSnapshot['locks']
-  selected: VersionRecord['id'] | undefined
-  onSelect(versionId: VersionRecord['id'] | undefined): void
-  selectedProject: ProjectRecord['id'] | undefined
-  onProject(projectId: ProjectRecord['id']): void
-  t: LoomPanelProps['t']
-}) {
-  return <section>
-    <button aria-pressed={selectedProject === project.id} style={{ ...button, border: 0, padding: 0, margin: '8px 0 4px', fontWeight: 500, textAlign: 'left', overflowWrap: 'anywhere', background: 'transparent' }} onClick={() => onProject(project.id)}>{project.config.name}</button>
-    {versions.length === 0 && <p style={{ ...note, margin: 0 }}>{t('version.empty')}</p>}
-    {versions.map(version => <button key={version.id} aria-pressed={selected === version.id} style={{ ...button, display: 'block', width: '100%', textAlign: 'left', marginTop: 6, overflowWrap: 'anywhere', background: selected === version.id ? 'var(--dsw-alias-bg-layer-1)' : 'transparent' }} onClick={() => onSelect(selected === version.id ? undefined : version.id)}>
-      {version.name}{locks.some(lock => lock.versionId === version.id) ? ` · ${t('lock.title')}` : ''}
-    </button>)}
-  </section>
-}
-
-/** Build the board filter without optional properties holding undefined. */
-function boardFilter(version: VersionRecord['id'] | undefined, search: string): BoardFilter {
-  return { ...(version === undefined ? {} : { versionId: version }), ...(search.trim() === '' ? {} : { search }) }
-}
-
-const STATUS_KEY = {
-  pending: 'task.status.pending',
-  running: 'task.status.running',
-  review: 'task.status.review',
-  completed: 'task.status.completed',
-  failed: 'task.status.failed',
-} as const
-
-/** Selected task business state and attempt history. */
-function TaskDetails({ task, t }: { task: TaskRecord; t: LoomPanelProps['t'] }) {
-  return <div style={{ lineHeight: 1.8 }}>
-    <p style={{ margin: 0, fontWeight: 500, overflowWrap: 'anywhere' }}>{task.title}</p>
-    <p style={{ margin: 0 }}>{t('task.status')}: {t(STATUS_KEY[task.status])}</p>
-    <p style={{ margin: 0 }}>{t('attempt.title')}: {task.attempts.length}</p>
-    <p>{t('task.humanOnly')}</p>
+    <LoomBottomPanel
+      t={t}
+      collapsed={bottomCollapsed}
+      pane={pane}
+      task={detailTask}
+      workspaceId={detailWorkspace?.id}
+      loadChanges={workspaceChanges}
+      renderFactorySlot={renderFactorySlot}
+      onToggle={() => setBottomCollapsed(value => !value)}
+      onPane={setPane}
+    />
+    {create !== undefined && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 60 }} onClick={() => setCreate(undefined)}>
+      <div style={{ width: 380, maxWidth: '92%', height: '100%', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}`, padding: 16, overflowY: 'auto' }} onClick={event => event.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+          <strong style={{ fontSize: 14 }}>{create === 'project' ? t('top.newProject') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
+          <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => setCreate(undefined)}>{t('form.close')}</button>
+        </div>
+        {create === 'project' && <ProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'version' && currentProject !== undefined && <VersionForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} project={currentProject} create={createVersion} onCreated={created => { setVersion(created.id); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'task' && currentVersion !== undefined && <TaskForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} version={currentVersion} create={createTask} onCreated={created => { setTask(created); setView('workbench'); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'version' && currentProject === undefined && <p style={note}>{t('project.select')}</p>}
+        {create === 'task' && currentVersion === undefined && <p style={note}>{t('version.select')}</p>}
+      </div>
+    </div>}
   </div>
 }
