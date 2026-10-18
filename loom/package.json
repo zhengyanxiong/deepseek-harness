@@ -70,7 +70,8 @@
     "@deepseek-ai/dsh-typert-protocol": "*",
     "@deepseek-ai/dsh-brand": "*",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "@deepseek-ai/dsh-client-ui-primitives": "*"
   },
   "devDependencies": {
     "@deepseek-ai/schemastery": "*",
@@ -84,7 +85,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsdown": "*",
-    "tsx": "^4.20.0"
+    "tsx": "^4.20.0",
+    "@deepseek-ai/dsh-client-ui-primitives": "*"
   },
   "license": "MIT"
 }

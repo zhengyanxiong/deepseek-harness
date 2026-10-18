@@ -1,5 +1,6 @@
 /** Loom workbench shell: project tree, native conversation, context and kanban. */
 import { useEffect, useRef, useState } from 'react'
+import { IconFolderCloseRegular, IconFolderOpenRegular, IconPinFillRegular, IconPinOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CSSProperties, ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -60,7 +61,7 @@ const aside: CSSProperties = { width: 272, flex: 'none', display: 'flex', flexDi
 const convHeader: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '9px 16px', borderBottom: `0.5px solid ${COLORS.border}`, minHeight: 40, flex: 'none' }
 const note: CSSProperties = { padding: 12, borderRadius: 8, color: COLORS.dim, background: COLORS.panel2, lineHeight: 1.6, margin: 0 }
 
-function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?: string; badge?: string; label: string; color?: string; count?: string; onClick: () => void }) {
+function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?: ReactNode; badge?: string; label: string; color?: string; count?: string; onClick: () => void }) {
   const { depth, active, arrow, icon, badge, label, color, count, onClick } = props
   return <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left', background: active === true ? COLORS.panel3 : 'transparent', border: 'none', borderLeft: `2px solid ${active === true ? COLORS.accent : 'transparent'}`, padding: `5px 12px 5px ${String(14 + depth * 13)}px`, color: active === true ? COLORS.text : COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: depth === 2 ? 12 : 13 }}>
     {arrow !== undefined && <span style={{ fontSize: 9, color: COLORS.faint, width: 9 }}>{arrow}</span>}
@@ -74,7 +75,44 @@ function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?
 
 function PinButton({ pinned, label, onToggle }: { pinned: boolean; label: string; onToggle: () => void }) {
   return <button type="button" aria-label={label} aria-pressed={pinned} title={label} onClick={onToggle}
-    style={{ flex: 'none', width: 24, height: 24, border: 'none', background: 'transparent', color: pinned ? COLORS.green : COLORS.faint, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.55 }}>📌</button>
+    style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, border: 'none', background: 'transparent', color: pinned ? COLORS.green : COLORS.faint, cursor: 'pointer', opacity: pinned ? 1 : 0.6 }}>
+    {pinned ? <IconPinFillRegular size={14} /> : <IconPinOutlineRegular size={14} />}
+  </button>
+}
+
+function ProjectItem({ candidate, versions, tasks, activeProject, activeVersionId, activeTaskId, open, openVersions, pinned, t, onProject, onVersion, onTask, onPin }: {
+  candidate: ProjectRecord
+  versions: VersionRecord[]
+  tasks: TaskRecord[]
+  activeProject: boolean
+  activeVersionId: VersionRecord['id'] | undefined
+  activeTaskId: TaskRecord['id'] | undefined
+  open: boolean
+  openVersions: ReadonlySet<string>
+  pinned: boolean
+  t: LoomPanelProps['t']
+  onProject: () => void
+  onVersion: (version: VersionRecord) => void
+  onTask: (task: TaskRecord) => void
+  onPin: () => void
+}) {
+  return <div>
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <TreeRow depth={0} arrow={open ? '▾' : '▸'} icon={open ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />} label={candidate.config.name} active={activeProject} count={String(versions.length)} onClick={onProject} />
+      </div>
+      <PinButton pinned={pinned} label={pinned ? t('side.unpin') : t('side.pin')} onToggle={onPin} />
+    </div>
+    {open && versions.map(item => {
+      const versionTasks = tasks.filter(candidateTask => candidateTask.versionId === item.id)
+      const openVersion = openVersions.has(item.id)
+      return <div key={item.id}>
+        <TreeRow depth={1} arrow={openVersion ? '▾' : '▸'} badge={item.name} label="" active={activeVersionId === item.id} onClick={() => onVersion(item)} />
+        {openVersion && versionTasks.map(itemTask => <TreeRow key={itemTask.id} depth={2} icon="💬" label={itemTask.title} active={activeTaskId === itemTask.id} color={itemTask.status === 'running' ? COLORS.green : COLORS.faint} onClick={() => onTask(itemTask)} />)}
+        {openVersion && versionTasks.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 2px 40px' }}>{t('task.empty')}</p>}
+      </div>
+    })}
+  </div>
 }
 
 function readPinnedProjects(): ProjectRecord['id'][] {
@@ -277,38 +315,45 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={sidebar}>
         <section style={{ marginBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>📌 {t('side.pinned')}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}><IconPinFillRegular size={13} /> {t('side.pinned')}</div>
           {(snapshot?.projects ?? []).filter(candidate => pinnedProjects.includes(candidate.id)).length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.pinHint')}</p>}
-          {(snapshot?.projects ?? []).filter(candidate => pinnedProjects.includes(candidate.id)).map(candidate => <div key={candidate.id} style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <TreeRow depth={0} icon="📁" label={candidate.config.name} active={project === candidate.id} color={COLORS.green} onClick={() => { setProject(candidate.id); setVersion(undefined); setTask(undefined); setExpandedProjects(current => new Set(current).add(candidate.id)) }} />
-            </div>
-            <PinButton pinned label={t('side.unpin')} onToggle={() => setPinnedProjects(current => current.filter(id => id !== candidate.id))} />
-          </div>)}
+          {(snapshot?.projects ?? []).filter(candidate => pinnedProjects.includes(candidate.id)).map(candidate => <ProjectItem
+            key={candidate.id}
+            candidate={candidate}
+            versions={(snapshot?.versions ?? []).filter(item => item.projectId === candidate.id)}
+            tasks={snapshot?.tasks ?? []}
+            activeProject={project === candidate.id}
+            activeVersionId={task === undefined ? version : undefined}
+            activeTaskId={task?.id}
+            open={expandedProjects.has(candidate.id)}
+            openVersions={expandedVersions}
+            pinned
+            t={t}
+            onProject={() => { setProject(candidate.id); setVersion(undefined); setTask(undefined); toggle(expandedProjects, setExpandedProjects, candidate.id) }}
+            onVersion={item => { setProject(candidate.id); setVersion(item.id); setTask(undefined); toggle(expandedVersions, setExpandedVersions, item.id) }}
+            onTask={selectTask}
+            onPin={() => setPinnedProjects(current => current.filter(id => id !== candidate.id))}
+          />)}
         </section>
         <section style={{ marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>{t('side.projects')} <span style={{ marginLeft: 'auto', fontWeight: 400 }}>{String(snapshot?.projects.length ?? 0)}</span></div>
-          {(snapshot?.projects ?? []).map(candidate => {
-            const versions = (snapshot?.versions ?? []).filter(item => item.projectId === candidate.id)
-            const open = expandedProjects.has(candidate.id)
-            return <div key={candidate.id}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <TreeRow depth={0} arrow={open ? '▾' : '▸'} icon="📁" label={candidate.config.name} active={project === candidate.id} count={String(versions.length)} onClick={() => { setProject(candidate.id); setVersion(undefined); setTask(undefined); toggle(expandedProjects, setExpandedProjects, candidate.id) }} />
-                </div>
-                <PinButton pinned={pinnedProjects.includes(candidate.id)} label={pinnedProjects.includes(candidate.id) ? t('side.unpin') : t('side.pin')} onToggle={() => setPinnedProjects(current => current.includes(candidate.id) ? current.filter(id => id !== candidate.id) : [...current, candidate.id])} />
-              </div>
-              {open && versions.map(item => {
-                const tasks = (snapshot?.tasks ?? []).filter(candidateTask => candidateTask.versionId === item.id)
-                const openVersion = expandedVersions.has(item.id)
-                return <div key={item.id}>
-                  <TreeRow depth={1} arrow={openVersion ? '▾' : '▸'} badge={item.name} label="" active={version === item.id && task === undefined} onClick={() => { setProject(candidate.id); setVersion(item.id); setTask(undefined); toggle(expandedVersions, setExpandedVersions, item.id) }} />
-                  {openVersion && tasks.map(itemTask => <TreeRow key={itemTask.id} depth={2} icon="💬" label={itemTask.title} active={task?.id === itemTask.id} color={itemTask.status === 'running' ? COLORS.green : COLORS.faint} onClick={() => selectTask(itemTask)} />)}
-                  {openVersion && tasks.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 2px 40px' }}>{t('task.empty')}</p>}
-                </div>
-              })}
-            </div>
-          })}
+          {(snapshot?.projects ?? []).map(candidate => <ProjectItem
+            key={candidate.id}
+            candidate={candidate}
+            versions={(snapshot?.versions ?? []).filter(item => item.projectId === candidate.id)}
+            tasks={snapshot?.tasks ?? []}
+            activeProject={project === candidate.id}
+            activeVersionId={task === undefined ? version : undefined}
+            activeTaskId={task?.id}
+            open={expandedProjects.has(candidate.id)}
+            openVersions={expandedVersions}
+            pinned={pinnedProjects.includes(candidate.id)}
+            t={t}
+            onProject={() => { setProject(candidate.id); setVersion(undefined); setTask(undefined); toggle(expandedProjects, setExpandedProjects, candidate.id) }}
+            onVersion={item => { setProject(candidate.id); setVersion(item.id); setTask(undefined); toggle(expandedVersions, setExpandedVersions, item.id) }}
+            onTask={selectTask}
+            onPin={() => setPinnedProjects(current => current.includes(candidate.id) ? current.filter(id => id !== candidate.id) : [...current, candidate.id])}
+          />)}
           <button type="button" style={{ margin: '6px 12px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: 'pointer' }} onClick={() => openCreate('project')}>＋ {t('side.newProject')}</button>
         </section>
         <section style={{ marginBottom: 4 }}>
