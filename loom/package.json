@@ -1,7 +1,7 @@
 {
   "name": "dsh-workloom",
-  "version": "0.1.4",
-  "description": "DSH Workloom project workbench and task workspace bundle.",
+  "version": "0.1.5",
+  "description": "Workloom (织) — a multi-project workbench for DeepSeek Harness with Git-backed versions, Locks, task workspaces and native Agent sessions.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -99,5 +99,26 @@
     "@deepseek-ai/dsh-client-store": "*",
     "@deepseek-ai/dsh-client-ui-slots": "*"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "workloom",
+    "loom",
+    "cordis",
+    "plugin",
+    "workbench",
+    "git",
+    "agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhengyanxiong/deepseek-harness.git",
+    "directory": "loom"
+  },
+  "homepage": "https://github.com/zhengyanxiong/deepseek-harness/tree/feature/dsh-loom/loom",
+  "bugs": {
+    "url": "https://github.com/zhengyanxiong/deepseek-harness/issues"
+  },
+  "author": "zhengyanxiong"
 }

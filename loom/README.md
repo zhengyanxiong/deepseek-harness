@@ -1,69 +1,116 @@
-# Workloom implementation status
+# Workloom（织）
 
-## Install
+**Workloom 是 DeepSeek Harness 的多项目工作台插件。** 它把项目、版本、Lock、任务、Git 工作区和原生 Agent 会话组织到同一个界面里，让多个仓库的并行开发不再依赖临时脚本和手工切换目录。
 
-Workloom is a DSH bundle. DSH `0.2.1-rc.2` through `0.2.x` and Node.js `>=22.19` are required; its manifest declares that DSH range and installation refuses a release outside it. From this directory, build and pack:
+Workloom 复用 DSH 原生的会话、Diff、输入框、模型选择、审批、工具和权限体系；它不替代 DSH，也不修改你的 DSH 安装。
 
-```sh
+[English](#english) · [实现状态与 TODO](https://github.com/zhengyanxiong/deepseek-harness/blob/feature/dsh-loom/loom/TODO.md)
+
+## 它能做什么
+
+- **多项目管理**：一个工作台管理多个项目，每个项目可以包含多个本地 Git 仓库和业务模块。
+- **版本与 Lock**：版本记录每个仓库的分支、标签或提交；生成 Lock 时固定到精确 commit，之后所有任务都基于同一份不可变基线。
+- **任务与工作区**：任务绑定版本，启动执行时从 Lock 物化独立工作区；工作区可以跨多轮 Session 复用，并保留自己的分支。
+- **原生 Agent 会话**：在任务工作区内启动 DSH 原生会话，继续使用原生工具、审批、模型选择和上下文压缩。
+- **Diff 与验收**：对照 Lock 查看工作区改动、未跟踪文件、未推送提交，并按任务状态流转。
+- **执行权**：同一工作区同时只允许一个 Agent 执行；支持等待、显式接管和释放，避免两个会话同时改同一份代码。
+- **审计与用量**：Activity 面板记录项目、版本、任务、Lock、工作区和执行操作；Usage 面板展示 DSH 原生 token 统计。
+- **可编辑**：项目、版本、任务创建后可以继续修改；编辑会保留内部 repository/module id，避免旧版本、Lock 和任务失联。
+
+## 安装
+
+要求：
+
+- DeepSeek Harness `>=0.2.1-rc.2 <0.3.0`
+- Node.js `>=22.19`
+
+从 npm 安装：
+
+```bash
+dsh plugin --profile web add dsh-workloom@0.1.5
+dsh --profile web
+```
+
+Desktop：
+
+```bash
+dsh plugin --profile desktop add dsh-workloom@0.1.5
+```
+
+然后重启 DSH。Web 端仅刷新浏览器不够，Host 和 Client 都需要重新加载插件。
+
+> 本机如果配置了只读镜像（例如 `registry.npmmirror.com`），镜像可能尚未同步新版本。安装时临时使用官方 registry：
+>
+> ```bash
+> npm_config_registry=https://registry.npmjs.org dsh plugin --profile web add dsh-workloom@0.1.5
+> ```
+
+## 快速开始
+
+1. **新建项目**：填写项目名，添加一个或多个本地 Git 仓库；仓库使用绝对路径，工作区相对目录不能重叠。
+2. **新建版本**：为每个仓库填写分支、标签或 commit。Workloom 不会自动 fetch，ref 必须已经在本地存在。
+3. **生成 Lock**：把版本 ref 解析成精确 commit。如果 Git 无法读取仓库，界面会显示具体路径和 Git 的错误信息。
+4. **新建任务**：选择版本、优先级和涉及模块，描述这次要完成的工作。
+5. **开始执行**：指定工作区目录，Workloom 从 Lock 创建工作区并启动原生 Session。
+6. **查看 Diff、验收、清理**：工作区有未提交改动或未推送提交时，清理会要求二次确认。
+
+## 核心概念
+
+| 概念 | 含义 |
+| --- | --- |
+| Project | 一个业务项目和它包含的本地 Git 仓库、模块 |
+| Version | 每个仓库的一组 ref，表示一个待开发版本 |
+| Lock | Version ref 解析后的精确 commit 集合，不可变 |
+| Task | 在某个 Version 上执行的一项工作 |
+| Workspace | 从 Lock 物化出来的工作区，可跨 Session 复用 |
+| Attempt | 任务的一轮执行，记录 Session、工作区和状态 |
+| Execution | 当前工作区的执行所有权，含 FIFO 等待和交接 |
+
+## 兼容性与限制
+
+- 当前只支持**本地 Git 仓库**；不支持远程 clone、Git URL 或跨机器工作区。
+- Lock 创建**不会自动 fetch**；请先在本地拉取所需分支或标签。
+- Git 调用会禁用用户级和系统级配置及 hooks，但会为当前仓库路径显式传入 `safe.directory`，以兼容 Windows 或不同账户下的目录所有者检查。
+- Workloom 的执行权只约束 DSH 托管的 Agent 调用；外部编辑器和终端仍可修改工作区文件。
+- 终止确认观察的是 Agent 状态，不是所有子进程或外部进程。
+- Terminal、测试面板尚未接入原生或外部数据源。
+- 当前为早期预览版本，接口和数据格式仍可能变化；升级前请备份 `$DSH_HOME/loom`。
+
+## 开发
+
+```bash
+cd loom
+pnpm install
 pnpm run build
+pnpm exec vitest --config vitest.config.ts run
 npm pack
-dsh plugin --profile web add ./dsh-workloom-0.1.4.tgz
 ```
 
-From a source checkout without a global `dsh` command, use `pnpm dsh plugin --profile web add ./dsh-workloom-0.1.4.tgz` from the repository root.
+生成的文件在 `lib/`，不要手工编辑；TypeScript 源码在 `src/`。
 
-Start the profile with `dsh --profile web`. The Web sidebar then lists **Workloom**. A bundle installed from a built tarball needs no install-time build permission. The package is named `dsh-workloom`; publish it under that name or a scope you own, and install the published version with the same name. The package name in `package.json` must match the plugin row `name` in `cordis.patch.yml`.
+## English
 
-The current repository root is the DSH application, not this bundle, so `dsh plugin add` cannot consume the repository URL directly: a Git install reads the package at the repository root. To distribute through Git without npm, attach the `npm pack` tarball to a GitHub Release and pass its URL to `dsh plugin add`, or move this directory into a standalone bundle repository whose root manifest declares `dsh.bundle` and whose built `lib/` is available (via committed artifacts or a self-contained `prepare` script). A Git `prepare` script requires an explicit build permission in the user's profile.
+**Workloom is a multi-project workbench for DeepSeek Harness.** It organizes projects, Git-backed versions, immutable Locks, tasks, isolated workspaces and native Agent sessions in one workbench, reusing DSH's native conversation, Diff, composer, model, approval, tool and permission surfaces.
 
-## Implementation status
+Highlights:
 
-This directory contains the in-progress Workloom bundle, domain model, storage, local Git adapters, the owner-only Host catalog Remote service, and the Client workbench. The Client loads the projects, versions, tasks and task details it renders from the Host snapshot endpoint over its own generated Remote contribution, creates, edits and deletes projects, versions and tasks through the same namespace, creates Locks through it, materializes a prepared workspace from a Lock, starts an execution round with a native Session attached to that workspace, applies the allowed task transitions, compares the workspace against its Lock through the native deliverables file comparison factory, and cleans up a retained workspace only after explicit confirmation in a modal that can open the native file comparison. The Host also persists workspace execution ownership with FIFO waiting, blocks Workloom-attached Agent tool calls unless the calling Session owns execution access, releases ownership when its Agent turn becomes idle, and performs user-confirmed handoff by cancelling the owning Agent turn and its live descendants and waiting for observable idleness. Cleanup first runs the non-destructive check; uncommitted changes or unpushed commits require a second explicit discard confirmation. The bottom Activity pane renders the durable business audit trail. The Usage pane and context Cost/usage section render provider-reported token buckets from the native token-meter projection; terminal and test panes remain unwired.
+- Multiple projects, repositories and business modules in one workbench.
+- A version pins refs per repository; a Lock resolves them to exact commits.
+- Tasks materialize isolated Git worktrees from a Lock and reuse them across Sessions.
+- Native DSH Sessions run inside a task workspace with the usual tools and approvals.
+- Workspace ownership allows one Agent at a time, with waiting, takeover and release.
+- Durable audit history and native token usage reporting.
+- Projects, versions and tasks remain editable after creation.
 
-## Implemented domain rules
+Requirements: DSH `>=0.2.1-rc.2 <0.3.0`, Node.js `>=22.19`.
 
-- Project configuration admission without filesystem or network effects.
-- Version repository references resolved to immutable commit snapshots.
-- Task execution rounds retain one workspace across successive Sessions.
-- Tasks persist an optional description, business-module selection and low/normal/high priority; unknown project modules and invalid fields are rejected. The board filters by priority and module and searches descriptions, and cards can be dragged only between states allowed by the task transition rules.
-- Project configuration JSON is admitted through the same parser as manual creation, previewed with repositories and modules, and saved only after explicit confirmation; importing never fetches repositories or runs scripts.
-- The context panel shows the version's repositories and Lock baselines; the task detail shows the append-only attempt history. Its Edit actions update an existing project, version or task without changing their identity. Editing preserves repository and module ids so existing versions, Locks and tasks keep resolving; the Host rejects removing a repository referenced by a version or a module referenced by a task.
-- Projects, versions and tasks can be deleted from the context panel after explicit confirmation in a modal. A refused deletion stays in the modal with the concrete blocking condition, or with the Host diagnostic when no known condition applies. Deletion removes dependents first: a project cannot be deleted while it owns versions, a version cannot be deleted while it owns tasks or workspaces, and a task cannot be deleted while it is running or its workspace still has files. Task deletion removes its already-cleaned workspace records and execution slots, and version deletion removes its Locks. Deleting never removes workspace files implicitly; clean those first.
-- Lock failures show the underlying Git diagnostic and repository path when Git cannot read a source, instead of only a generic operation failure.
-- The settings overlay persists the default view, board layout, context visibility, per-group Session row limit and pinned-project list in the browser only.
-- A project may name a native Agent preset. Sessions created for that project afterward start with that preset; existing Sessions keep their recorded composition. The project form lists the deployment's current preset roster and marks unusable entries.
-- The workbench narrows the side panels below 1180px, moves the project tree into a drawer below 940px, and hides the context aside below 760px.
-- New temporary sessions run in the newest active Workloom workspace without belonging to a version or task. The catalog marks them explicitly, and the sidebar lists them in a separate group from task Sessions.
-- A new task may explicitly reuse another task's idle workspace from the same version and Lock; the Host refuses while any other task is running on it or an Agent still owns its execution.
-- Each repository worktree is attached to a deterministic version-owned branch (`loom/<version>/<source>-<workspace>`) created at the Lock commit, so code lives on a real branch rather than a detached HEAD. Existing registered workspaces are attached to a branch at startup or before their next start without changing their files; branches Workloom created are removed with the workspace.
-- Workspace execution ownership uses generation tokens, FIFO waiting and confirmed-stop takeover.
-- Workloom-attached Agent tool calls acquire execution access before running; a non-owner is denied until the current owner yields or a confirmed handoff completes.
-- Durable audit records cover project, version, Lock, task, workspace, attempt, Session and execution mutations, including project, version and task edits and deletions.
-
-## Execution handoff and limits
-
-The start form lists every retained workspace prepared under the selected version, shows each workspace's recorded Lock baseline, and marks one busy while another task is running or a Session owns its execution. The Client offers waiting, confirmed takeover and explicit release controls for the current workspace. The Host records the takeover request, cancels the owning Agent with `keepInbox`, cancels live descendant Agents owned by it, and treats the handoff as confirmed only after every observed Agent reports non-running status within ten seconds; otherwise the original owner remains and the UI reports the blocked outcome. Ownership is released automatically when the owning Agent becomes idle or its Session is disposed, promoting the FIFO head.
-
-The tool gate checks every `tools/pre-execute` call from an Agent attached to a Workloom attempt. It acquires ownership for a free workspace and denies calls while another Session owns it. This constrains the DSH-managed execution path, not the filesystem: external editors and terminals can still modify workspace files. Stop confirmation observes the owning Agent's status; it does not separately prove that every child Agent or external process has stopped.
-
-## Verification
-
-From the repository root:
-
-```sh
-pnpm exec vitest run --config loom/vitest.config.ts
-pnpm --dir loom run build
-pnpm run typecheck
+```bash
+dsh plugin --profile web add dsh-workloom@0.1.5
+dsh --profile web
 ```
 
-The bundle build emits `loom/lib/index.js` and `loom/lib/client.js`. `pnpm --dir loom run build` first runs `scripts/generate-typert.ts`, which generates `lib/typert.host.js` (Typert Loader artifact) and `lib/typert.remote-client.{js,d.ts,d.ts.map}` (Client contribution mounted with `ctx.remote.$mount`). Generated files are build artifacts and are not the source of record; repeated generation is byte-identical. The artifacts resolve from the repository's own `@deepseek-ai/*` packages, so they rely on the same module resolution as any installed plugin. Installing the packed tarball into an empty profile and mounting its Web header has been verified; the native Diff factory still depends on the deployed DSH build.
+Workloom currently supports local Git repositories only, does not fetch missing refs during Lock creation, and remains an early preview. See [TODO](https://github.com/zhengyanxiong/deepseek-harness/blob/feature/dsh-loom/loom/TODO.md) for remaining work.
 
-## Host configuration
+## License
 
-The Host catalog service requires an explicit absolute `catalogFile` path and creates its missing parent directories. One service instance must exclusively own that file. The bundle patch defaults the path to `dshHomePath('loom/catalog.json')`. Starting a round without an explicit workspace root uses `workspacesDir` (default `dshHomePath('loom/workspaces')`, otherwise a `workspaces` sibling of the catalog) and creates a unique child directory, so the workbench never asks users to invent a path. Catalog Remote methods require an owner principal and validate imported data before writing. Verified endpoints: project, version and task creation, updates and deletions, Lock generation, prepared-workspace registration, attempt start, Session association, task transitions, and execution acquisition, release and confirmed takeover. The Client mounts the generated `./remote` contribution in an effect and registers the page through a fiber that requires `remote.loom`. The page reads `snapshot`; inline forms call `createProject`, `createVersion`, `createTask` and `generateLock`, the context actions call `deleteProject`, `deleteVersion` and `deleteTask`, and the execution panel calls `prepareWorkspace`, `startAttempt`, `attachSession` and `transitionTask`. It prepares a workspace by checking out every project repository at the Lock's commits, registers that path as a native Workspace, creates a native Session inside it, and attaches the Session to the new round. The bottom Diff panel and the cleanup modal read `workspaceChanges` (tracked changes since the Lock commit plus untracked files), render changed files as a repository/directory tree, and draw the selected file through `renderFactorySlot('deliverables.fileDiff', …)`, so the comparison component, styling, and highlighted hunks come from ui-deliverables rather than Workloom. The bottom Diff pane can expand to a full-window dialog, and its expanded height is adjustable by dragging the divider above it. Selecting a changed file opens the native comparison in the workbench's right aside, whose width is adjustable by dragging its divider; both sizes persist in browser-local preferences. The aside's turn review and the bottom Diff tree share one two-line file-row style with per-file counts; the turn review loads the selected file's native comparison. The File tab reads the current file through the native workspace-files service. Native conversation file links and changed-files review rows route there while Workloom is the active panel, preserving the Sidebar preview entry point inside the workbench; a review row loads the turn's summary and native comparison through the native change routes. Cleanup refuses while a task using the workspace is running, refuses unconfirmed commits made since the Lock and uncommitted files, then removes the worktrees and root while keeping the catalog record marked `cleaned` so attempt history still resolves; the panel asks for that confirmation in a modal; when the workspace is dirty the modal can open the native comparison and then requires an explicit discard. The native comparison comes from the `deliverables.fileDiff` factory in `packages/client/ui-deliverables`, so an installation deployed with an older built copy of that package shows Workloom’s unconnected-integration fallback instead. Starting a round is not transactional with Session creation: if native Session creation fails after `startAttempt`, the task stays running with no attached Session and the panel can create another Session in the same workspace. See the plan's remote-interface section for the generation path and verification.
-
-## Known limitations
-
-The tool gate and handoff cover DSH-managed Agent calls; external processes and editors are outside that path. Stop confirmation observes the owning Agent's status, not every child or external process. Terminal, test and cost panes are not wired to native or external data sources. Storage writes serialize within one instance, not across processes. Git preparation currently supports local repositories only. Lock creation does not fetch missing refs. Every Git invocation disables user and system configuration and hooks, but passes `safe.directory` for exactly the repository path it targets, so a repository the owner added remains readable when Windows or the DSH account reports a different directory owner; its failure text reports the affected path and Git's own diagnostic so the Host environment can be corrected. No current deployment profile is modified by these files.
-
-Product scope is defined in [the approved design](../docs/superpowers/specs/2026-10-17-dsh-loom-design.md). Remaining and deferred work, including the highest-priority design for shared context across one version, is tracked in [TODO.md](TODO.md).
+MIT
