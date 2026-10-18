@@ -77,6 +77,7 @@ export const ACTOR_LABEL = { human: 'actor.human', agent: 'actor.agent', system:
 export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   existing_root: 'error.existingRoot',
   invalid_path: 'error.invalidPath',
+  invalid_form: 'error.invalidForm',
   workspace_path_registered: 'error.pathRegistered',
   local_repository_required: 'error.repositoryRequired',
   invalid_repository: 'error.invalidRepository',

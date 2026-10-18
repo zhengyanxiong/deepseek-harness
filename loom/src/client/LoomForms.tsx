@@ -216,7 +216,7 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     if (step !== 'preview') { setStep(step === 'basics' ? 'modules' : 'preview'); return }
-    if (request === undefined) { setFailure(t('state.error')); return }
+    if (request === undefined) { setFailure('invalid_form'); return }
     setBusy(true); setFailure(undefined)
     try {
       const result = editing
@@ -304,7 +304,7 @@ export function VersionForm({ t, project, create, update, version, onCreated, op
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     const request = versionRequest(project, name, refs)
-    if (request === undefined) { setFailure(t('state.error')); return }
+    if (request === undefined) { setFailure('invalid_form'); return }
     setBusy(true); setFailure(undefined)
     try {
       const result = editing
@@ -358,7 +358,7 @@ export function TaskForm({ t, version, project, create, update, task, onCreated,
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     const request = taskRequest(version, title, { description, priority, moduleIds })
-    if (request === undefined) { setFailure(t('state.error')); return }
+    if (request === undefined) { setFailure('invalid_form'); return }
     setBusy(true); setFailure(undefined)
     try {
       const result = editing

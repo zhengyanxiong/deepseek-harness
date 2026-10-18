@@ -27,7 +27,7 @@ export interface LoomContextPanelProps {
 const editLink = { border: 'none', background: 'transparent', color: COLORS.accent, cursor: 'pointer', font: 'inherit', fontSize: 11, padding: 0 } as const
 
 function SectionHeading({ title, action }: { title: string; action?: ReactNode }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
     <h4 style={{ ...sectionTitle, marginBottom: 0 }}>{title}</h4>
     {action !== undefined && <span style={{ marginLeft: 'auto' }}>{action}</span>}
   </div>
