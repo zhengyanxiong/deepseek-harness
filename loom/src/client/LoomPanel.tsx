@@ -1,6 +1,9 @@
 /** Loom workbench shell: project tree, native conversation, context and kanban. */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { IconFolderCloseRegular, IconFolderOpenRegular, IconPinFillRegular, IconPinOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconFolderCloseRegular, IconFolderOpenRegular, IconPanelLeftOutlineRegular, IconPinFillRegular, IconPinOutlineRegular,
+  IconPlusOutlineRegular, IconSettingsOutlineRegular, Tooltip,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CSSProperties, ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -61,7 +64,37 @@ type View = 'workbench' | 'kanban'
 type CreateKind = 'project' | 'import' | 'version' | 'task'
 
 const frame: CSSProperties = { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: COLORS.text, background: COLORS.bg, fontSize: 13, overflow: 'hidden' }
-const topbar: CSSProperties = { display: 'flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 4, minHeight: 44, padding: '5px 12px', background: COLORS.panel, borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none', position: 'relative', zIndex: 20 }
+const topbar: CSSProperties = {
+  display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 6, minHeight: 48, padding: '0 12px',
+  background: COLORS.panel, borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none', position: 'relative', zIndex: 20,
+}
+const topBrand: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, flex: 'none', fontWeight: 500, fontSize: 13.5 }
+const topDivider: CSSProperties = { width: 1, height: 18, background: COLORS.border, flex: 'none' }
+const topContext: CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 8px',
+  border: `0.5px solid ${COLORS.border}`, borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, whiteSpace: 'nowrap',
+}
+const topContextLabel: CSSProperties = { ...metaLine, fontSize: 10.5, flex: 'none' }
+const topSelect: CSSProperties = { minWidth: 0, background: 'transparent', border: 'none', color: COLORS.text, font: 'inherit', fontSize: 12, cursor: 'pointer', padding: 0 }
+const topActivity: CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 9px', flex: 'none',
+  border: `0.5px solid ${COLORS.border}`, borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, fontSize: 11.5, whiteSpace: 'nowrap',
+}
+const topViewSwitch: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 2, height: 30, padding: 2, flex: 'none', border: `0.5px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.panel2 }
+const topViewButton: CSSProperties = { height: 24, padding: '0 12px', border: 'none', borderRadius: 6, background: 'transparent', color: COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 400 }
+const topAction: CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, padding: 0,
+  border: `0.5px solid ${COLORS.border}`, borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer',
+}
+const topActionActive: CSSProperties = { background: COLORS.panel3, borderColor: COLORS.borderStrong, color: COLORS.text }
+const topNew: CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, height: 30, padding: '0 10px',
+  border: 'none', borderRadius: 7, background: COLORS.accent, color: '#fff', cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 500,
+}
+const topActions: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }
+const topSpacer: CSSProperties = { flex: 1, minWidth: 8 }
+const menuItem: CSSProperties = { ...select, border: 'none', textAlign: 'left', padding: '7px 8px', fontSize: 12 }
+const topMenu: CSSProperties = { position: 'absolute', top: 36, right: 0, width: 210, background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, padding: 4, display: 'flex', flexDirection: 'column', zIndex: 40, boxShadow: '0 8px 24px rgba(0,0,0,.35)' }
 const sidebar: CSSProperties = { width: 230, flex: 'none', background: COLORS.panel, borderRight: `0.5px solid ${COLORS.border}`, overflowY: 'auto', padding: '8px 0' }
 const center: CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: COLORS.bg }
 const aside: CSSProperties = { width: 272, flex: 'none', display: 'flex', flexDirection: 'column', borderLeft: `0.5px solid ${COLORS.border}`, background: COLORS.panel }
@@ -340,56 +373,74 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const createDisabledTask = currentVersion === undefined
   return <div style={frame}>
     <style>{`
-      @media (max-width: 1180px) { .loom-sidebar { width: 196px !important; } .loom-aside { max-width: 380px !important; } .loom-aside.loom-aside-preview { max-width: 460px !important; } }
+      .loom-top-context { max-width: 190px; }
+      .loom-top-select { max-width: 132px; }
+      .loom-top-context:hover { border-color: var(--dsw-alias-border-l3); }
+      .loom-top-action:hover { border-color: var(--dsw-alias-border-l3); color: var(--dsw-alias-label-primary); }
+      .loom-top-new:hover { filter: brightness(1.08); }
+      .loom-view-switch button:hover:not([aria-pressed='true']) { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
+      .loom-menu-item:hover { background: var(--dsw-alias-bg-layer-3); }
+      .loom-top-action:focus-visible, .loom-top-new:focus-visible, .loom-view-switch button:focus-visible, .loom-menu-item:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+      .loom-top-select:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 3px; }
+      @media (max-width: 1180px) { .loom-sidebar { width: 196px !important; } .loom-aside { max-width: 380px !important; } .loom-aside.loom-aside-preview { max-width: 460px !important; } .loom-top-label, .loom-top-divider, .loom-top-activity-label, .loom-top-action-label { display: none; } .loom-top-context { max-width: 140px; } .loom-top-select { max-width: 100px; } .loom-top-activity { padding: 0 7px; } .loom-top-new { width: 30px; padding: 0 !important; } .loom-view-switch button { padding: 0 9px; } }
       @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-sidebar.loom-sidebar-open { display: block !important; position: absolute; top: 44px; bottom: 0; left: 0; z-index: 70; width: 240px !important; box-shadow: 12px 0 28px rgba(0,0,0,.35); } .loom-aside { max-width: 300px !important; } .loom-aside.loom-aside-preview { max-width: 380px !important; } }
-      @media (max-width: 760px) { .loom-aside, .loom-aside-handle { display: none !important; } }
+      @media (max-width: 760px) { .loom-aside, .loom-aside-handle { display: none !important; } .loom-brand-name { display: none; } .loom-top-context { max-width: 128px; } .loom-top-select { max-width: 76px; } }
+      @media (max-width: 560px) { .loom-topbar { column-gap: 6px !important; } .loom-top-context { flex: 1 1 0; max-width: none; padding: 0 8px; } .loom-top-select { flex: 1; max-width: none; width: 100%; } .loom-view-switch button { padding: 0 8px; } }
     `}</style>
-    <header style={topbar}>
-      {narrow && <button type="button" aria-label={t('side.projects')} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer' }}><IconFolderOpenRegular size={14} /></button>}
-      <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 14 }}>
-        <span style={{ width: 20, height: 20, borderRadius: 5, background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.purple})`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff' }}>织</span>
-        {t('brand')}
+    <header className="loom-topbar" style={topbar}>
+      {narrow && <button type="button" aria-label={t('side.projects')} aria-expanded={sidebarOpen} title={t('side.projects')} onClick={() => setSidebarOpen(value => !value)} style={{ ...topAction, width: 28, height: 28 }} className="loom-top-action"><IconFolderOpenRegular size={14} /></button>}
+      <span style={topBrand}>
+        <span style={{ width: 22, height: 22, borderRadius: 6, background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.purple})`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none', fontSize: 11, color: '#fff' }}>织</span>
+        <span className="loom-brand-name">{t('brand')}</span>
       </span>
-      <label style={{ ...pill, padding: '3px 8px', background: COLORS.panel2 }}>
-        <span style={metaLine}>{t('top.project')}</span>
-        <select aria-label={t('top.project')} value={project ?? ''} onChange={(event) => { const next = event.target.value; setProject(next === '' ? undefined : next as ProjectRecord['id']); setVersion(undefined); setTask(undefined); setSelected(undefined) }} style={{ background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+      <span aria-hidden className="loom-top-divider" style={topDivider} />
+      <label className="loom-top-context" style={topContext}>
+        <span className="loom-top-label" style={topContextLabel}>{t('top.project')}</span>
+        <select className="loom-top-select" aria-label={t('top.project')} value={project ?? ''} onChange={(event) => { const next = event.target.value; setProject(next === '' ? undefined : next as ProjectRecord['id']); setVersion(undefined); setTask(undefined); setSelected(undefined) }} style={topSelect}>
           <option value="">{t('top.allProjects')}</option>
           {(snapshot?.projects ?? []).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.config.name}</option>)}
         </select>
       </label>
-      <label style={{ ...pill, padding: '3px 8px', background: COLORS.panel2 }}>
-        <span style={metaLine}>{t('top.version')}</span>
-        <select aria-label={t('top.version')} value={version ?? ''} onChange={(event) => {
+      <label className="loom-top-context" style={topContext}>
+        <span className="loom-top-label" style={topContextLabel}>{t('top.version')}</span>
+        <select className="loom-top-select" aria-label={t('top.version')} value={version ?? ''} onChange={(event) => {
           const next = event.target.value
           if (next === '') { setVersion(undefined); setTask(undefined); setSelected(undefined); return }
           const owner = snapshot?.versions.find(candidate => candidate.id === next)
           if (owner !== undefined) setProject(owner.projectId)
           setVersion(next as VersionRecord['id']); setTask(undefined); setSelected(undefined)
-        }} style={{ background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+        }} style={topSelect}>
           <option value="">{t('top.allVersions')}</option>
           {(snapshot?.versions ?? []).filter(candidate => project === undefined || candidate.projectId === project).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
         </select>
       </label>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: COLORS.dim, fontSize: 12 }}>
-        <span style={{ width: 8, height: 8, borderRadius: 999, background: COLORS.green, boxShadow: `0 0 6px ${COLORS.green}` }} />
-        {activeCount} {t('top.activeWorkspaces')}
+      <span className="loom-top-activity" style={topActivity} title={`${String(activeCount)} ${t('top.activeWorkspaces')}`}>
+        <span aria-hidden style={{ width: 7, height: 7, borderRadius: 999, background: COLORS.green, boxShadow: '0 0 0 3px rgba(63,185,80,.14)', flex: 'none' }} />
+        <span>{activeCount}</span>
+        <span className="loom-top-activity-label">{t('top.activeWorkspaces')}</span>
       </span>
-      <div style={{ display: 'flex', border: `0.5px solid ${COLORS.border}`, borderRadius: 7, overflow: 'hidden' }}>
-        <button type="button" aria-pressed={view === 'workbench'} onClick={() => { setView('workbench'); setPreferences(current => ({ ...current, view: 'workbench' })) }} style={{ background: view === 'workbench' ? COLORS.panel3 : 'none', border: 'none', color: view === 'workbench' ? COLORS.text : COLORS.dim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: view === 'workbench' ? 600 : 400 }}>{t('workbench')}</button>
-        <button type="button" aria-pressed={view === 'kanban'} onClick={() => { setView('kanban'); setPreferences(current => ({ ...current, view: 'kanban' })) }} style={{ background: view === 'kanban' ? COLORS.panel3 : 'none', border: 'none', color: view === 'kanban' ? COLORS.text : COLORS.dim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: view === 'kanban' ? 600 : 400 }}>{t('view.kanban')}</button>
+      <div className="loom-view-switch" style={topViewSwitch}>
+        <button type="button" aria-pressed={view === 'workbench'} onClick={() => { setView('workbench'); setPreferences(current => ({ ...current, view: 'workbench' })) }} style={{ ...topViewButton, ...view === 'workbench' ? { background: COLORS.panel3, color: COLORS.text, fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,.12)' } : {} }}>{t('workbench')}</button>
+        <button type="button" aria-pressed={view === 'kanban'} onClick={() => { setView('kanban'); setPreferences(current => ({ ...current, view: 'kanban' })) }} style={{ ...topViewButton, ...view === 'kanban' ? { background: COLORS.panel3, color: COLORS.text, fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,.12)' } : {} }}>{t('view.kanban')}</button>
       </div>
-      <span style={{ flex: 1 }} />
-      <div style={{ position: 'relative' }}>
-        <button type="button" aria-label={t('top.new')} aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: COLORS.accent, color: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700 }}>＋</button>
-        {menuOpen && <div style={{ position: 'absolute', top: 32, right: 0, width: 210, background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, padding: 4, display: 'flex', flexDirection: 'column', zIndex: 40, boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
-          <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px' }} onClick={() => openCreate('project')}>{t('top.newProject')}</button>
-          <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px' }} onClick={() => openCreate('import')}>{t('project.import')}</button>
-          <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px', opacity: createDisabledVersion ? 0.45 : 1 }} disabled={createDisabledVersion} onClick={() => openCreate('version')}>{t('top.newVersion')}</button>
-          <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px', opacity: createDisabledTask ? 0.45 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>{t('top.newTask')}</button>
-        </div>}
+      <span className="loom-top-spacer" style={topSpacer} />
+      <div style={topActions}>
+        <div style={{ position: 'relative' }}>
+          <button type="button" className="loom-top-new" aria-label={t('top.new')} aria-haspopup="menu" aria-expanded={menuOpen} title={t('top.new')} onClick={() => setMenuOpen(value => !value)} style={topNew}><IconPlusOutlineRegular size={14} /><span className="loom-top-action-label">{t('top.new')}</span></button>
+          {menuOpen && <div role="menu" style={topMenu}>
+            <button type="button" role="menuitem" className="loom-menu-item" style={menuItem} onClick={() => openCreate('project')}>{t('top.newProject')}</button>
+            <button type="button" role="menuitem" className="loom-menu-item" style={menuItem} onClick={() => openCreate('import')}>{t('project.import')}</button>
+            <button type="button" role="menuitem" className="loom-menu-item" style={{ ...menuItem, opacity: createDisabledVersion ? 0.45 : 1 }} disabled={createDisabledVersion} onClick={() => openCreate('version')}>{t('top.newVersion')}</button>
+            <button type="button" role="menuitem" className="loom-menu-item" style={{ ...menuItem, opacity: createDisabledTask ? 0.45 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>{t('top.newTask')}</button>
+          </div>}
+        </div>
+        <Tooltip label={t('ctx.project')} side="bottom" delayMs={300}>
+          <button type="button" aria-label={t('ctx.project')} aria-pressed={asideOpen} onClick={() => setAsideOpen(value => { const next = !value; setPreferences(current => ({ ...current, contextOpen: next })); return next })} className="loom-top-action" style={{ ...topAction, ...asideOpen ? topActionActive : {} }}><span aria-hidden style={{ display: 'inline-flex', transform: 'scaleX(-1)' }}><IconPanelLeftOutlineRegular size={14} /></span></button>
+        </Tooltip>
+        <Tooltip label={t('top.settings')} side="bottom" delayMs={300}>
+          <button type="button" aria-label={t('top.settings')} onClick={() => setSettingsOpen(true)} className="loom-top-action" style={topAction}><IconSettingsOutlineRegular size={14} /></button>
+        </Tooltip>
       </div>
-      <button type="button" aria-label={t('ctx.project')} aria-pressed={asideOpen} onClick={() => setAsideOpen(value => { const next = !value; setPreferences(current => ({ ...current, contextOpen: next })); return next })} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer', fontSize: 13 }}>▤</button>
-      <button type="button" aria-label={t('top.settings')} onClick={() => setSettingsOpen(true)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer', fontSize: 14 }}>⚙</button>
     </header>
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {narrow && sidebarOpen && <div aria-hidden style={{ position: 'absolute', inset: 0, top: 44, background: 'rgba(0,0,0,.35)', zIndex: 65 }} onClick={() => setSidebarOpen(false)} />}
