@@ -26,7 +26,7 @@ const task: TaskRecord = {
 }
 const snapshot: CatalogSnapshot = { projects: [project], versions: [version], locks: [], tasks: [task], workspaces: [], audit: [], executions: [] }
 
-it('renders project, version and task edits as labeled outline actions', () => {
+it('renders project, version and task actions as labeled outline actions', () => {
   const html = renderToStaticMarkup(createElement(LoomContextPanel, {
     t, snapshot, project, version, task, usage: undefined,
     generateLock: () => Promise.reject(new Error('unused')),
@@ -34,10 +34,16 @@ it('renders project, version and task edits as labeled outline actions', () => {
     onEditProject: () => undefined,
     onEditVersion: () => undefined,
     onEditTask: () => undefined,
+    onDeleteProject: () => Promise.resolve({ ok: true, value: undefined }),
+    onDeleteVersion: () => Promise.resolve({ ok: true, value: undefined }),
+    onDeleteTask: () => Promise.resolve({ ok: true, value: undefined }),
   }))
   expect(html).toContain(en['project.edit'])
   expect(html).toContain(en['task.edit'])
-  expect(html).toContain(en['form.edit'])
+  expect(html).toContain(en['project.delete'])
+  expect(html).toContain(en['version.delete'])
+  expect(html).toContain(en['task.delete'])
+  expect(html).toContain(en['version.edit'])
   expect(html).toContain(en['lock.new'])
   expect(html).toMatch(/_outline_/u)
 })

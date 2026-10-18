@@ -43,6 +43,18 @@ export interface UpdateTaskRequest {
   readonly moduleIds?: readonly string[]
   readonly priority?: 'low' | 'normal' | 'high'
 }
+/** Delete one project that no longer owns versions. */
+export interface DeleteProjectRequest {
+  readonly projectId: string
+}
+/** Delete one version that no longer owns tasks or workspaces. */
+export interface DeleteVersionRequest {
+  readonly versionId: string
+}
+/** Delete one task after its workspaces have been cleaned. */
+export interface DeleteTaskRequest {
+  readonly taskId: string
+}
 /** Resolve every repository ref of one version. */
 export interface GenerateLockRequest {
   readonly versionId: string

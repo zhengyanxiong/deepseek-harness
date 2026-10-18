@@ -52,11 +52,14 @@ export const PRIORITY_META: Readonly<Record<TaskPriority, { readonly key: LoomKe
 export const AUDIT_LABEL: Readonly<Record<AuditEvent, LoomKey>> = {
   'project.created': 'audit.project.created',
   'project.updated': 'audit.project.updated',
+  'project.deleted': 'audit.project.deleted',
   'version.created': 'audit.version.created',
   'version.updated': 'audit.version.updated',
+  'version.deleted': 'audit.version.deleted',
   'lock.generated': 'audit.lock.generated',
   'task.created': 'audit.task.created',
   'task.updated': 'audit.task.updated',
+  'task.deleted': 'audit.task.deleted',
   'task.transitioned': 'audit.task.transitioned',
   'workspace.prepared': 'audit.workspace.prepared',
   'workspace.cleaned': 'audit.workspace.cleaned',
@@ -93,6 +96,11 @@ export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   workspace_mismatch: 'error.workspaceMismatch',
   invalid_task: 'error.invalidTask',
   invalid_version: 'error.invalidVersion',
+  project_has_versions: 'error.projectHasVersions',
+  version_has_tasks: 'error.versionHasTasks',
+  version_has_workspaces: 'error.versionHasWorkspaces',
+  task_busy: 'error.taskBusy',
+  task_workspace_uncleaned: 'error.taskWorkspaceUncleaned',
 }
 
 /**

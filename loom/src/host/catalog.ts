@@ -35,7 +35,7 @@ export interface WorkspaceRecord extends Workspace { path: string; branches?: Re
 export interface CatalogSnapshot { projects: ProjectRecord[]; versions: VersionRecord[]; locks: Lock[]; tasks: TaskRecord[]; workspaces: WorkspaceRecord[]; audit: AuditEntry[]; executions: ExecutionState[] }
 /** Catalog operation rejection, suitable for caller-owned localization. */
 export class CatalogError extends Error {
-  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_task_running' | 'workspace_branch_failed' | 'invalid_task' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed') { super(code); this.name = 'CatalogError' }
+  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_task_running' | 'workspace_branch_failed' | 'invalid_task' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed' | 'project_has_versions' | 'version_has_tasks' | 'version_has_workspaces' | 'task_busy' | 'task_workspace_uncleaned') { super(code); this.name = 'CatalogError' }
 }
 const text = z.string().trim().min(1)
 const id = <B extends string>() => text.transform(value => brandString<Branded<B>>(value))
@@ -55,7 +55,7 @@ const taskSchema = z.strictObject({
   attempts: z.array(z.strictObject({ id: id<'loom.attempt'>(), lock: lockSchema, workspaceId: id<'loom.workspace'>(), sessionIds: z.array(id<'SessionId'>()), status })),
 })
 const workspaceSchema = z.strictObject({ id: id<'loom.workspace'>(), path: z.string().refine(value => isAbsolute(value) && normalize(value) === value), versionId: id<'loom.version'>(), lockId: id<'loom.lock'>(), branches: z.record(z.string(), text).optional(), managed: z.boolean().optional(), cleaned: z.boolean().optional() })
-const auditEvents = ['project.created', 'project.updated', 'version.created', 'version.updated', 'lock.generated', 'task.created', 'task.updated', 'task.transitioned', 'workspace.prepared', 'workspace.cleaned', 'attempt.started', 'session.attached', 'execution.acquired', 'execution.queued', 'execution.released', 'execution.takeover-requested', 'execution.takeover-stopped', 'execution.takeover-blocked'] as const
+const auditEvents = ['project.created', 'project.updated', 'project.deleted', 'version.created', 'version.updated', 'version.deleted', 'lock.generated', 'task.created', 'task.updated', 'task.deleted', 'task.transitioned', 'workspace.prepared', 'workspace.cleaned', 'attempt.started', 'session.attached', 'execution.acquired', 'execution.queued', 'execution.released', 'execution.takeover-requested', 'execution.takeover-stopped', 'execution.takeover-blocked'] as const
 const auditSchema = z.strictObject({
   id: text,
   at: z.number().int().nonnegative(),
@@ -141,11 +141,14 @@ export interface Catalog {
   snapshot(): CatalogSnapshot
   createProject(config: unknown): Promise<ProjectRecord>
   updateProject(projectId: ProjectRecord['id'], config: ProjectConfig): Promise<ProjectRecord>
+  deleteProject(projectId: ProjectRecord['id']): Promise<void>
   createVersion(projectId: ProjectRecord['id'], name: string, sources: readonly { sourceId: Branded<'loom.source'>; ref: string }[]): Promise<VersionRecord>
   updateVersion(versionId: VersionRecord['id'], name: string, sources: readonly { sourceId: Branded<'loom.source'>; ref: string }[]): Promise<VersionRecord>
+  deleteVersion(versionId: VersionRecord['id']): Promise<void>
   generateLock(versionId: VersionRecord['id']): Promise<Lock>
   createTask(versionId: VersionRecord['id'], title: string, options?: CreateTaskOptions): Promise<TaskRecord>
   updateTask(taskId: TaskRecord['id'], title: string, options?: CreateTaskOptions): Promise<TaskRecord>
+  deleteTask(taskId: TaskRecord['id']): Promise<void>
   prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   workspaceChanges(workspaceId: WorkspaceRecord['id']): Promise<{ repositories: WorkspaceRepositoryChanges[] }>
   workspaceStatus(workspaceId: WorkspaceRecord['id']): Promise<{ running: boolean; repositories: WorkspaceRepositoryChanges[] }>
@@ -430,6 +433,13 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         return next
       })
     },
+    deleteProject: async projectId => transaction(draft => {
+      const project = draft.projects.find(candidate => candidate.id === projectId)
+      if (project === undefined) throw new CatalogError('missing_project')
+      if (draft.versions.some(version => version.projectId === projectId)) throw new CatalogError('project_has_versions')
+      draft.projects.splice(draft.projects.indexOf(project), 1)
+      recordAudit(draft, 'project.deleted', 'human', { detail: project.config.name })
+    }),
     createVersion: async (projectId, name, sources) => {
       const record = versionSchema.parse({ id: randomUUID(), projectId, name, sources })
       return transaction(draft => {
@@ -455,6 +465,14 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         return next
       })
     },
+    deleteVersion: async versionId => transaction(draft => {
+      const version = versionIn(draft, versionId)
+      if (draft.tasks.some(task => task.versionId === versionId)) throw new CatalogError('version_has_tasks')
+      if (draft.workspaces.some(workspace => workspace.versionId === versionId)) throw new CatalogError('version_has_workspaces')
+      draft.versions.splice(draft.versions.indexOf(version), 1)
+      draft.locks = draft.locks.filter(lock => lock.versionId !== versionId)
+      recordAudit(draft, 'version.deleted', 'human', { detail: version.name })
+    }),
     generateLock: versionId => transaction(async draft => {
       const version = versionIn(draft, versionId)
       const project = draft.projects.find(p => p.id === version.projectId)!
@@ -504,5 +522,16 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         return next
       })
     },
+    deleteTask: async taskId => transaction(draft => {
+      const task = taskIn(draft, taskId)
+      if (task.status === 'running') throw new CatalogError('task_busy')
+      const workspaceIds = new Set<TaskRecord['attempts'][number]['workspaceId']>(task.attempts.map(attempt => attempt.workspaceId))
+      if (draft.executions.some(execution => workspaceIds.has(execution.workspaceId) && (execution.owner !== null || execution.waiting.length > 0))) throw new CatalogError('task_busy')
+      if (draft.workspaces.some(workspace => workspaceIds.has(workspace.id) && workspace.cleaned !== true)) throw new CatalogError('task_workspace_uncleaned')
+      draft.tasks.splice(draft.tasks.indexOf(task), 1)
+      draft.workspaces = draft.workspaces.filter(workspace => !workspaceIds.has(workspace.id))
+      draft.executions = draft.executions.filter(execution => !workspaceIds.has(execution.workspaceId))
+      recordAudit(draft, 'task.deleted', 'human', { taskId, detail: task.title })
+    }),
   }
 }

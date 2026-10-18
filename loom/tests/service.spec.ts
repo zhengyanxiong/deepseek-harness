@@ -48,6 +48,18 @@ it('edits catalog records through the real gateway', async () => {
   expect(updatedTask).toMatchObject({ title: 'Checkout 2', priority: 'high' })
 })
 
+it('deletes catalog records through the real gateway', async () => {
+  const { call } = await setup()
+  const project = await call('createProject', { request: { name: 'Shop', sources: [{ id: 'web', repo: '/local/web', path: 'web' }], modules: [] } }) as { id: string }
+  const version = await call('createVersion', { request: { projectId: project.id, name: 'v1', sources: [{ sourceId: 'web', ref: 'main' }] } }) as { id: string }
+  const task = await call('createTask', { request: { versionId: version.id, title: 'Checkout' } }) as { id: string }
+  await expect(call('deleteProject', { request: { projectId: project.id } })).rejects.toThrow('project_has_versions')
+  await call('deleteTask', { request: { taskId: task.id } })
+  await call('deleteVersion', { request: { versionId: version.id } })
+  await call('deleteProject', { request: { projectId: project.id } })
+  expect(await call('snapshot')).toMatchObject({ projects: [], versions: [], tasks: [] })
+})
+
 it('resolves exact Git commits through the Lock endpoint', async () => {
   const { call, dir } = await setup()
   const repo = join(dir, 'repo'); await mkdir(repo)
@@ -117,6 +129,11 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   await expect(call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } })).rejects.toThrow('workspace_cleaned')
   await expect(readFile(join(root, 'web', 'file'), 'utf8')).rejects.toThrow()
   await expect(call('prepareWorkspace', { request: { path: root, versionId: version.id, lockId: lock.id } })).rejects.toThrow('workspace_path_registered')
+  await call('deleteTask', { request: { taskId: task.id } })
+  expect(await call('snapshot')).toMatchObject({ tasks: [], workspaces: [] })
+  await call('deleteVersion', { request: { versionId: version.id } })
+  await call('deleteProject', { request: { projectId: project.id } })
+  expect(await call('snapshot')).toMatchObject({ projects: [], versions: [], locks: [], tasks: [], workspaces: [] })
 })
 it('creates its own isolated workspace when the request omits a path', async () => {
   const { call, dir } = await setup()

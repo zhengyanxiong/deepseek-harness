@@ -14,7 +14,7 @@ import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock,
   PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskPriority, TaskRecord, TransitionTaskRequest, VersionRecord,
   WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
-  UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest,
+  UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest, DeleteProjectRequest, DeleteVersionRequest, DeleteTaskRequest,
 } from 'dsh-workloom/types'
 import { ImportProjectForm, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { LoomSettings, readPreferences, writePreferences, type LoomPreferences } from './LoomSettings.tsx'
@@ -36,10 +36,13 @@ export interface LoomInjected {
   loadSnapshot(): Promise<RemoteResult<CatalogSnapshot>>
   createProject(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
   updateProject(request: UpdateProjectRequest): Promise<RemoteResult<ProjectRecord>>
+  deleteProject(request: DeleteProjectRequest): Promise<RemoteResult<void>>
   createVersion(request: CreateVersionRequest): Promise<RemoteResult<VersionRecord>>
   updateVersion(request: UpdateVersionRequest): Promise<RemoteResult<VersionRecord>>
+  deleteVersion(request: DeleteVersionRequest): Promise<RemoteResult<void>>
   createTask(request: CreateTaskRequest): Promise<RemoteResult<TaskRecord>>
   updateTask(request: UpdateTaskRequest): Promise<RemoteResult<TaskRecord>>
+  deleteTask(request: DeleteTaskRequest): Promise<RemoteResult<void>>
   generateLock(request: GenerateLockRequest): Promise<RemoteResult<Lock>>
   prepareWorkspace(request: PrepareWorkspaceRequest): Promise<RemoteResult<WorkspaceRecord>>
   startAttempt(request: StartAttemptRequest): Promise<RemoteResult<TaskRecord>>
@@ -177,7 +180,7 @@ function readPinnedProjects(): ProjectRecord['id'][] {
  * @param props - locale, native catalog, session acquisition, catalog actions, and renderer seats.
  * @returns the whole Loom page.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, updateProject, createVersion, updateVersion, createTask, updateTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, updateProject, deleteProject, createVersion, updateVersion, deleteVersion, createTask, updateTask, deleteTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [preferences, setPreferences] = useState<LoomPreferences>(readPreferences)
   const [view, setView] = useState<View>(preferences.view)
@@ -361,6 +364,34 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       const result = await transitionTask({ taskId: record.id, target, actor: 'human' })
       if (result.ok) setAttempt(current => current + 1)
     } catch { /* the next snapshot keeps the authoritative status */ }
+  }
+  async function removeProject(target: ProjectRecord): Promise<RemoteResult<void>> {
+    const result = await deleteProject({ projectId: target.id })
+    if (result.ok) {
+      setPinnedProjects(current => current.filter(id => id !== target.id))
+      if (filterProject === target.id) setFilterProject('')
+      setFilterVersion('')
+      setProject(undefined); setVersion(undefined); setTask(undefined); setSelected(undefined); setDismissed(undefined)
+      setAttempt(current => current + 1)
+    }
+    return result
+  }
+  async function removeVersion(target: VersionRecord): Promise<RemoteResult<void>> {
+    const result = await deleteVersion({ versionId: target.id })
+    if (result.ok) {
+      if (filterVersion === target.id) setFilterVersion('')
+      setVersion(undefined); setTask(undefined); setSelected(undefined); setDismissed(undefined)
+      setAttempt(current => current + 1)
+    }
+    return result
+  }
+  async function removeTask(target: TaskRecord): Promise<RemoteResult<void>> {
+    const result = await deleteTask({ taskId: target.id })
+    if (result.ok) {
+      setTask(undefined); setSelected(undefined); setDismissed(undefined)
+      setAttempt(current => current + 1)
+    }
+    return result
   }
   function openCreate(kind: CreateKind): void { setCreate(kind); setEdit(undefined); setMenuOpen(false) }
   function openEdit(kind: EditKind): void { setEdit(kind); setCreate(undefined); setMenuOpen(false) }
@@ -617,7 +648,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             </div>
             : view === 'kanban'
             ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
-            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} />}
+            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} onDeleteProject={displayProject === undefined ? undefined : () => removeProject(displayProject)} onDeleteVersion={displayVersion === undefined ? undefined : () => removeVersion(displayVersion)} onDeleteTask={detailTask === undefined ? undefined : () => removeTask(detailTask)} />}
       </aside>}
     </div>
     {!bottomCollapsed && <LoomResizeHandle label={t('layout.resizeBottom')} orientation="horizontal" value={bottomHeight} min={80} max={bottomMax} invert onChange={(height) => setPreferences(current => ({ ...current, bottomHeight: height }))} />}

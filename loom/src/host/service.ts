@@ -14,6 +14,7 @@ import type {
   AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest,
   CleanupWorkspaceRequest, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceChangesRequest, WorkspaceRepositoryChangesRecord, WorkspaceStatusResult,
   VersionRecord, WorkspaceRecord, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest,
+  DeleteProjectRequest, DeleteVersionRequest, DeleteTaskRequest,
 } from '../types.ts'
 import type { Lock } from '../domain/task.ts'
 import { ExecutionError, type ExecutionState, type StopOutcome } from '../domain/execution.ts'
@@ -37,6 +38,9 @@ const updateProjectRequest = z.strictObject({ projectId: nonempty, config: z.unk
 const updateVersionRequest = z.strictObject({ versionId: nonempty, name: nonempty, sources: z.array(z.strictObject({ sourceId: nonempty, ref: nonempty })).min(1) })
 const taskRequest = z.strictObject({ versionId: nonempty, title: nonempty, description: z.string().max(4000).optional(), moduleIds: z.array(nonempty).max(50).optional(), priority: z.enum(['low', 'normal', 'high']).optional() })
 const updateTaskRequest = z.strictObject({ taskId: nonempty, title: nonempty, description: z.string().max(4000).optional(), moduleIds: z.array(nonempty).max(50).optional(), priority: z.enum(['low', 'normal', 'high']).optional() })
+const deleteProjectRequest = z.strictObject({ projectId: nonempty })
+const deleteVersionRequest = z.strictObject({ versionId: nonempty })
+const deleteTaskRequest = z.strictObject({ taskId: nonempty })
 const lockRequest = z.strictObject({ versionId: nonempty })
 const workspaceRequest = z.strictObject({ path: nonempty.optional(), versionId: nonempty, lockId: nonempty })
 const registerWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty, branches: z.record(z.string(), nonempty).optional() })
@@ -201,6 +205,12 @@ export default class LoomService extends TypertRemoteService {
     })
   }
 
+  /** Delete a project with no versions. @param request - project identity. @returns nothing after the record is gone. */
+  @Remote
+  deleteProject(request: DeleteProjectRequest): Promise<void> {
+    return this.run(catalog => catalog.deleteProject(brandString<ProjectRecord['id']>(deleteProjectRequest.parse(request).projectId)))
+  }
+
   /** Create a version. @param request - project, title and repository refs. @returns persisted version. */
   @Remote
   createVersion(request: CreateVersionRequest): Promise<VersionRecord> {
@@ -217,6 +227,18 @@ export default class LoomService extends TypertRemoteService {
       const parsed = updateVersionRequest.parse(request)
       return catalog.updateVersion(brandString<VersionRecord['id']>(parsed.versionId), parsed.name, parsed.sources.map(source => ({ sourceId: brandString<VersionRecord['sources'][number]['sourceId']>(source.sourceId), ref: source.ref })))
     })
+  }
+
+  /** Delete a version with no tasks or workspaces. @param request - version identity. @returns nothing after its Locks are gone. */
+  @Remote
+  deleteVersion(request: DeleteVersionRequest): Promise<void> {
+    return this.run(catalog => catalog.deleteVersion(brandString<VersionRecord['id']>(deleteVersionRequest.parse(request).versionId)))
+  }
+
+  /** Delete a task after its workspaces are cleaned. @param request - task identity. @returns nothing after the task record is gone. */
+  @Remote
+  deleteTask(request: DeleteTaskRequest): Promise<void> {
+    return this.run(catalog => catalog.deleteTask(brandString<TaskRecord['id']>(deleteTaskRequest.parse(request).taskId)))
   }
 
   /** Resolve all version refs. @param request - owning version. @returns immutable Lock. */
