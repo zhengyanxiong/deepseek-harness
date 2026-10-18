@@ -203,7 +203,14 @@ interface ProjectFormProps {
   onOpenChange?: (open: boolean) => void
 }
 
-type ProjectStep = 'basics' | 'modules' | 'preview'
+type ProjectStep = 'name' | 'sources' | 'modules' | 'preview'
+
+const PROJECT_STEPS: readonly { readonly key: ProjectStep; readonly label: LoomKey }[] = [
+  { key: 'name', label: 'project.step.name' },
+  { key: 'sources', label: 'project.step.sources' },
+  { key: 'modules', label: 'project.step.modules' },
+  { key: 'preview', label: 'project.step.preview' },
+]
 
 /** Create or edit one project with its repositories, optional modules and a preview before saving. */
 export function ProjectForm({ t, create, update, project, onCreated, open: controlledOpen, onOpenChange }: ProjectFormProps) {
@@ -211,18 +218,38 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
-  const [step, setStep] = useState<ProjectStep>('basics')
+  const [step, setStep] = useState<ProjectStep>(project === undefined ? 'name' : 'sources')
   const [name, setName] = useState(project?.config.name ?? '')
   const [sources, setSources] = useState<SourceDraft[]>(project === undefined ? [emptySourceRow()] : project.config.sources.map(source => ({ id: source.id, repo: source.repo, path: source.path })))
   const [modules, setModules] = useState<ModuleDraft[]>(project === undefined ? [] : project.config.modules.map(module => ({ id: module.id, source: module.sourceId, path: module.path })))
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string>()
-  if (!open) return editing ? null : <button style={button} onClick={() => setOpen(true)}>{t('project.new')}</button>
+  if (!open) return editing ? null : <Button variant="outline" icon={<IconPlusOutlineRegular />} onClick={() => setOpen(true)}>{t('project.new')}</Button>
   const ids = sourceIds(sources)
   const request = projectRequest(name, sources, modules)
+  const nameReady = name.trim() !== ''
+  const sourcesReady = projectRequest(name, sources, []) !== undefined
+  const stepIndex = PROJECT_STEPS.findIndex(candidate => candidate.key === step)
+  function canVisit(candidate: ProjectStep): boolean {
+    if (candidate === 'name') return true
+    if (candidate === 'sources') return nameReady
+    if (candidate === 'modules') return sourcesReady
+    return request !== undefined
+  }
+  function goTo(candidate: ProjectStep): void {
+    if (canVisit(candidate)) { setStep(candidate); setFailure(undefined) }
+  }
+  function next(): void {
+    const candidate = PROJECT_STEPS[stepIndex + 1]
+    if (candidate !== undefined) goTo(candidate.key)
+  }
+  function back(): void {
+    const candidate = PROJECT_STEPS[stepIndex - 1]
+    if (candidate !== undefined) setStep(candidate.key)
+  }
   function reset(): void {
     if (editing) { setOpen(false); setFailure(undefined); return }
-    setName(''); setSources([emptySourceRow()]); setModules([]); setStep('basics'); setOpen(false); setFailure(undefined)
+    setName(''); setSources([emptySourceRow()]); setModules([]); setStep('name'); setOpen(false); setFailure(undefined)
   }
   function updateSource(index: number, patch: Partial<SourceDraft>): void {
     setSources(current => current.map((source, at) => at === index ? { ...source, ...patch } : source))
@@ -232,8 +259,8 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   }
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
-    if (step !== 'preview') { setStep(step === 'basics' ? 'modules' : 'preview'); return }
     if (request === undefined) { setFailure('invalid_form'); return }
+    if (!editing && step !== 'preview') { next(); return }
     setBusy(true); setFailure(undefined)
     try {
       const result = editing
@@ -245,28 +272,57 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
       setFailure(error instanceof Error ? error.message : String(error))
     } finally { setBusy(false) }
   }
-  return <form style={box} onSubmit={event => { void submit(event) }}>
-    <div style={{ display: 'flex', gap: 6, color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }}>
-      <span>{t('project.name')}</span><span>→</span><span>{t('source.title')}</span><span>→</span><span>{t('module.title')}</span><span>→</span><span>{t('project.preview')}</span>
-    </div>
-    {step === 'basics' && <>
+  const primaryLabel = busy ? t('form.submitPending') : editing ? t('form.save') : step === 'preview' ? t('form.create') : t('form.next')
+  return <form style={formStyle} onSubmit={event => { void submit(event) }}>
+    <ol aria-label={t('project.steps')} style={{ ...stepRail, gridTemplateColumns: `repeat(${String(PROJECT_STEPS.length)}, minmax(0, 1fr))` }}>
+      {PROJECT_STEPS.map((candidate, index) => {
+        const active = candidate.key === step
+        const complete = index < stepIndex
+        const blocked = !canVisit(candidate.key)
+        return <li key={candidate.key} style={stepItem}>
+          {index > 0 && <span aria-hidden style={{ ...stepLine, background: index <= stepIndex ? COLORS.accent : COLORS.border }} />}
+          <button type="button" aria-current={active ? 'step' : undefined} aria-disabled={blocked} disabled={blocked} onClick={() => goTo(candidate.key)}
+            style={{ ...stepButton, cursor: blocked ? 'default' : 'pointer', opacity: blocked ? 0.5 : 1 }}>
+            <span style={{
+              ...stepCircle,
+              borderColor: active || complete ? COLORS.accent : COLORS.border,
+              background: active ? COLORS.accent : COLORS.panel,
+              color: active ? 'var(--dsw-alias-label-primary-foreground)' : complete ? COLORS.accent : COLORS.faint,
+            }}>{complete ? <IconCheckOutlineRegular size={12} /> : String(index + 1)}</span>
+            <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: active ? COLORS.text : complete ? COLORS.dim : COLORS.faint, fontSize: 11, fontWeight: active ? 500 : 400 }}>{t(candidate.label)}</span>
+          </button>
+        </li>
+      })}
+    </ol>
+    {step === 'name' && <section style={stack}>
       <label style={field}><span style={fieldLabel}>{t('project.name')}</span>
         <input aria-label={t('project.name')} placeholder={t('project.name')} value={name} onChange={event => setName(event.target.value)} style={input} />
       </label>
-      {sources.map((source, index) => <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <p style={hint}>{t('project.nameHint')}</p>
+    </section>}
+    {step === 'sources' && <section style={stack}>
+      <p style={hint}>{t('source.hint')}</p>
+      {sources.map((source, index) => <div key={index} style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ ...fieldLabel, flex: 1 }}>{t('source.item')} {index + 1}</span>
+          {sources.length > 1 && <Button type="button" size="sm" variant="ghost" icon={<IconTrashOutlineRegular />} onClick={() => setSources(current => current.filter((_source, at) => at !== index))}>{t('source.remove')}</Button>}
+        </div>
         <label style={field}><span style={fieldLabel}>{t('source.repo')}</span>
           <input aria-label={t('source.repo')} placeholder={t('source.repo')} value={source.repo} onChange={event => updateSource(index, { repo: event.target.value })} style={input} />
         </label>
         <label style={field}><span style={fieldLabel}>{t('source.path')}</span>
           <input aria-label={t('source.path')} placeholder={t('source.path')} value={source.path} onChange={event => updateSource(index, { path: event.target.value })} style={input} />
         </label>
-        {sources.length > 1 && <button type="button" style={button} onClick={() => setSources(current => current.filter((_source, at) => at !== index))}>{t('source.remove')}</button>}
       </div>)}
-      <div><button type="button" style={button} onClick={() => setSources(current => [...current, emptySourceRow()])}>{t('source.add')}</button></div>
-    </>}
-    {step === 'modules' && <>
-      <p style={{ ...fieldLabel, margin: 0 }}>{t('module.optional')}</p>
-      {modules.map((module, index) => <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <Button type="button" variant="outline" icon={<IconPlusOutlineRegular />} style={{ alignSelf: 'flex-start' }} onClick={() => setSources(current => [...current, emptySourceRow()])}>{t('source.add')}</Button>
+    </section>}
+    {step === 'modules' && <section style={stack}>
+      <p style={hint}>{t('module.optional')}</p>
+      {modules.map((module, index) => <div key={index} style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ ...fieldLabel, flex: 1 }}>{t('module.item')} {index + 1}</span>
+          <Button type="button" size="sm" variant="ghost" icon={<IconTrashOutlineRegular />} onClick={() => setModules(current => current.filter((_module, at) => at !== index))}>{t('module.remove')}</Button>
+        </div>
         <label style={field}><span style={fieldLabel}>{t('module.source')}</span>
           <select aria-label={t('module.source')} value={module.source} onChange={event => updateModule(index, { source: event.target.value })} style={input}>
             <option value="">{t('module.source')}</option>
@@ -276,21 +332,35 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
         <label style={field}><span style={fieldLabel}>{t('module.path')}</span>
           <input aria-label={t('module.path')} placeholder={t('module.path')} value={module.path} onChange={event => updateModule(index, { path: event.target.value })} style={input} />
         </label>
-        <button type="button" style={button} onClick={() => setModules(current => current.filter((_module, at) => at !== index))}>{t('module.remove')}</button>
       </div>)}
-      <div><button type="button" style={button} onClick={() => setModules(current => [...current, emptyModuleRow()])}>{t('module.add')}</button></div>
-    </>}
-    {step === 'preview' && <>
-      <p style={{ ...fieldLabel, margin: 0 }}>{t('project.previewHint')}</p>
-      <pre style={{ margin: 0, overflow: 'auto', maxHeight: 220, fontSize: 11, lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' }}>{JSON.stringify(request ?? null, undefined, 2)}</pre>
-    </>}
+      {modules.length === 0 && <p style={hint}>{t('module.optional')}</p>}
+      <Button type="button" variant="outline" icon={<IconPlusOutlineRegular />} style={{ alignSelf: 'flex-start' }} onClick={() => setModules(current => [...current, emptyModuleRow()])}>{t('module.add')}</Button>
+    </section>}
+    {step === 'preview' && <section style={stack}>
+      <p style={hint}>{t('project.previewHint')}</p>
+      {request === undefined ? <p role="alert" style={alert}>{t('form.required')}</p> : <div style={card}>
+        <div style={field}><span style={fieldLabel}>{t('project.name')}</span><span>{request.name}</span></div>
+        <div style={field}><span style={fieldLabel}>{t('source.title')}</span>
+          {request.sources.map(source => <div key={source.id} style={previewRow}>
+            <span style={{ color: COLORS.dim, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{source.id}</span>
+            <span style={{ color: COLORS.text, overflowWrap: 'anywhere' }}>{source.repo}</span>
+            <span style={{ color: COLORS.faint }}>→ {source.path}</span>
+          </div>)}
+        </div>
+        <div style={field}><span style={fieldLabel}>{t('module.title')}</span>
+          {request.modules.length === 0 ? <span style={hint}>{t('module.optional')}</span> : request.modules.map(module => <div key={module.id} style={previewRow}>
+            <span style={{ color: COLORS.dim, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{module.id}</span>
+            <span style={{ color: COLORS.text, overflowWrap: 'anywhere' }}>{module.sourceId} / {module.path}</span>
+          </div>)}
+        </div>
+      </div>}
+    </section>}
     {failure !== undefined && <FailureNotice failure={failure} t={t} />}
-    <div style={{ display: 'flex', gap: 8 }}>
-      {step === 'basics' && <button type="submit" style={button} disabled={name.trim() === ''}>{t('form.next')}</button>}
-      {step === 'modules' && <button type="submit" style={button} disabled={request === undefined}>{t('form.next')}</button>}
-      {step !== 'basics' && <button type="button" style={button} onClick={() => setStep(step === 'preview' ? 'modules' : 'basics')}>{t('form.back')}</button>}
-      {step === 'preview' && <button type="submit" style={button} disabled={busy || request === undefined}>{busy ? t('form.submitPending') : editing ? t('form.save') : t('form.confirm')}</button>}
-      <button type="button" style={button} onClick={reset}>{t('form.cancel')}</button>
+    <div style={footer}>
+      <Button type="button" variant="ghost" onClick={reset}>{t('form.cancel')}</Button>
+      <span style={footerSpacer} />
+      {stepIndex > 0 && <Button type="button" variant="outline" icon={<IconChevronLeftOutlineRegular />} onClick={back}>{t('form.back')}</Button>}
+      <Button type="submit" variant="primary" disabled={busy || (editing ? request === undefined : !canVisit(PROJECT_STEPS[stepIndex + 1]?.key ?? 'preview'))}>{primaryLabel}</Button>
     </div>
   </form>
 }
@@ -316,7 +386,7 @@ export function VersionForm({ t, project, create, update, version, onCreated, op
   const [refs, setRefs] = useState<Record<string, string>>(version === undefined ? {} : Object.fromEntries(version.sources.map(source => [source.sourceId, source.ref])))
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string>()
-  if (!open) return editing ? null : <button style={button} onClick={() => setOpen(true)}>{t('version.new')}</button>
+  if (!open) return editing ? null : <Button variant="outline" icon={<IconPlusOutlineRegular />} onClick={() => setOpen(true)}>{t('version.new')}</Button>
   function close(): void { setOpen(false); setFailure(undefined) }
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -334,14 +404,27 @@ export function VersionForm({ t, project, create, update, version, onCreated, op
       setFailure(error instanceof Error ? error.message : String(error))
     } finally { setBusy(false) }
   }
-  return <form style={box} onSubmit={event => { void submit(event) }}>
-    <input aria-label={t('version.name')} placeholder={t('version.name')} value={name} onChange={event => setName(event.target.value)} style={input} />
-    {project.config.sources.map(source => <input key={source.id} aria-label={`${t('source.ref')} ${source.id}`} placeholder={`${source.id}: ${t('source.ref')}`}
-      value={refs[source.id] ?? ''} onChange={event => setRefs(current => ({ ...current, [source.id]: event.target.value }))} style={input} />)}
+  return <form style={formStyle} onSubmit={event => { void submit(event) }}>
+    <p style={hint}>{t('version.refHint')}</p>
+    <label style={field}><span style={fieldLabel}>{t('version.name')}</span>
+      <input aria-label={t('version.name')} placeholder={t('version.name')} value={name} onChange={event => setName(event.target.value)} style={input} />
+    </label>
+    <div style={stack}>
+      {project.config.sources.map(source => <div key={source.id} style={card}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={fieldLabel}>{t('source.ref')}</span>
+          <span style={{ color: COLORS.dim, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{source.id}</span>
+        </div>
+        <input aria-label={`${t('source.ref')} ${source.id}`} placeholder={`${source.id}: ${t('source.ref')}`}
+          value={refs[source.id] ?? ''} onChange={event => setRefs(current => ({ ...current, [source.id]: event.target.value }))} style={input} />
+        <p style={{ ...hint, overflowWrap: 'anywhere' }}>{source.repo} → {source.path}</p>
+      </div>)}
+    </div>
     {failure !== undefined && <FailureNotice failure={failure} t={t} />}
-    <div style={{ display: 'flex', gap: 8 }}>
-      <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : editing ? t('form.save') : t('form.create')}</button>
-      <button type="button" style={button} onClick={close}>{t('form.cancel')}</button>
+    <div style={footer}>
+      <Button type="button" variant="ghost" onClick={close}>{t('form.cancel')}</Button>
+      <span style={footerSpacer} />
+      <Button type="submit" variant="primary" disabled={busy}>{busy ? t('form.submitPending') : editing ? t('form.save') : t('form.create')}</Button>
     </div>
   </form>
 }
@@ -370,7 +453,7 @@ export function TaskForm({ t, version, project, create, update, task, onCreated,
   const [moduleIds, setModuleIds] = useState<string[]>([...(task?.moduleIds ?? [])])
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string>()
-  if (!open) return editing ? null : <button style={button} onClick={() => setOpen(true)}>{t('task.new')}</button>
+  if (!open) return editing ? null : <Button variant="outline" icon={<IconPlusOutlineRegular />} onClick={() => setOpen(true)}>{t('task.new')}</Button>
   function close(): void { setOpen(false); setFailure(undefined) }
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -394,12 +477,12 @@ export function TaskForm({ t, version, project, create, update, task, onCreated,
       setFailure(error instanceof Error ? error.message : String(error))
     } finally { setBusy(false) }
   }
-  return <form style={box} onSubmit={event => { void submit(event) }}>
+  return <form style={formStyle} onSubmit={event => { void submit(event) }}>
     <label style={field}><span style={fieldLabel}>{t('task.name')}</span>
       <input aria-label={t('task.name')} placeholder={t('task.name')} value={title} onChange={event => setTitle(event.target.value)} style={input} />
     </label>
     <label style={field}><span style={fieldLabel}>{t('task.description')}</span>
-      <textarea aria-label={t('task.description')} placeholder={t('task.description')} value={description} maxLength={4000} rows={4} onChange={event => setDescription(event.target.value)} style={{ ...input, resize: 'vertical', font: 'inherit' }} />
+      <textarea aria-label={t('task.description')} placeholder={t('task.description')} value={description} maxLength={4000} rows={4} onChange={event => setDescription(event.target.value)} style={textarea} />
     </label>
     <label style={field}><span style={fieldLabel}>{t('task.priority')}</span>
       <select aria-label={t('task.priority')} value={priority} onChange={event => setPriority(event.target.value as TaskPriority)} style={input}>
@@ -410,16 +493,18 @@ export function TaskForm({ t, version, project, create, update, task, onCreated,
     </label>
     <div style={field}>
       <span style={fieldLabel}>{t('task.modules')}</span>
-      {project.config.modules.length === 0 && <p style={alert}>{t('task.noModules')}</p>}
-      {project.config.modules.map(module => <label key={module.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' }}>
+      {project.config.modules.length === 0 && <p style={hint}>{t('task.noModules')}</p>}
+      {project.config.modules.map(module => <label key={module.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, fontSize: 12 }}>
         <input type="checkbox" checked={moduleIds.includes(module.id)} onChange={event => setModuleIds(current => event.target.checked ? [...current, module.id] : current.filter(id => id !== module.id))} />
-        <span>{module.path}</span>
+        <span style={{ color: COLORS.text }}>{module.path}</span>
+        <span style={{ marginLeft: 'auto', color: COLORS.faint, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{module.id}</span>
       </label>)}
     </div>
     {failure !== undefined && <FailureNotice failure={failure} t={t} />}
-    <div style={{ display: 'flex', gap: 8 }}>
-      <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : editing ? t('form.save') : t('form.create')}</button>
-      <button type="button" style={button} onClick={close}>{t('form.cancel')}</button>
+    <div style={footer}>
+      <Button type="button" variant="ghost" onClick={close}>{t('form.cancel')}</Button>
+      <span style={footerSpacer} />
+      <Button type="submit" variant="primary" disabled={busy}>{busy ? t('form.submitPending') : editing ? t('form.save') : t('form.create')}</Button>
     </div>
   </form>
 }
@@ -461,7 +546,7 @@ export function ImportProjectForm({ t, create, onCreated, open: controlledOpen, 
   const [result, setResult] = useState<ImportProjectResult>()
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
-  if (!open) return <button style={button} onClick={() => setOpen(true)}>{t('project.import')}</button>
+  if (!open) return <Button variant="outline" icon={<IconPlusOutlineRegular />} onClick={() => setOpen(true)}>{t('project.import')}</Button>
   async function choose(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0]
     if (file === undefined) return
@@ -478,9 +563,9 @@ export function ImportProjectForm({ t, create, onCreated, open: controlledOpen, 
       setBusy(false); setResult(undefined); setFileName(''); setOpen(false); onCreated(created.value)
     } catch { setFailed(true); setBusy(false) }
   }
-  return <form style={box} onSubmit={event => { void submit(event) }}>
+  return <form style={formStyle} onSubmit={event => { void submit(event) }}>
     <label style={field}><span style={fieldLabel}>{t('project.importFile')}</span>
-      <input aria-label={t('project.importFile')} type="file" accept=".json,application/json" onChange={event => { void choose(event) }} style={input} />
+      <input aria-label={t('project.importFile')} type="file" accept=".json,application/json" onChange={event => { void choose(event) }} style={{ ...input, height: 'auto', padding: '7px 10px' }} />
     </label>
     {fileName !== '' && <p style={alert}>{fileName}</p>}
     {result?.ok === false && <p role="alert" style={alert}>{result.reason === 'json' ? t('project.importJsonInvalid') : `${t('project.importInvalid')}${result.field === undefined ? '' : ` (${result.field})`}`}</p>}
@@ -500,9 +585,10 @@ export function ImportProjectForm({ t, create, onCreated, open: controlledOpen, 
       </div>
     </>}
     {failed && <FailureNotice failure={t('state.error')} t={t} />}
-    <div style={{ display: 'flex', gap: 8 }}>
-      <button type="submit" style={button} disabled={busy || result?.ok !== true}>{busy ? t('form.submitPending') : t('project.importConfirm')}</button>
-      <button type="button" style={button} onClick={() => { setOpen(false); setResult(undefined); setFileName(''); setFailed(false) }}>{t('form.cancel')}</button>
+    <div style={footer}>
+      <Button type="button" variant="ghost" onClick={() => { setOpen(false); setResult(undefined); setFileName(''); setFailed(false) }}>{t('form.cancel')}</Button>
+      <span style={footerSpacer} />
+      <Button type="submit" variant="primary" disabled={busy || result?.ok !== true}>{busy ? t('form.submitPending') : t('project.importConfirm')}</Button>
     </div>
   </form>
 }
@@ -528,8 +614,8 @@ export function LockButton({ t, version, generate, onCreated }: LockButtonProps)
       setFailure(error instanceof Error ? error.message : String(error))
     } finally { setBusy(false) }
   }
-  return <div style={{ marginTop: 8 }}>
-    <button style={button} disabled={busy} onClick={() => { void run() }}>{busy ? t('lock.resolving') : t('lock.new')}</button>
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+    <Button variant="primary" disabled={busy} onClick={() => { void run() }}>{busy ? t('lock.resolving') : t('lock.new')}</Button>
     {failure !== undefined && <FailureNotice failure={failure} t={t} />}
   </div>
 }
