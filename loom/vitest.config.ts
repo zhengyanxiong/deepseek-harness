@@ -8,6 +8,7 @@ const webRequire = createRequire(new URL('../apps/web/package.json', import.meta
 export default defineConfig({
   resolve: { alias: [
     { find: 'react-dom/server', replacement: webRequire.resolve('react-dom/server') },
+    { find: 'react-dom/client', replacement: webRequire.resolve('react-dom/client') },
     { find: 'react/jsx-runtime', replacement: webRequire.resolve('react/jsx-runtime') },
     { find: 'react/jsx-dev-runtime', replacement: webRequire.resolve('react/jsx-dev-runtime') },
     { find: /^react$/, replacement: webRequire.resolve('react') },

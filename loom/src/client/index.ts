@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest } from 'dsh-loom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
-import { previewTargetFromAddress, workspacePreview } from './preview.ts'
+import { openFilePreview, openReviewPreview, previewTargetFromAddress, reviewIndexFromOptions, reviewTargetFromAddress } from './preview.ts'
 import { NS, en, zh, type LoomKey } from './locales.ts'
 
 const PANEL_ID = 'loom' as MainPanelId
@@ -85,9 +85,14 @@ export function apply(ctx: ClientContext): void {
       const original = controller.openResource
       controller.openResource = function (address, options) {
         if (ui.layout.panelInfo.getSnapshot().activePanelId === PANEL_ID) {
+          const review = reviewTargetFromAddress(address, reviewIndexFromOptions(options))
+          if (review !== undefined) {
+            openReviewPreview(review)
+            return
+          }
           const target = previewTargetFromAddress(address)
           if (target !== undefined) {
-            workspacePreview.open({ ...target, mode: 'file' })
+            openFilePreview({ ...target, mode: 'file' })
             return
           }
         }
