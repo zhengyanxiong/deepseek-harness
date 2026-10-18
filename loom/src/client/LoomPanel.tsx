@@ -359,8 +359,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       if (result.ok) setAttempt(current => current + 1)
     } catch { /* the next snapshot keeps the authoritative status */ }
   }
-  function openCreate(kind: CreateKind): void { setCreate(kind); setMenuOpen(false) }
-  function openEdit(kind: EditKind): void { setEdit(kind); setMenuOpen(false) }
+  function openCreate(kind: CreateKind): void { setCreate(kind); setEdit(undefined); setMenuOpen(false) }
+  function openEdit(kind: EditKind): void { setEdit(kind); setCreate(undefined); setMenuOpen(false) }
   function updatePreferences(next: LoomPreferences): void {
     setPreferences(next)
     setView(next.view)
