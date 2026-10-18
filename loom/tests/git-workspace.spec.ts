@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, access } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { prepareWorkspace, resolveCommit, workingTreeStatus, WorkspacePreparationError } from '../src/git/workspace.ts'
 
@@ -141,4 +141,39 @@ it('rejects Git option-shaped refs and nonlocal repository sources', async () =>
   const f = await fixture()
   await expect(resolveCommit(f.first, '--help')).rejects.toThrow()
   await expect(resolveCommit('https://example.invalid/repo', 'HEAD')).rejects.toThrow('local_repository_required')
+})
+
+it.skipIf(process.platform === 'win32')('scopes Git safe.directory to the repository each invocation targets', async () => {
+  const f = await fixture()
+  const bin = join(f.base, 'bin')
+  const argsFile = join(f.base, 'git-args.log')
+  const realGit = (await exec('sh', ['-c', 'command -v git'])).stdout.trim()
+  await mkdir(bin)
+  await writeFile(join(bin, 'git'), `#!/bin/sh\nprintf '%s\\n' "$@" > '${argsFile}'\nexec '${realGit}' "$@"\n`, { mode: 0o755 })
+  const path = process.env.PATH
+  process.env.PATH = `${bin}${delimiter}${path ?? ''}`
+  try {
+    await resolveCommit(f.first, 'HEAD')
+  } finally {
+    process.env.PATH = path
+  }
+  const args = (await readFile(argsFile, 'utf8')).split('\n')
+  expect(args).toContain(`safe.directory=${await realpath(f.first)}`)
+})
+
+it.skipIf(process.platform === 'win32')('reports a dubious-ownership rejection separately from a missing repository', async () => {
+  const f = await fixture()
+  const bin = join(f.base, 'bin')
+  await mkdir(bin)
+  await writeFile(join(bin, 'git'), `#!/bin/sh\necho "fatal: detected dubious ownership in repository at '${f.first}'" >&2\nexit 128\n`, { mode: 0o755 })
+  const path = process.env.PATH
+  process.env.PATH = `${bin}${delimiter}${path ?? ''}`
+  try {
+    const failure = await resolveCommit(f.first, 'HEAD').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(WorkspacePreparationError)
+    expect((failure as WorkspacePreparationError).code).toBe('dubious_ownership')
+    expect((failure as WorkspacePreparationError).message).toContain('dubious ownership')
+  } finally {
+    process.env.PATH = path
+  }
 })

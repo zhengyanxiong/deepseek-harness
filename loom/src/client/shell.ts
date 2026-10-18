@@ -84,6 +84,7 @@ export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   workspace_path_registered: 'error.pathRegistered',
   local_repository_required: 'error.repositoryRequired',
   invalid_repository: 'error.invalidRepository',
+  dubious_ownership: 'error.dubiousOwnership',
   git_not_found: 'error.gitNotFound',
   invalid_commit: 'error.invalidCommit',
   invalid_ref: 'error.invalidRef',

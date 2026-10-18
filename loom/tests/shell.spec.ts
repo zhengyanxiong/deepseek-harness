@@ -9,6 +9,10 @@ it('maps the current Host gateway failure through its catalog message', () => {
   expect(failureReport('gateway/internal', 'task_workspace_uncleaned')).toEqual({ message: 'error.taskWorkspaceUncleaned' })
 })
 
+it('maps the dedicated ownership rejection to its repair guidance', () => {
+  expect(failureReport('gateway/internal', 'dubious_ownership: E:/repo (fatal: detected dubious ownership)')).toEqual({ message: 'error.dubiousOwnership' })
+})
+
 it('keeps an unknown Host diagnostic instead of reducing it to generic copy', () => {
   expect(failureReport('gateway/internal', 'boom')).toEqual({ message: 'delete.unknownFailure', detail: 'gateway/internal: boom' })
 })

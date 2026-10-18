@@ -3,6 +3,18 @@ import { lstat, mkdir, rmdir, stat } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { isAbsolute, normalize, relative, resolve, sep } from 'node:path'
 
+/** Quote one repository path for Git's `safe.directory`; Git paths use forward slashes on Windows. */
+function safeDirectory(path: string): string {
+  return process.platform === 'win32' ? path.replaceAll('\\', '/') : path
+}
+
+/** Trust only the repository this invocation explicitly targets, then keep user config disabled. */
+function trustTarget(args: readonly string[]): string[] {
+  const index = args.indexOf('-C')
+  const directory = args[index + 1]
+  return directory === undefined ? [] : ['-c', `safe.directory=${safeDirectory(directory)}`]
+}
+
 async function execFile(command: string, args: string[], options: { windowsHide: boolean }) {
   const env: NodeJS.ProcessEnv = {}
   for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'HOME', 'TMPDIR', 'TMP', 'TEMP']) {
@@ -11,7 +23,7 @@ async function execFile(command: string, args: string[], options: { windowsHide:
   env.GIT_CONFIG_NOSYSTEM = '1'
   env.GIT_CONFIG_GLOBAL = process.platform === 'win32' ? 'NUL' : '/dev/null'
   env.GIT_TERMINAL_PROMPT = '0'
-  return promisify(execFileCallback)(command, ['-c', `core.hooksPath=${process.platform === 'win32' ? 'NUL' : '/dev/null'}`, ...args], { ...options, env })
+  return promisify(execFileCallback)(command, ['-c', `core.hooksPath=${process.platform === 'win32' ? 'NUL' : '/dev/null'}`, ...trustTarget(args), ...args], { ...options, env })
 }
 const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u
 
@@ -82,6 +94,7 @@ async function localRepository(repo: string): Promise<string> {
     if (error instanceof WorkspacePreparationError) throw error
     const detail = gitDetail(error)
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new WorkspacePreparationError('git_not_found', [], error, repo)
+    if (detail !== undefined && /dubious ownership/iu.test(detail)) throw new WorkspacePreparationError('dubious_ownership', [], error, `${repo} (${detail})`)
     throw new WorkspacePreparationError('invalid_repository', [], error, `${repo}${detail === undefined ? '' : ` (${detail})`}`)
   }
 }
