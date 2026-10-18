@@ -72,6 +72,19 @@ function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?
   </button>
 }
 
+function PinButton({ pinned, label, onToggle }: { pinned: boolean; label: string; onToggle: () => void }) {
+  return <button type="button" aria-label={label} aria-pressed={pinned} title={label} onClick={onToggle}
+    style={{ flex: 'none', width: 24, height: 24, border: 'none', background: 'transparent', color: pinned ? COLORS.green : COLORS.faint, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.55 }}>📌</button>
+}
+
+function readPinnedProjects(): ProjectRecord['id'][] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem('loom.pinnedProjects') ?? '[]')
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') as ProjectRecord['id'][] : []
+  } catch { return [] }
+}
+
 /**
  * Render the Loom shell. Every card and counter comes from the Host catalog; unwired
  * integrations stay labeled instead of showing mock data.
@@ -86,6 +99,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [task, setTask] = useState<TaskRecord>()
   const [selected, setSelected] = useState<SessionId>()
   const [dismissed, setDismissed] = useState<TaskRecord['id']>()
+  const [pinnedProjects, setPinnedProjects] = useState<ProjectRecord['id'][]>(readPinnedProjects)
   const [held, setHeld] = useState<{ id: SessionId; reference: SessionReference }>()
   const heldRef = useRef<{ id: SessionId; reference: SessionReference } | undefined>(undefined)
   const [failure, setFailure] = useState<SessionId>()
@@ -104,6 +118,10 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [expandedVersions, setExpandedVersions] = useState<ReadonlySet<string>>(new Set())
   const [create, setCreate] = useState<CreateKind>()
   const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => {
+    if (typeof localStorage === 'undefined') return
+    try { localStorage.setItem('loom.pinnedProjects', JSON.stringify(pinnedProjects)) } catch { /* Storage can be unavailable in private browsing; pins remain in memory. */ }
+  }, [pinnedProjects])
   useEffect(() => {
     let active = true
     setCatalog({ status: 'loading' })
@@ -260,10 +278,12 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       <aside style={sidebar}>
         <section style={{ marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>📌 {t('side.pinned')}</div>
-          {snapshot === undefined || snapshot.tasks.every(candidate => candidate.status !== 'running' && candidate.status !== 'review') ? <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.empty')}</p> : null}
-          {(snapshot?.projects ?? []).filter(candidate => (snapshot?.tasks ?? []).some(item => (item.status === 'running' || item.status === 'review') && snapshot?.versions.some(v => v.id === item.versionId && v.projectId === candidate.id))).map(candidate => <div key={candidate.id}>
-            <TreeRow depth={0} icon="📁" label={candidate.config.name} arrow={expandedProjects.has(candidate.id) ? '▾' : '▸'} color={COLORS.green} onClick={() => { setProject(candidate.id); toggle(expandedProjects, setExpandedProjects, candidate.id) }} />
-            {(snapshot?.tasks ?? []).filter(item => (item.status === 'running' || item.status === 'review') && snapshot?.versions.some(v => v.id === item.versionId && v.projectId === candidate.id)).map(item => <TreeRow key={item.id} depth={2} icon="💬" label={item.title} active={task?.id === item.id} color={COLORS.green} onClick={() => selectTask(item)} />)}
+          {(snapshot?.projects ?? []).filter(candidate => pinnedProjects.includes(candidate.id)).length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.pinHint')}</p>}
+          {(snapshot?.projects ?? []).filter(candidate => pinnedProjects.includes(candidate.id)).map(candidate => <div key={candidate.id} style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <TreeRow depth={0} icon="📁" label={candidate.config.name} active={project === candidate.id} color={COLORS.green} onClick={() => { setProject(candidate.id); setVersion(undefined); setTask(undefined); setExpandedProjects(current => new Set(current).add(candidate.id)) }} />
+            </div>
+            <PinButton pinned label={t('side.unpin')} onToggle={() => setPinnedProjects(current => current.filter(id => id !== candidate.id))} />
           </div>)}
         </section>
         <section style={{ marginBottom: 4 }}>
@@ -272,7 +292,12 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             const versions = (snapshot?.versions ?? []).filter(item => item.projectId === candidate.id)
             const open = expandedProjects.has(candidate.id)
             return <div key={candidate.id}>
-              <TreeRow depth={0} arrow={open ? '▾' : '▸'} icon="📁" label={candidate.config.name} active={project === candidate.id} count={String(versions.length)} onClick={() => { setProject(candidate.id); setVersion(undefined); setTask(undefined); toggle(expandedProjects, setExpandedProjects, candidate.id) }} />
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <TreeRow depth={0} arrow={open ? '▾' : '▸'} icon="📁" label={candidate.config.name} active={project === candidate.id} count={String(versions.length)} onClick={() => { setProject(candidate.id); setVersion(undefined); setTask(undefined); toggle(expandedProjects, setExpandedProjects, candidate.id) }} />
+                </div>
+                <PinButton pinned={pinnedProjects.includes(candidate.id)} label={pinnedProjects.includes(candidate.id) ? t('side.unpin') : t('side.pin')} onToggle={() => setPinnedProjects(current => current.includes(candidate.id) ? current.filter(id => id !== candidate.id) : [...current, candidate.id])} />
+              </div>
               {open && versions.map(item => {
                 const tasks = (snapshot?.tasks ?? []).filter(candidateTask => candidateTask.versionId === item.id)
                 const openVersion = expandedVersions.has(item.id)
