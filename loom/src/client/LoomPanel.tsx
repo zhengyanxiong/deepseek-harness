@@ -10,7 +10,7 @@ import type {
   PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord,
   WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
 } from 'dsh-loom/types'
-import { LockButton, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
+import { ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
@@ -308,10 +308,6 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...select, cursor: 'text', width: 'calc(100% - 24px)', margin: '2px 12px 6px', boxSizing: 'border-box' }} />
           <button type="button" style={{ margin: '2px 12px 8px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: createDisabledTask ? 'not-allowed' : 'pointer', opacity: createDisabledTask ? 0.5 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>＋ {t('side.newTask')}</button>
         </section>
-        {currentVersion !== undefined && <section style={{ margin: '4px 12px 12px', padding: 8, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.panel2 }}>
-          <div style={{ ...metaLine, marginBottom: 4 }}>{t('top.version')}: {currentVersion.name} · {activeCount} {t('ctx.workspace')}</div>
-          <LockButton t={t} version={currentVersion} generate={generateLock} onCreated={() => setAttempt(current => current + 1)} />
-        </section>}
       </aside>
       {view === 'kanban'
         ? <LoomKanban
@@ -382,7 +378,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       {asideOpen && <aside style={aside}>
         {view === 'kanban'
           ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
-          : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} />}
+          : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} />}
       </aside>}
     </div>
     <LoomBottomPanel

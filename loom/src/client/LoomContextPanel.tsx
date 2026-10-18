@@ -1,6 +1,8 @@
 /** Workbench context panel over the selected project, version, task and workspace. */
-import type { CatalogSnapshot, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
+import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { CatalogSnapshot, GenerateLockRequest, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
 import { boundSessions, currentLock, currentWorkspace } from './projection.ts'
+import { LockButton } from './LoomForms.tsx'
 import { COLORS, metaLine, sectionTitle, shortCommit, STATUS_META } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
@@ -13,6 +15,8 @@ export interface LoomContextPanelProps {
   readonly project: ProjectRecord | undefined
   readonly version: VersionRecord | undefined
   readonly task: TaskRecord | undefined
+  readonly generateLock: (request: GenerateLockRequest) => Promise<RemoteResult<Lock>>
+  readonly onLockChanged: () => void
 }
 
 function Row({ k, v }: { k: string; v: string }) {
@@ -27,7 +31,7 @@ function Row({ k, v }: { k: string; v: string }) {
  * @param props - catalog records and current selection.
  * @returns the aside content for the workbench view.
  */
-export function LoomContextPanel({ t, snapshot, project, version, task }: LoomContextPanelProps) {
+export function LoomContextPanel({ t, snapshot, project, version, task, generateLock, onLockChanged }: LoomContextPanelProps) {
   const lock = currentLock(snapshot, task)
   const workspace = currentWorkspace(snapshot, task)
   const sessions = boundSessions(snapshot).filter(row => row.task.id === task?.id)
@@ -42,6 +46,7 @@ export function LoomContextPanel({ t, snapshot, project, version, task }: LoomCo
         <Row k={t('ctx.workspace')} v={workspace?.path ?? '—'} />
         <Row k={t('ctx.status')} v={task === undefined ? '—' : t(STATUS_META[task.status].key)} />
         <Row k={t('sessions')} v={String(sessions.length)} />
+        {version !== undefined && <LockButton t={t} version={version} generate={generateLock} onCreated={onLockChanged} />}
       </>}
     </section>
     {project !== undefined && <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>
