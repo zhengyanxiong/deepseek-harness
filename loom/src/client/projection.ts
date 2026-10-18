@@ -1,12 +1,14 @@
 /** Catalog projections for the Loom shell; pure functions with no Host runtime imports. */
-import type { CatalogSnapshot, ExecutionState, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
+import type { CatalogSnapshot, ExecutionState, Lock, ProjectRecord, TaskPriority, TaskRecord, VersionRecord } from 'dsh-loom/types'
 import type { BoardColumn, BoardTask } from './board.ts'
 import { projectBoard } from './board.ts'
 
-/** Board filter over task title, project and version. */
+/** Board filter over task title, project, version, priority and module. */
 export interface ShellFilter {
   readonly projectId?: ProjectRecord['id']
   readonly versionId?: VersionRecord['id']
+  readonly priority?: TaskPriority
+  readonly moduleId?: string
   readonly search?: string
 }
 
@@ -68,8 +70,10 @@ function matchingTasks(snapshot: CatalogSnapshot, filter: ShellFilter): BoardTas
     if (version === undefined) return false
     if (!matchProject(version.projectId, filter)) return false
     if (filter.versionId !== undefined && task.versionId !== filter.versionId) return false
+    if (filter.priority !== undefined && (task.priority ?? 'normal') !== filter.priority) return false
+    if (filter.moduleId !== undefined && !(task.moduleIds ?? []).some(moduleId => moduleId === filter.moduleId)) return false
     const query = filter.search?.trim().toLowerCase() ?? ''
-    return query === '' || task.title.toLowerCase().includes(query)
+    return query === '' || `${task.title}\n${task.description ?? ''}`.toLowerCase().includes(query)
   })
 }
 
@@ -106,9 +110,10 @@ export function flatBoard(snapshot: CatalogSnapshot, filter: ShellFilter): Board
  */
 export function boardMetrics(snapshot: CatalogSnapshot, filter: ShellFilter): BoardMetrics {
   const tasks = matchingTasks(snapshot, filter)
+  const cards = new Set(tasks.map(task => task.id))
   const sessions = boundSessions(snapshot).filter((session) => {
     const version = snapshot.versions.find(candidate => candidate.id === session.versionId)
-    return version !== undefined && matchProject(version.projectId, filter)
+    return cards.has(session.task.id) && version !== undefined && matchProject(version.projectId, filter)
       && (filter.versionId === undefined || session.versionId === filter.versionId)
   })
   return {

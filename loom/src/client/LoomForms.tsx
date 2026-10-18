@@ -3,7 +3,7 @@ import { useState, type CSSProperties, type FormEvent } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ModuleConfig,
-  ProjectConfig, ProjectRecord, SourceConfig, TaskRecord, VersionRecord,
+  ProjectConfig, ProjectRecord, SourceConfig, TaskRecord, TaskPriority, VersionRecord,
 } from 'dsh-loom/types'
 import type { LoomKey } from './locales.ts'
 
@@ -129,15 +129,33 @@ export function versionRequest(project: ProjectRecord, name: string, refs: Reado
   return { projectId: project.id, name: admittedName, sources }
 }
 
+/** Optional task metadata admitted by the create form. */
+export interface TaskMetadataDraft {
+  readonly description: string
+  readonly priority: TaskPriority
+  readonly moduleIds: readonly string[]
+}
+
 /**
  * Validate the task form.
  * @param version - Version that owns the new task.
  * @param title - Admitted task title.
+ * @param metadata - Optional description, priority and business modules.
  * @returns detached request, or undefined for a blank title.
  */
-export function taskRequest(version: VersionRecord, title: string): CreateTaskRequest | undefined {
+export function taskRequest(version: VersionRecord, title: string, metadata?: TaskMetadataDraft): CreateTaskRequest | undefined {
   const admitted = title.trim()
-  return admitted === '' ? undefined : { versionId: version.id, title: admitted }
+  if (admitted === '') return undefined
+  const description = metadata?.description.trim() ?? ''
+  const priority = metadata?.priority ?? 'normal'
+  const moduleIds = metadata?.moduleIds ?? []
+  return {
+    versionId: version.id,
+    title: admitted,
+    ...(description === '' ? {} : { description }),
+    ...(priority === 'normal' ? {} : { priority }),
+    ...(moduleIds.length === 0 ? {} : { moduleIds }),
+  }
 }
 
 interface ProjectFormProps {
@@ -279,6 +297,7 @@ export function VersionForm({ t, project, create, onCreated, open: controlledOpe
 interface TaskFormProps {
   t: Translate
   version: VersionRecord
+  project: ProjectRecord
   create(request: CreateTaskRequest): Promise<RemoteResult<TaskRecord>>
   onCreated(task: TaskRecord): void
   open?: boolean
@@ -286,27 +305,50 @@ interface TaskFormProps {
 }
 
 /** Create one task under the selected version. */
-export function TaskForm({ t, version, create, onCreated, open: controlledOpen, onOpenChange }: TaskFormProps) {
+export function TaskForm({ t, version, project, create, onCreated, open: controlledOpen, onOpenChange }: TaskFormProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
   const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [priority, setPriority] = useState<TaskPriority>('normal')
+  const [moduleIds, setModuleIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   if (!open) return <button style={button} onClick={() => setOpen(true)}>{t('task.new')}</button>
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
-    const request = taskRequest(version, title)
+    const request = taskRequest(version, title, { description, priority, moduleIds })
     if (request === undefined) { setFailed(true); return }
     setBusy(true); setFailed(false)
     try {
       const result = await create(request)
       if (!result.ok) { setFailed(true); return }
-      setTitle(''); setOpen(false); onCreated(result.value)
+      setTitle(''); setDescription(''); setPriority('normal'); setModuleIds([]); setOpen(false); onCreated(result.value)
     } catch { setFailed(true) } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>
-    <input aria-label={t('task.name')} placeholder={t('task.name')} value={title} onChange={event => setTitle(event.target.value)} style={input} />
+    <label style={field}><span style={fieldLabel}>{t('task.name')}</span>
+      <input aria-label={t('task.name')} placeholder={t('task.name')} value={title} onChange={event => setTitle(event.target.value)} style={input} />
+    </label>
+    <label style={field}><span style={fieldLabel}>{t('task.description')}</span>
+      <textarea aria-label={t('task.description')} placeholder={t('task.description')} value={description} maxLength={4000} rows={4} onChange={event => setDescription(event.target.value)} style={{ ...input, resize: 'vertical', font: 'inherit' }} />
+    </label>
+    <label style={field}><span style={fieldLabel}>{t('task.priority')}</span>
+      <select aria-label={t('task.priority')} value={priority} onChange={event => setPriority(event.target.value as TaskPriority)} style={input}>
+        <option value="low">{t('task.priority.low')}</option>
+        <option value="normal">{t('task.priority.normal')}</option>
+        <option value="high">{t('task.priority.high')}</option>
+      </select>
+    </label>
+    <div style={field}>
+      <span style={fieldLabel}>{t('task.modules')}</span>
+      {project.config.modules.length === 0 && <p style={alert}>{t('task.noModules')}</p>}
+      {project.config.modules.map(module => <label key={module.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' }}>
+        <input type="checkbox" checked={moduleIds.includes(module.id)} onChange={event => setModuleIds(current => event.target.checked ? [...current, module.id] : current.filter(id => id !== module.id))} />
+        <span>{module.path}</span>
+      </label>)}
+    </div>
     {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
     <div style={{ display: 'flex', gap: 8 }}>
       <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('form.create')}</button>

@@ -53,10 +53,16 @@ it('requires a task title', () => {
   expect(taskRequest(version, ' Checkout ')).toEqual({ versionId: version.id, title: 'Checkout' })
   expect(taskRequest(version, '  ')).toBeUndefined()
 })
+it('submits task metadata only when it differs from the defaults', () => {
+  expect(taskRequest(version, 'Checkout', { description: '  Review totals  ', priority: 'high', moduleIds: ['api'] }))
+    .toEqual({ versionId: version.id, title: 'Checkout', description: 'Review totals', priority: 'high', moduleIds: ['api'] })
+  expect(taskRequest(version, 'Checkout', { description: ' ', priority: 'normal', moduleIds: [] }))
+    .toEqual({ versionId: version.id, title: 'Checkout' })
+})
 it('renders creation entry points with locale-owned labels', () => {
   const html = renderToStaticMarkup(createElement('div', null,
     createElement(ProjectForm, { t, create: () => Promise.reject(new Error('unused')), onCreated: () => {} }),
-    createElement(TaskForm, { t, version, create: () => Promise.reject(new Error('unused')), onCreated: () => {} }),
+    createElement(TaskForm, { t, version, project, create: () => Promise.reject(new Error('unused')), onCreated: () => {} }),
     createElement(LockButton, { t, version, generate: () => Promise.reject(new Error('unused')), onCreated: () => {} })))
   for (const label of [en['project.new'], en['task.new'], en['lock.new']]) expect(html).toContain(label)
   const chinese = renderToStaticMarkup(createElement(ProjectForm, { t: key => zh[key], create: () => Promise.reject(new Error('unused')), onCreated: () => {} }))

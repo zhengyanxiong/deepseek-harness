@@ -32,7 +32,7 @@ const configSchema: Schema<Config> = Schema.object({
 })
 const nonempty = z.string().trim().min(1)
 const versionRequest = z.strictObject({ projectId: nonempty, name: nonempty, sources: z.array(z.strictObject({ sourceId: nonempty, ref: nonempty })).min(1) })
-const taskRequest = z.strictObject({ versionId: nonempty, title: nonempty })
+const taskRequest = z.strictObject({ versionId: nonempty, title: nonempty, description: z.string().max(4000).optional(), moduleIds: z.array(nonempty).max(50).optional(), priority: z.enum(['low', 'normal', 'high']).optional() })
 const lockRequest = z.strictObject({ versionId: nonempty })
 const workspaceRequest = z.strictObject({ path: nonempty.optional(), versionId: nonempty, lockId: nonempty })
 const registerWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty, branches: z.record(z.string(), nonempty).optional() })
@@ -188,7 +188,11 @@ export default class LoomService extends TypertRemoteService {
   createTask(request: CreateTaskRequest): Promise<TaskRecord> {
     return this.run(catalog => {
       const parsed = taskRequest.parse(request)
-      return catalog.createTask(brandString<VersionRecord['id']>(parsed.versionId), parsed.title)
+      return catalog.createTask(brandString<VersionRecord['id']>(parsed.versionId), parsed.title, {
+        ...(parsed.description === undefined ? {} : { description: parsed.description }),
+        ...(parsed.moduleIds === undefined ? {} : { moduleIds: parsed.moduleIds.map(moduleId => brandString<Branded<'loom.module'>>(moduleId)) }),
+        ...(parsed.priority === undefined ? {} : { priority: parsed.priority }),
+      })
     })
   }
 

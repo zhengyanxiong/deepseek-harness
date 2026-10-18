@@ -1,6 +1,6 @@
 /** Shared visual tokens and small projections for the Loom shell. */
 import type { CSSProperties } from 'react'
-import type { AuditEvent, Lock } from 'dsh-loom/types'
+import type { AuditEvent, Lock, TaskPriority } from 'dsh-loom/types'
 import type { TaskStatus } from '../domain/task.ts'
 import type { LoomKey } from './locales.ts'
 
@@ -34,6 +34,13 @@ export const STATUS_META: Readonly<Record<TaskStatus, { readonly key: LoomKey; r
 
 /** Status order shown by the board and tree. */
 export const STATUS_ORDER: readonly TaskStatus[] = ['pending', 'running', 'review', 'completed', 'failed']
+
+/** Task priority presentation; priority never changes execution rights. */
+export const PRIORITY_META: Readonly<Record<TaskPriority, { readonly key: LoomKey; readonly color: string }>> = {
+  low: { key: 'task.priority.low', color: COLORS.faint },
+  normal: { key: 'task.priority.normal', color: COLORS.cyan },
+  high: { key: 'task.priority.high', color: COLORS.warn },
+}
 
 /** Locale keys for audited business events. */
 export const AUDIT_LABEL: Readonly<Record<AuditEvent, LoomKey>> = {
@@ -70,6 +77,7 @@ export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   workspace_changes: 'error.workspaceChanges',
   workspace_unpushed: 'error.workspaceUnpushed',
   workspace_mismatch: 'error.workspaceMismatch',
+  invalid_task: 'error.invalidTask',
 }
 
 /**

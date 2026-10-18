@@ -19,15 +19,23 @@ import {
 export interface ProjectRecord { id: Branded<'loom.project'>; config: ProjectConfig }
 /** Named version with fixed project membership and repository refs. */
 export interface VersionRecord { id: Branded<'loom.version'>; projectId: ProjectRecord['id']; name: string; sources: { sourceId: Branded<'loom.source'>; ref: string }[] }
+/** Task scheduling weight shown on the board; it never changes execution rights. */
+export type TaskPriority = 'low' | 'normal' | 'high'
+
 /** Named task with its fixed version and execution history. */
-export interface TaskRecord extends Task { title: string }
+export interface TaskRecord extends Task {
+  title: string
+  description?: string | undefined
+  moduleIds?: readonly Branded<'loom.module'>[] | undefined
+  priority?: TaskPriority | undefined
+}
 /** Already-prepared workspace metadata; a cleaned record keeps its history but no longer owns files. */
 export interface WorkspaceRecord extends Workspace { path: string; branches?: Record<string, string> | undefined; managed?: boolean | undefined; cleaned?: boolean | undefined }
 /** Detached durable catalog snapshot. */
 export interface CatalogSnapshot { projects: ProjectRecord[]; versions: VersionRecord[]; locks: Lock[]; tasks: TaskRecord[]; workspaces: WorkspaceRecord[]; audit: AuditEntry[]; executions: ExecutionState[] }
 /** Catalog operation rejection, suitable for caller-owned localization. */
 export class CatalogError extends Error {
-  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_task_running' | 'workspace_branch_failed' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed') { super(code); this.name = 'CatalogError' }
+  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_task_running' | 'workspace_branch_failed' | 'invalid_task' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed') { super(code); this.name = 'CatalogError' }
 }
 const text = z.string().trim().min(1)
 const id = <B extends string>() => text.transform(value => brandString<Branded<B>>(value))
@@ -35,7 +43,17 @@ const sourceSchema = z.strictObject({ sourceId: id<'loom.source'>(), ref: text }
 const versionSchema = z.strictObject({ id: id<'loom.version'>(), projectId: id<'loom.project'>(), name: text, sources: z.array(sourceSchema).min(1) })
 const lockSchema = z.strictObject({ id: id<'loom.lock'>(), versionId: id<'loom.version'>(), repositories: z.array(z.strictObject({ sourceId: id<'loom.source'>(), commit: z.string().regex(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u) })).min(1) })
 const status = z.enum(['running', 'review', 'completed', 'failed'])
-const taskSchema = z.strictObject({ id: id<'loom.task'>(), versionId: id<'loom.version'>(), title: text, status: z.enum(['pending', 'running', 'review', 'completed', 'failed']), attempts: z.array(z.strictObject({ id: id<'loom.attempt'>(), lock: lockSchema, workspaceId: id<'loom.workspace'>(), sessionIds: z.array(id<'SessionId'>()), status })) })
+const taskPrioritySchema = z.enum(['low', 'normal', 'high'])
+const taskSchema = z.strictObject({
+  id: id<'loom.task'>(),
+  versionId: id<'loom.version'>(),
+  title: text,
+  description: z.string().max(4000).optional().transform(value => value ?? ''),
+  moduleIds: z.array(id<'loom.module'>()).optional().transform(value => value ?? []),
+  priority: taskPrioritySchema.optional().transform(value => value ?? 'normal'),
+  status: z.enum(['pending', 'running', 'review', 'completed', 'failed']),
+  attempts: z.array(z.strictObject({ id: id<'loom.attempt'>(), lock: lockSchema, workspaceId: id<'loom.workspace'>(), sessionIds: z.array(id<'SessionId'>()), status })),
+})
 const workspaceSchema = z.strictObject({ id: id<'loom.workspace'>(), path: z.string().refine(value => isAbsolute(value) && normalize(value) === value), versionId: id<'loom.version'>(), lockId: id<'loom.lock'>(), branches: z.record(z.string(), text).optional(), managed: z.boolean().optional(), cleaned: z.boolean().optional() })
 const auditEvents = ['project.created', 'version.created', 'lock.generated', 'task.created', 'task.transitioned', 'workspace.prepared', 'workspace.cleaned', 'attempt.started', 'session.attached', 'execution.acquired', 'execution.queued', 'execution.released', 'execution.takeover-requested', 'execution.takeover-stopped', 'execution.takeover-blocked'] as const
 const auditSchema = z.strictObject({
@@ -95,7 +113,10 @@ function parseCatalog(value: unknown): CatalogSnapshot {
     if (execution.takeover !== null && !execution.waiting.includes(execution.takeover.sessionId)) fail()
   }
   for (const task of data.tasks) {
-    if (!data.versions.some(v => v.id === task.versionId)) fail()
+    const taskVersion = data.versions.find(v => v.id === task.versionId)
+    if (taskVersion === undefined) throw new CatalogError('invalid_catalog')
+    const taskProject = data.projects.find(p => p.id === taskVersion.projectId)
+    if (taskProject === undefined || !distinct(task.moduleIds) || task.moduleIds.some(moduleId => !taskProject.config.modules.some(module => module.id === moduleId))) throw new CatalogError('invalid_catalog')
     if (task.status === 'pending' ? task.attempts.length !== 0 : task.attempts.at(-1)?.status !== task.status) fail()
     for (const attempt of task.attempts) {
       attempts.push(attempt.id)
@@ -108,13 +129,20 @@ function parseCatalog(value: unknown): CatalogSnapshot {
   if (!distinct(attempts)) fail()
   return data
 }
+/** Optional task metadata admitted with the title. */
+export interface CreateTaskOptions {
+  readonly description?: string | undefined
+  readonly moduleIds?: readonly Branded<'loom.module'>[] | undefined
+  readonly priority?: TaskPriority | undefined
+}
+
 /** Persistent catalog operations. Writes are committed before snapshots change. */
 export interface Catalog {
   snapshot(): CatalogSnapshot
   createProject(config: unknown): Promise<ProjectRecord>
   createVersion(projectId: ProjectRecord['id'], name: string, sources: readonly { sourceId: Branded<'loom.source'>; ref: string }[]): Promise<VersionRecord>
   generateLock(versionId: VersionRecord['id']): Promise<Lock>
-  createTask(versionId: VersionRecord['id'], title: string): Promise<TaskRecord>
+  createTask(versionId: VersionRecord['id'], title: string, options?: CreateTaskOptions): Promise<TaskRecord>
   prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   workspaceChanges(workspaceId: WorkspaceRecord['id']): Promise<{ repositories: WorkspaceRepositoryChanges[] }>
   workspaceStatus(workspaceId: WorkspaceRecord['id']): Promise<{ running: boolean; repositories: WorkspaceRepositoryChanges[] }>
@@ -397,11 +425,24 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       recordAudit(draft, 'lock.generated', 'human', { detail: lock.repositories.map(repository => repository.commit.slice(0, 8)).join(' ') })
       return lock
     }),
-    createTask: async (versionId, title) => {
+    createTask: async (versionId, title, options = {}) => {
       const admittedTitle = text.parse(title)
+      const description = options.description?.trim() ?? ''
+      if (description.length > 4000) throw new CatalogError('invalid_task')
+      const moduleIds = [...(options.moduleIds ?? [])]
+      if (!distinct(moduleIds)) throw new CatalogError('invalid_task')
+      const priority = options.priority ?? 'normal'
       return transaction(draft => {
-        versionIn(draft, versionId)
-        const record = { ...pendingTask(brandString<Task['id']>(randomUUID()), versionId), title: admittedTitle }
+        const version = versionIn(draft, versionId)
+        const project = draft.projects.find(p => p.id === version.projectId)
+        if (project === undefined || moduleIds.some(moduleId => !project.config.modules.some(module => module.id === moduleId))) throw new CatalogError('invalid_task')
+        const record: TaskRecord = {
+          ...pendingTask(brandString<Task['id']>(randomUUID()), versionId),
+          title: admittedTitle,
+          description,
+          moduleIds,
+          priority,
+        }
         draft.tasks.push(record)
         recordAudit(draft, 'task.created', 'human', { taskId: record.id, detail: admittedTitle })
         return record

@@ -21,6 +21,30 @@ it('persists project, version, Lock and pending task across reopening', async ()
   expect(lock.repositories[0]?.commit).toBe('a'.repeat(40))
   expect((await createCatalog(file, async () => 'b'.repeat(40))).snapshot()).toEqual(catalog.snapshot())
 })
+it('persists optional task metadata and rejects modules outside the project', async () => {
+  const { catalog } = await fixture()
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo: '/repos/web', path: 'web' }], modules: [{ id: 'api', sourceId: 'web', path: 'src/api' }] })
+  const version = await catalog.createVersion(project.id, 'Release', [{ sourceId: project.config.sources[0]!.id, ref: 'main' }])
+  const moduleId = project.config.modules[0]!.id
+  const task = await catalog.createTask(version.id, 'Checkout', { description: 'Review totals', moduleIds: [moduleId], priority: 'high' })
+  expect(task).toMatchObject({ description: 'Review totals', moduleIds: [moduleId], priority: 'high' })
+  await expect(catalog.createTask(version.id, 'Bad', { moduleIds: [brandString<Branded<'loom.module'>>('missing')] })).rejects.toThrow('invalid_task')
+})
+
+it('fills metadata defaults for tasks persisted before those fields existed', async () => {
+  const { file, catalog } = await fixture()
+  const project = await catalog.createProject(config())
+  const version = await catalog.createVersion(project.id, 'Release', [{ sourceId: project.config.sources[0]!.id, ref: 'main' }])
+  await catalog.createTask(version.id, 'Legacy')
+  const stored = JSON.parse(await readFile(file, 'utf8')) as { data: { tasks: Record<string, unknown>[] } }
+  delete stored.data.tasks[0]!.description
+  delete stored.data.tasks[0]!.moduleIds
+  delete stored.data.tasks[0]!.priority
+  await writeFile(file, JSON.stringify(stored))
+  const reopened = await createCatalog(file, async () => 'b'.repeat(40))
+  expect(reopened.snapshot().tasks[0]).toMatchObject({ description: '', moduleIds: [], priority: 'normal' })
+})
+
 it('serializes concurrent creates without losing records', async () => {
   const { catalog } = await fixture()
   await Promise.all(Array.from({ length: 12 }, () => catalog.createProject(config())))

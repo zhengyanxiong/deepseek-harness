@@ -3,7 +3,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { CatalogSnapshot, GenerateLockRequest, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
 import { boundSessions, currentLock, currentWorkspace } from './projection.ts'
 import { LockButton } from './LoomForms.tsx'
-import { COLORS, metaLine, sectionTitle, shortCommit, STATUS_META } from './shell.ts'
+import { COLORS, metaLine, sectionTitle, shortCommit, PRIORITY_META, STATUS_META } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
@@ -36,6 +36,8 @@ export function LoomContextPanel({ t, snapshot, project, version, task, generate
   const workspace = currentWorkspace(snapshot, task)
   const sessions = boundSessions(snapshot).filter(row => row.task.id === task?.id)
   const refs = version?.sources.map(source => `${source.sourceId}@${source.ref}`).join(' · ') ?? ''
+  const priority = task?.priority ?? 'normal'
+  const taskModules = (task?.moduleIds ?? []).map(moduleId => project?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   return <div style={{ overflow: 'auto', flex: 1 }}>
     <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>
       <h4 style={sectionTitle}>{t('ctx.project')}</h4>
@@ -46,7 +48,10 @@ export function LoomContextPanel({ t, snapshot, project, version, task, generate
         <Row k={t('ctx.workspace')} v={workspace?.path ?? '—'} />
         <Row k={t('ctx.branch')} v={Object.values(workspace?.branches ?? {}).join(' · ') || '—'} />
         <Row k={t('ctx.status')} v={task === undefined ? '—' : t(STATUS_META[task.status].key)} />
+        <Row k={t('task.priority')} v={t(PRIORITY_META[priority].key)} />
+        <Row k={t('task.modules')} v={taskModules.length === 0 ? '—' : taskModules.join(' · ')} />
         <Row k={t('sessions')} v={String(sessions.length)} />
+        {task?.description !== undefined && task.description !== '' && <p style={{ margin: '8px 0 0', padding: '7px 9px', borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, fontSize: 11.5, lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{task.description}</p>}
         {version !== undefined && <LockButton t={t} version={version} generate={generateLock} onCreated={onLockChanged} />}
       </>}
     </section>

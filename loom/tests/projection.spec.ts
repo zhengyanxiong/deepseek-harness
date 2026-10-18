@@ -28,6 +28,15 @@ it('filters lanes and metrics by project and version', () => {
   expect(projectLanes(snapshot, { projectId: brandString<ProjectRecord['id']>('missing') })).toEqual([])
   expect(boardMetrics(snapshot, { versionId: brandString<VersionRecord['id']>('other') }).cards).toBe(0)
 })
+it('filters cards by priority and module while searching descriptions', () => {
+  const moduleId = brandString<'loom.module'>('api')
+  const tagged: TaskRecord = { ...task('four', 'pending'), description: 'Review totals', priority: 'high', moduleIds: [moduleId] }
+  const rows = { ...snapshot, tasks: [...snapshot.tasks, tagged] }
+  expect(boardMetrics(rows, { priority: 'high' })).toMatchObject({ cards: 1 })
+  expect(boardMetrics(rows, { priority: 'normal' }).cards).toBe(3)
+  expect(boardMetrics(rows, { moduleId: 'api' }).cards).toBe(1)
+  expect(boardMetrics(rows, { search: 'totals' }).cards).toBe(1)
+})
 
 it('lists only newest loose Sessions with their workspace labels', () => {
   const rows = [1, 2, 3, 4, 5, 6, 7].map(index => ({ id: `s${String(index)}`, displayTitle: `Session ${String(index)}`, cwd: `/work/space-${String(index)}`, updatedAt: index, running: index === 7 }))

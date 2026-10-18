@@ -19,6 +19,9 @@ export interface CreateVersionRequest {
 export interface CreateTaskRequest {
   readonly versionId: string
   readonly title: string
+  readonly description?: string
+  readonly moduleIds?: readonly string[]
+  readonly priority?: 'low' | 'normal' | 'high'
 }
 /** Resolve every repository ref of one version. */
 export interface GenerateLockRequest {

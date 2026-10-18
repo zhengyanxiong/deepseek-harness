@@ -8,7 +8,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock,
-  PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord,
+  PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskPriority, TaskRecord, TransitionTaskRequest, VersionRecord,
   WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
 } from 'dsh-loom/types'
 import { ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
@@ -17,7 +17,7 @@ import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
 import { LoomKanban, LoomKanbanAside } from './LoomKanban.tsx'
 import { activeWorkspaceCount, boundSessions, currentWorkspace, recentSessions, workspaceName, type ShellFilter } from './projection.ts'
-import { COLORS, metaLine, pill, select, shortCommit, STATUS_META } from './shell.ts'
+import { COLORS, metaLine, pill, select, shortCommit, PRIORITY_META, STATUS_META } from './shell.ts'
 import { NS } from './locales.ts'
 
 /** Host catalog access owned by the registration context. */
@@ -151,6 +151,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [kbMode, setKbMode] = useState<'flat' | 'grouped'>('grouped')
   const [filterProject, setFilterProject] = useState('')
   const [filterVersion, setFilterVersion] = useState('')
+  const [filterPriority, setFilterPriority] = useState<TaskPriority | ''>('')
+  const [filterModule, setFilterModule] = useState('')
   const [kbSearch, setKbSearch] = useState('')
   const [expandedProjects, setExpandedProjects] = useState<ReadonlySet<string>>(new Set())
   const [expandedVersions, setExpandedVersions] = useState<ReadonlySet<string>>(new Set())
@@ -203,6 +205,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const snapshot = catalog.status === 'ready' ? catalog.snapshot : undefined
   const currentProject = snapshot?.projects.find(candidate => candidate.id === project)
   const currentVersion = snapshot?.versions.find(candidate => candidate.id === version)
+  const currentVersionProject = snapshot?.projects.find(candidate => candidate.id === currentVersion?.projectId)
   const boundRows = snapshot === undefined ? [] : boundSessions(snapshot)
   const boundIds = new Set(boundRows.map(row => row.sessionId))
   const looseSessions = recentSessions(sessions.ids.map(id => sessions.byId[id]).filter(row => row !== undefined), boundIds, search)
@@ -210,6 +213,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const taskVersion = detailTask === undefined || snapshot === undefined ? undefined : snapshot.versions.find(candidate => candidate.id === detailTask.versionId)
   const displayProject = currentProject ?? (taskVersion === undefined ? undefined : snapshot?.projects.find(candidate => candidate.id === taskVersion.projectId))
   const displayVersion = currentVersion ?? taskVersion
+  const detailPriority = detailTask?.priority ?? 'normal'
+  const detailModules = (detailTask?.moduleIds ?? []).map(moduleId => displayProject?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
   useEffect(() => {
     if (detailWorkspace?.id === undefined || detailWorkspace.cleaned === true) { setDiffCount(0); return }
@@ -262,6 +267,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const filter: ShellFilter = {
     ...(filterProject === '' ? {} : { projectId: filterProject as ProjectRecord['id'] }),
     ...(filterVersion === '' ? {} : { versionId: filterVersion as VersionRecord['id'] }),
+    ...(filterPriority === '' ? {} : { priority: filterPriority }),
+    ...(filterModule === '' ? {} : { moduleId: filterModule }),
     ...(kbSearch.trim() === '' ? {} : { search: kbSearch }),
   }
   const createVersionFor = (projectRecord: ProjectRecord): VersionRecord | undefined => snapshot?.versions.filter(candidate => candidate.projectId === projectRecord.id).at(-1)
@@ -387,10 +394,14 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             mode={kbMode}
             projectValue={filterProject}
             versionValue={filterVersion}
+            priorityValue={filterPriority}
+            moduleValue={filterModule}
             searchValue={kbSearch}
             onMode={setKbMode}
-            onProject={(value) => { setFilterProject(value); setFilterVersion('') }}
-            onVersion={setFilterVersion}
+            onProject={(value) => { setFilterProject(value); setFilterVersion(''); setFilterModule('') }}
+            onVersion={(value) => { setFilterVersion(value); setFilterModule('') }}
+            onPriority={(value) => setFilterPriority(value === '' ? '' : value as TaskPriority)}
+            onModule={setFilterModule}
             onSearch={setKbSearch}
             onSelect={selectTask}
             onNewCard={(projectRecord) => {
@@ -404,7 +415,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
               <span style={{ fontWeight: 700, fontSize: 13, overflowWrap: 'anywhere' }}>{headerTitle}</span>
               {displayProject !== undefined && <span style={{ ...pill, color: '#7db3ff', borderColor: 'rgba(47,129,247,.45)' }}>{displayProject.config.name}</span>}
               {displayVersion !== undefined && <span style={{ ...pill, color: COLORS.cyan, borderColor: 'rgba(57,197,207,.4)' }}>{displayVersion.name}</span>}
-              {displayProject?.config.modules.slice(0, 2).map(module => <span key={module.id} style={pill}>{module.id}</span>)}
+              {detailTask !== undefined && <span style={{ ...pill, color: PRIORITY_META[detailPriority].color }}>{t(PRIORITY_META[detailPriority].key)}</span>}
+              {detailModules.slice(0, 2).map((module, index) => <span key={`${module}-${String(index)}`} style={pill}>{module}</span>)}
               {shortCommit(detailTask?.attempts.at(-1)?.lock) !== undefined && <span style={pill}>🔒 {shortCommit(detailTask?.attempts.at(-1)?.lock)}</span>}
               {detailTask !== undefined && <span style={pill}>{t('task.status')}: {t(STATUS_META[detailTask.status].key)}</span>}
               <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -471,7 +483,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
         </div>
         {create === 'project' && <ProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'version' && currentProject !== undefined && <VersionForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} project={currentProject} create={createVersion} onCreated={created => { setVersion(created.id); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
-        {create === 'task' && currentVersion !== undefined && <TaskForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} version={currentVersion} create={createTask} onCreated={created => { setTask(created); setView('workbench'); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'task' && currentVersion !== undefined && currentVersionProject !== undefined && <TaskForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} version={currentVersion} project={currentVersionProject} create={createTask} onCreated={created => { setTask(created); setView('workbench'); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'version' && currentProject === undefined && <p style={note}>{t('project.select')}</p>}
         {create === 'task' && currentVersion === undefined && <p style={note}>{t('version.select')}</p>}
       </div>
