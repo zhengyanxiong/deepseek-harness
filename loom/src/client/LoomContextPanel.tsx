@@ -1,11 +1,12 @@
 /** Workbench context panel over the selected project, version, task and workspace. */
 import { useEffect, useState, type ReactNode } from 'react'
-import { Button, IconEditOutlineRegular, IconTrashOutlineRegular, IconWarningTriangleOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconEditOutlineRegular, IconTrashOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { CatalogSnapshot, GenerateLockRequest, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-workloom/types'
 import { boundSessions, currentLock, currentWorkspace, type TokenUsageView } from './projection.ts'
 import { LockButton } from './LoomForms.tsx'
-import { COLORS, failureKey, metaLine, sectionTitle, shortCommit, PRIORITY_META, STATUS_META } from './shell.ts'
+import { LoomDeleteDialog, type DeleteKind } from './LoomDeleteDialog.tsx'
+import { COLORS, failureReport, metaLine, sectionTitle, shortCommit, thrownFailureReport, type FailureReport, PRIORITY_META, STATUS_META } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
@@ -28,41 +29,7 @@ export interface LoomContextPanelProps {
   readonly onDeleteTask?: (() => Promise<RemoteResult<void>>) | undefined
 }
 
-type DeleteKind = 'project' | 'version' | 'task'
-
-const DELETE_COPY: Readonly<Record<DeleteKind, { readonly label: LoomKey; readonly warning: LoomKey }>> = {
-  project: { label: 'project.delete', warning: 'delete.projectWarning' },
-  version: { label: 'version.delete', warning: 'delete.versionWarning' },
-  task: { label: 'task.delete', warning: 'delete.taskWarning' },
-}
 const dangerAction = { color: COLORS.error, borderColor: COLORS.error } as const
-const confirmPanel = { display: 'flex', flexDirection: 'column', gap: 8, margin: '0 0 10px', padding: 10, border: `0.5px solid ${COLORS.error}`, borderRadius: 'var(--dsw-radius-sm)', background: 'var(--dsw-alias-interactive-bg-hover-danger)' } as const
-const confirmHeading = { display: 'flex', alignItems: 'center', gap: 6, color: COLORS.error, fontSize: 12, fontWeight: 500 } as const
-
-function DeleteConfirm({ kind, t, subject, busy, failure, onCancel, onConfirm }: {
-  readonly kind: DeleteKind
-  readonly t: Translate
-  readonly subject: string | undefined
-  readonly busy: boolean
-  readonly failure: string | undefined
-  readonly onCancel: () => void
-  readonly onConfirm: () => void
-}) {
-  const failureMessage = failure === undefined ? undefined : (() => {
-    const key = failureKey(failure)
-    return key === undefined ? t('state.error') : t(key)
-  })()
-  return <div role="group" aria-label={t('delete.confirmTitle')} style={confirmPanel}>
-    <div style={confirmHeading}><IconWarningTriangleOutlineRegular size={14} /><span>{t(DELETE_COPY[kind].label)}</span></div>
-    <div style={{ color: COLORS.text, fontSize: 12, overflowWrap: 'anywhere' }}>{subject ?? '—'}</div>
-    <p style={{ margin: 0, color: COLORS.dim, fontSize: 11.5, lineHeight: 1.55 }}>{t(DELETE_COPY[kind].warning)}</p>
-    {failureMessage !== undefined && <p role="alert" style={{ margin: 0, color: COLORS.error, fontSize: 11.5, lineHeight: 1.55 }}>{failureMessage}</p>}
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      <Button size="sm" variant="ghost" disabled={busy} onClick={onCancel}>{t('form.cancel')}</Button>
-      <Button size="sm" variant="outline" disabled={busy} style={{ ...dangerAction, marginLeft: 'auto' }} onClick={onConfirm}>{busy ? t('delete.deleting') : t('delete.confirmAction')}</Button>
-    </div>
-  </div>
-}
 
 function SectionHeading({ title, action }: { title: string; action?: ReactNode }) {
   return <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -86,7 +53,7 @@ function Row({ k, v }: { k: string; v: string }) {
 export function LoomContextPanel({ t, snapshot, project, version, task, usage, generateLock, onLockChanged, onEditProject, onEditVersion, onEditTask, onDeleteProject, onDeleteVersion, onDeleteTask }: LoomContextPanelProps) {
   const [pendingDelete, setPendingDelete] = useState<DeleteKind>()
   const [deleting, setDeleting] = useState(false)
-  const [deleteFailure, setDeleteFailure] = useState<string>()
+  const [deleteFailure, setDeleteFailure] = useState<FailureReport>()
   useEffect(() => { setPendingDelete(undefined); setDeleteFailure(undefined) }, [project?.id, version?.id, task?.id])
   function beginDelete(kind: DeleteKind): void { setPendingDelete(kind); setDeleteFailure(undefined) }
   async function confirmDelete(): Promise<void> {
@@ -96,9 +63,9 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
     try {
       const result = await callback()
       if (result.ok) setPendingDelete(undefined)
-      else setDeleteFailure(result.error.message)
+      else setDeleteFailure(failureReport(result.error.code, result.error.message))
     } catch (error) {
-      setDeleteFailure(error instanceof Error ? error.message : String(error))
+      setDeleteFailure(thrownFailureReport(error))
     } finally { setDeleting(false) }
   }
   const pendingSubject = pendingDelete === 'project' ? project?.config.name : pendingDelete === 'version' ? version?.name : pendingDelete === 'task' ? task?.title : undefined
@@ -120,7 +87,6 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
           {task !== undefined && onEditTask !== undefined && <Button size="sm" variant="outline" icon={<IconEditOutlineRegular />} onClick={onEditTask}>{t('task.edit')}</Button>}
           {task !== undefined && onDeleteTask !== undefined && <Button size="sm" variant="outline" icon={<IconTrashOutlineRegular />} style={dangerAction} disabled={deleting} onClick={() => beginDelete('task')}>{t('task.delete')}</Button>}
         </div>
-        {pendingDelete !== undefined && <DeleteConfirm kind={pendingDelete} t={t} subject={pendingSubject} busy={deleting} failure={deleteFailure} onCancel={() => { setPendingDelete(undefined); setDeleteFailure(undefined) }} onConfirm={() => { void confirmDelete() }} />}
         <Row k={t('top.project')} v={project.config.name} />
         <Row k={t('top.version')} v={version === undefined ? '—' : refs === '' ? version.name : `${version.name} · ${refs}`} />
         <Row k={t('ctx.lock')} v={shortCommit(displayLock) ?? '—'} />
@@ -178,5 +144,6 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
         <p style={{ ...metaLine, margin: '6px 0 0' }}>{t('ctx.usageNote')}</p>
       </>}
     </section>
+    {pendingDelete !== undefined && <LoomDeleteDialog t={t} kind={pendingDelete} subject={pendingSubject} busy={deleting} failure={deleteFailure} onCancel={() => { setPendingDelete(undefined); setDeleteFailure(undefined) }} onConfirm={() => { void confirmDelete() }} />}
   </div>
 }

@@ -10,6 +10,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { currentExecution } from './projection.ts'
 import { failureKey, shortCommit, STATUS_META } from './shell.ts'
 import { LoomCleanupDialog } from './LoomCleanupDialog.tsx'
+import { LoomTakeoverDialog } from './LoomTakeoverDialog.tsx'
 import type { LoadWorkspaceChanges, RenderFileDiffSlot } from './LoomDiff.tsx'
 
 type Translate = (key: LoomKey) => string
@@ -176,14 +177,7 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, lo
       {execution?.owner !== null && execution?.owner !== undefined && !ownsExecution && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {!waitingExecution && <button style={button} disabled={busy || execution?.takeover !== null} onClick={() => { void acquire() }}>{t('execution.wait')}</button>}
         {waitingExecution && <span style={{ ...alert, margin: 0 }}>{t('execution.waiting')}</span>}
-        {!takeoverConfirm && <button style={button} disabled={busy || execution?.takeover !== null} onClick={() => setTakeoverConfirm(true)}>{t('execution.takeover')}</button>}
-      </div>}
-      {takeoverConfirm && <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <p style={{ ...alert, margin: 0 }}>{t('execution.takeoverWarning')}</p>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={button} disabled={busy} onClick={() => { void takeover() }}>{busy ? t('execution.stopping') : t('form.confirm')}</button>
-          <button style={button} disabled={busy} onClick={() => setTakeoverConfirm(false)}>{t('form.cancel')}</button>
-        </div>
+        {!takeoverConfirm && <button style={button} disabled={busy || execution?.takeover !== null} onClick={() => { setTakeoverConfirm(true); setFailed(false) }}>{t('execution.takeover')}</button>}
       </div>}
       {ownsExecution && (execution?.takeover === null || execution?.takeover === undefined) && <button style={button} disabled={busy} onClick={() => { void release() }}>{t('execution.release')}</button>}
     </div>}
@@ -202,7 +196,15 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, lo
         onCancel={() => { setCleanOpen(false); setCleanFailure(undefined); setDiscardAllowed(false) }}
       />}
     </div>}
-    {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
+    <LoomTakeoverDialog
+      t={t}
+      open={takeoverConfirm}
+      busy={busy}
+      failed={failed}
+      onCancel={() => setTakeoverConfirm(false)}
+      onConfirm={() => { void takeover() }}
+    />
+    {failed && !takeoverConfirm && <p role="alert" style={alert}>{t('state.error')}</p>}
   </div>
 }
 

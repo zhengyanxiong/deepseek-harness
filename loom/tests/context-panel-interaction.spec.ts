@@ -54,27 +54,45 @@ async function render(remove: () => Promise<RemoteResult<void>>): Promise<void> 
 }
 
 function button(label: string): HTMLButtonElement {
-  const found = [...(container?.querySelectorAll('button') ?? [])].find(candidate => candidate.textContent === label)
+  const found = [...document.querySelectorAll('button')].find(candidate => candidate.textContent === label)
   if (found === undefined) throw new Error(`button ${label} is missing`)
   return found
 }
 
+function dialog(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]')
+}
+
 it('asks for confirmation before deleting and reports a refused deletion', async () => {
   let calls = 0
-  await render(async () => { calls += 1; return { ok: false, error: { code: 'task_workspace_uncleaned', message: 'task_workspace_uncleaned' } } })
+  await render(async () => { calls += 1; return { ok: false, error: { code: 'gateway/internal', message: 'task_workspace_uncleaned' } } })
   await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
-  expect(container?.querySelector('[role="group"]')?.getAttribute('aria-label')).toBe(en['delete.confirmTitle'])
-  expect(container?.textContent).toContain(en['delete.taskWarning'])
-  expect(container?.textContent).toContain(task.title)
+  expect(dialog()?.getAttribute('aria-label')).toBe(en['task.delete'])
+  expect(dialog()?.textContent).toContain(en['delete.taskWarning'])
+  expect(dialog()?.textContent).toContain(task.title)
   await act(async () => { button(en['delete.confirmAction']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
   expect(calls).toBe(1)
-  expect(container?.textContent).toContain(en['error.taskWorkspaceUncleaned'])
-  expect(container?.querySelector('[role="group"]')?.getAttribute('aria-label')).toBe(en['delete.confirmTitle'])
+  expect(dialog()?.textContent).toContain(en['error.taskWorkspaceUncleaned'])
 })
 
 it('clears the confirmation after a successful deletion', async () => {
   await render(async () => ({ ok: true, value: undefined }))
   await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
   await act(async () => { button(en['delete.confirmAction']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
-  expect(container?.querySelector('[role="group"]')).toBeNull()
+  expect(dialog()).toBeNull()
+})
+
+it('explains that the running Host has not loaded deletion yet', async () => {
+  await render(async () => { throw new Error('ui.remote.loom.deleteTask is not a function') })
+  await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  await act(async () => { button(en['delete.confirmAction']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  expect(dialog()?.textContent).toContain(en['error.hostNotLoaded'])
+})
+
+it('keeps an unknown failure diagnostic visible instead of only the generic message', async () => {
+  await render(async () => ({ ok: false, error: { code: 'gateway/internal', message: 'boom' } }))
+  await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  await act(async () => { button(en['delete.confirmAction']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  expect(dialog()?.textContent).toContain(en['delete.unknownFailure'])
+  expect(dialog()?.textContent).toContain('gateway/internal: boom')
 })
