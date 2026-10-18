@@ -16,6 +16,13 @@ export interface LoomAgent {
   cancel(cause: { readonly kind: 'user' }, options?: { readonly keepInbox?: boolean | undefined }): void
 }
 
+/** Live Agent registry subset used to stop an execution owner and its descendants. */
+export interface LoomAgentRegistry {
+  get(id: Branded<'SessionId'>): LoomAgent | undefined
+  list?(): readonly LoomAgent[]
+  isOwnedBy?(id: Branded<'SessionId'>, owner: LoomAgent): boolean
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /** Native tool policy waterfall observed before any tool executes. */

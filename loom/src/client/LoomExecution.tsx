@@ -49,6 +49,8 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [cleaning, setCleaning] = useState(false)
+  const [cleanFailure, setCleanFailure] = useState<string | undefined>(undefined)
+  const [discardAllowed, setDiscardAllowed] = useState(false)
   const [takeoverConfirm, setTakeoverConfirm] = useState(false)
   const current = task.attempts.at(-1)
   const version = snapshot.versions.find(candidate => candidate.id === task.versionId)
@@ -75,13 +77,18 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
       actions.onChanged()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
-  async function clean(): Promise<void> {
+  async function clean(discard: boolean): Promise<void> {
     if (workspace === undefined) return
     setBusy(true); setFailed(false)
     try {
-      const result = await actions.cleanupWorkspace({ workspaceId: workspace.id, discardChanges: true })
-      if (!result.ok) { setFailed(true); return }
-      setCleaning(false)
+      const result = await actions.cleanupWorkspace({ workspaceId: workspace.id, discardChanges: discard })
+      if (!result.ok) {
+        setCleanFailure(result.error.message)
+        const key = failureKey(result.error.message)
+        setDiscardAllowed(!discard && (key === 'error.workspaceChanges' || key === 'error.workspaceUnpushed'))
+        return
+      }
+      setCleaning(false); setCleanFailure(undefined); setDiscardAllowed(false)
       actions.onChanged()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
@@ -179,11 +186,14 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
     {workspace !== undefined && workspace.cleaned !== true && <div style={{ marginTop: 8 }}>
       {cleaning ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <p style={alert}>{t('workspace.cleanupWarning')}</p>
+        {cleanFailure !== undefined && <p role="alert" style={alert}>{failureKey(cleanFailure) === undefined ? t('state.error') : t(failureKey(cleanFailure)!)}</p>}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button style={button} disabled={busy} onClick={() => { void clean() }}>{t('workspace.cleanupConfirm')}</button>
-          <button style={button} disabled={busy} onClick={() => setCleaning(false)}>{t('form.cancel')}</button>
+          {discardAllowed
+            ? <button style={button} disabled={busy} onClick={() => { void clean(true) }}>{t('workspace.cleanupDiscard')}</button>
+            : <button style={button} disabled={busy} onClick={() => { void clean(false) }}>{t('workspace.cleanupConfirm')}</button>}
+          <button style={button} disabled={busy} onClick={() => { setCleaning(false); setCleanFailure(undefined); setDiscardAllowed(false) }}>{t('form.cancel')}</button>
         </div>
-      </div> : <button style={button} disabled={busy} onClick={() => setCleaning(true)}>{t('workspace.cleanup')}</button>}
+      </div> : <button style={button} disabled={busy} onClick={() => { setCleaning(true); setCleanFailure(undefined); setDiscardAllowed(false) }}>{t('workspace.cleanup')}</button>}
     </div>}
     {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
   </div>

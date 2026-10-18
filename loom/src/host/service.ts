@@ -18,7 +18,7 @@ import type { Lock } from '../domain/task.ts'
 import { ExecutionError, type ExecutionState, type StopOutcome } from '../domain/execution.ts'
 import { resolveCommit } from '../git/workspace.ts'
 import type {} from './events.ts'
-import type { LoomAgent } from './events.ts'
+import type { LoomAgent, LoomAgentRegistry } from './events.ts'
 
 /** Absolute catalog file and optional workspace parent; the service creates missing directories. */
 export interface Config { catalogFile: string; workspacesDir?: string }
@@ -136,25 +136,45 @@ export default class LoomService extends TypertRemoteService {
   }
 
   /**
-   * Stop one owning Agent turn and wait for observable idleness.
-   * Child Agents are not separately awaited; the owner's turn cancellation is the
-   * stop evidence this Host can observe.
+   * Stop the owning Agent turn, cancel live descendants, and wait for observable idleness.
+   * Descendant ownership is read from the live Agent registry; a child that disappears
+   * during cancellation no longer contributes stop evidence.
    * @param sessionId - Session holding the current workspace execution token.
    * @returns the trusted stop outcome used to confirm or block handoff.
    */
   private async stopOwner(sessionId: Branded<'SessionId'>): Promise<StopOutcome> {
-    const agents = this.ctx.get('agents') as { get(id: Branded<'SessionId'>): LoomAgent | undefined } | undefined
+    const agents = this.ctx.get('agents') as LoomAgentRegistry | undefined
     if (agents === undefined) return 'unknown'
     const agent = agents.get(sessionId)
     if (agent === undefined || agent.status !== 'running') return 'stopped'
+    const targets = new Set<LoomAgent>([agent])
+    const listed = agents.list?.()
+    const ownedBy = agents.isOwnedBy
+    if (listed !== undefined && ownedBy !== undefined) {
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const candidate of listed) {
+          if (targets.has(candidate)) continue
+          if ([...targets].some(owner => ownedBy(candidate.session.id, owner))) {
+            targets.add(candidate)
+            changed = true
+          }
+        }
+      }
+    }
     try {
       agent.cancel({ kind: 'user' }, { keepInbox: true })
     } catch {
       return 'failed'
     }
+    for (const target of targets) {
+      if (target === agent) continue
+      try { target.cancel({ kind: 'user' }, { keepInbox: true }) } catch { /* the child may have stopped with its owner */ }
+    }
     const deadline = Date.now() + 10_000
     while (Date.now() < deadline) {
-      if (agent.status !== 'running') return 'stopped'
+      if ([...targets].every(target => target.status !== 'running')) return 'stopped'
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     return 'unknown'

@@ -220,6 +220,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const detailPriority = detailTask?.priority ?? 'normal'
   const detailModules = (detailTask?.moduleIds ?? []).map(moduleId => displayProject?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
+  const temporaryWorkspace = snapshot?.workspaces.filter(candidate => candidate.cleaned !== true).at(-1)
   useEffect(() => {
     if (detailWorkspace?.id === undefined || detailWorkspace.cleaned === true) { setDiffCount(0); return }
     let active = true
@@ -265,6 +266,13 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       if (result.ok) setAttempt(current => current + 1)
     } catch { /* the next snapshot keeps the authoritative status */ }
   }
+  async function openTemporary(): Promise<void> {
+    if (temporaryWorkspace === undefined) return
+    try {
+      const id = await createSessionInWorkspace(temporaryWorkspace.path)
+      setDismissed(undefined); setTask(undefined); setSelected(id); setView('workbench')
+    } catch { /* the next snapshot keeps native Session state authoritative */ }
+  }
   async function moveTask(record: TaskRecord, target: TaskRecord['status']): Promise<void> {
     try {
       const result = await transitionTask({ taskId: record.id, target, actor: 'human' })
@@ -291,6 +299,11 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const createDisabledVersion = currentProject === undefined
   const createDisabledTask = currentVersion === undefined
   return <div style={frame}>
+    <style>{`
+      @media (max-width: 1180px) { .loom-sidebar { width: 196px !important; } .loom-aside { width: 224px !important; } }
+      @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-aside { width: 210px !important; } }
+      @media (max-width: 760px) { .loom-aside { display: none !important; } }
+    `}</style>
     <header style={topbar}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 14 }}>
         <span style={{ width: 20, height: 20, borderRadius: 5, background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.purple})`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff' }}>织</span>
@@ -338,7 +351,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       <button type="button" aria-label={t('top.settings')} onClick={() => setSettingsOpen(true)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer', fontSize: 14 }}>⚙</button>
     </header>
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-      <aside style={sidebar}>
+      <aside className="loom-sidebar" style={sidebar}>
         <section style={{ marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}><IconPinFillRegular size={13} /> {t('side.pinned')}</div>
           {(snapshot?.projects ?? []).filter(candidate => pinnedProjects.includes(candidate.id)).length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.pinHint')}</p>}
@@ -402,6 +415,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           })}
           <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...select, cursor: 'text', width: 'calc(100% - 24px)', margin: '2px 12px 6px', boxSizing: 'border-box' }} />
           <button type="button" style={{ margin: '2px 12px 8px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: createDisabledTask ? 'not-allowed' : 'pointer', opacity: createDisabledTask ? 0.5 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>＋ {t('side.newTask')}</button>
+          <button type="button" title={temporaryWorkspace?.path} style={{ margin: '0 12px 8px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: temporaryWorkspace === undefined ? 'not-allowed' : 'pointer', opacity: temporaryWorkspace === undefined ? 0.5 : 1 }} disabled={temporaryWorkspace === undefined} onClick={() => { void openTemporary() }}>{t('side.newTemporary')}</button>
         </section>
       </aside>
       {view === 'kanban'
@@ -477,7 +491,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                     </div>
                   </div>}
           </main>}
-      {asideOpen && <aside style={aside}>
+      {asideOpen && <aside className="loom-aside" style={aside}>
         {view === 'kanban'
           ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
           : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} />}
