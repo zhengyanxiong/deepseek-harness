@@ -28,7 +28,7 @@ const fieldLabel: CSSProperties = { color: COLORS.dim, fontSize: 12, fontWeight:
 const hint: CSSProperties = { margin: 0, color: COLORS.faint, fontSize: 11.5, lineHeight: 1.55 }
 const alert: CSSProperties = { margin: 0, color: COLORS.dim, fontSize: 12 }
 const failureCode: CSSProperties = { display: 'block', marginTop: 4, color: COLORS.error, fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
-const footer: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4, paddingTop: 12, borderTop: `0.5px solid ${COLORS.border}` }
+const footer: CSSProperties = { position: 'sticky', bottom: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4, paddingTop: 12, paddingBottom: 4, borderTop: `0.5px solid ${COLORS.border}`, background: COLORS.panel }
 const footerSpacer: CSSProperties = { flex: 1, minWidth: 8 }
 const stepRail: CSSProperties = { display: 'grid', listStyle: 'none', padding: '10px 6px', margin: 0, border: `0.5px solid ${COLORS.border}`, borderRadius: 'var(--dsw-radius-md)', background: COLORS.panel2 }
 const stepItem: CSSProperties = { position: 'relative', display: 'flex', minWidth: 0, justifyContent: 'center' }
@@ -333,7 +333,6 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
           <input aria-label={t('module.path')} placeholder={t('module.path')} value={module.path} onChange={event => updateModule(index, { path: event.target.value })} style={input} />
         </label>
       </div>)}
-      {modules.length === 0 && <p style={hint}>{t('module.optional')}</p>}
       <Button type="button" variant="outline" icon={<IconPlusOutlineRegular />} style={{ alignSelf: 'flex-start' }} onClick={() => setModules(current => [...current, emptyModuleRow()])}>{t('module.add')}</Button>
     </section>}
     {step === 'preview' && <section style={stack}>

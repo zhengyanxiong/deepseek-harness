@@ -38,6 +38,14 @@ it('renders an existing project in the edit form instead of a creation trigger',
   expect(markup).not.toContain(en['project.new'])
 })
 
+it('renders a numbered project setup rail with a primary next action', () => {
+  const html = renderToStaticMarkup(createElement(ProjectForm, { t, open: true, create: async () => ({ ok: true, value: project }), onCreated: () => undefined }))
+  for (const label of [en['project.step.name'], en['project.step.sources'], en['project.step.modules'], en['project.step.preview']]) expect(html).toContain(label)
+  expect(html).toContain(en['project.nameHint'])
+  expect(html).toContain(`>${en['form.next']}<`)
+  expect(html).not.toContain(`>${en['form.save']}<`)
+})
+
 it('starts a repository row empty instead of pre-filling placeholder values', () => {
   expect(emptySourceRow()).toEqual({ repo: '', path: '' })
 })
