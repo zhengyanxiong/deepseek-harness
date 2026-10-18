@@ -48,6 +48,7 @@ function Card({ task, versionName, sessions, versionProjects, moduleNamesByProje
   const lastDragAt = useRef(0)
   return <button type="button" draggable onDragStart={event => { lastDragAt.current = Date.now(); event.dataTransfer?.setData('text/plain', task.id); if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = 'move' }} onDragEnd={() => { lastDragAt.current = Date.now() }} style={{ ...card, borderLeft: `2px solid ${meta.color}` }} onClick={() => { if (Date.now() - lastDragAt.current > 500) onSelect(task) }}>
     <span style={{ fontWeight: 600, fontSize: 12, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{task.title}</span>
+    {task.description !== undefined && task.description !== '' && <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 10.5, lineHeight: 1.45, color: COLORS.dim, overflowWrap: 'anywhere' }}>{task.description}</span>}
     <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 10.5, color: COLORS.faint }}>
       <span style={{ color: COLORS.cyan }}>{versionName}</span>
       <span style={{ color: priorityMeta.color, border: `0.5px solid ${priorityMeta.color}`, borderRadius: 999, padding: '0 5px' }}>{t(priorityMeta.key)}</span>
