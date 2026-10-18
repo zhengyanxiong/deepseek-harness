@@ -88,6 +88,7 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
           {task !== undefined && onDeleteTask !== undefined && <Button size="sm" variant="outline" icon={<IconTrashOutlineRegular />} style={dangerAction} disabled={deleting} onClick={() => beginDelete('task')}>{t('task.delete')}</Button>}
         </div>
         <Row k={t('top.project')} v={project.config.name} />
+        {project.config.agentPreset !== undefined && <Row k={t('project.agentPreset')} v={project.config.agentPreset} />}
         <Row k={t('top.version')} v={version === undefined ? '—' : refs === '' ? version.name : `${version.name} · ${refs}`} />
         <Row k={t('ctx.lock')} v={shortCommit(displayLock) ?? '—'} />
         <Row k={t('ctx.workspace')} v={workspace?.path ?? '—'} />

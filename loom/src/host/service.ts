@@ -8,13 +8,13 @@ import { mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { createCatalog, type Catalog } from './catalog.ts'
+import { createCatalog, type Catalog, type TemporarySessionRecord } from './catalog.ts'
 import { parseProject } from '../domain/project.ts'
 import type {
   AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest,
   CleanupWorkspaceRequest, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceChangesRequest, WorkspaceRepositoryChangesRecord, WorkspaceStatusResult,
   VersionRecord, WorkspaceRecord, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest,
-  DeleteProjectRequest, DeleteVersionRequest, DeleteTaskRequest,
+  DeleteProjectRequest, DeleteVersionRequest, DeleteTaskRequest, RegisterTemporarySessionRequest, ForgetTemporarySessionRequest,
 } from '../types.ts'
 import type { Lock } from '../domain/task.ts'
 import { ExecutionError, type ExecutionState, type StopOutcome } from '../domain/execution.ts'
@@ -46,6 +46,8 @@ const workspaceRequest = z.strictObject({ path: nonempty.optional(), versionId: 
 const registerWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty, branches: z.record(z.string(), nonempty).optional() })
 const attemptRequest = z.strictObject({ taskId: nonempty, workspaceId: nonempty })
 const sessionRequest = z.strictObject({ taskId: nonempty, sessionId: nonempty })
+const temporarySessionRequest = z.strictObject({ sessionId: nonempty, workspacePath: nonempty })
+const forgetTemporarySessionRequest = z.strictObject({ sessionId: nonempty })
 const transitionRequest = z.strictObject({ taskId: nonempty, target: z.enum(['pending', 'running', 'review', 'completed', 'failed']), actor: z.enum(['human', 'agent']) })
 const workspaceChangesRequest = z.strictObject({ workspaceId: nonempty })
 const cleanupWorkspaceRequest = z.strictObject({ workspaceId: nonempty, discardChanges: z.boolean().optional() })
@@ -341,6 +343,21 @@ export default class LoomService extends TypertRemoteService {
       const parsed = sessionRequest.parse(request)
       return catalog.attachSession(brandString<TaskRecord['id']>(parsed.taskId), brandString<Branded<'SessionId'>>(parsed.sessionId))
     })
+  }
+
+  /** Mark a native Session as a Loom temporary Session. @param request - Session identity and prepared workspace path. @returns the committed record. */
+  @Remote
+  registerTemporarySession(request: RegisterTemporarySessionRequest): Promise<TemporarySessionRecord> {
+    return this.run(catalog => {
+      const parsed = temporarySessionRequest.parse(request)
+      return catalog.registerTemporarySession(brandString<Branded<'SessionId'>>(parsed.sessionId), parsed.workspacePath)
+    })
+  }
+
+  /** Stop treating a native Session as a Loom temporary Session. @param request - Session identity. @returns nothing after the record is gone. */
+  @Remote
+  forgetTemporarySession(request: ForgetTemporarySessionRequest): Promise<void> {
+    return this.run(catalog => catalog.forgetTemporarySession(brandString<Branded<'SessionId'>>(forgetTemporarySessionRequest.parse(request).sessionId)))
   }
 
   /** Change business status under the trusted caller identity. @param request - task, target state and actor. @returns the updated task. */

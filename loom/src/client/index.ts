@@ -11,7 +11,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
-import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, DeleteProjectRequest, DeleteTaskRequest, DeleteVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest } from 'dsh-workloom/types'
+import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, DeleteProjectRequest, DeleteTaskRequest, DeleteVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest, RegisterTemporarySessionRequest } from 'dsh-workloom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { openFilePreview, openReviewPreview, previewTargetFromAddress, reviewIndexFromOptions, reviewTargetFromAddress } from './preview.ts'
@@ -24,10 +24,26 @@ interface WorkspaceFilesFace {
   read(sessionId: SessionId, path: string, range: { readonly offset: number }, signal?: AbortSignal): Promise<RemoteResult<WorkspaceFileText>>
 }
 
+/** One native Agent preset as the project form offers it. */
+interface AgentPresetRowFace {
+  readonly id: string
+  readonly isDefault: boolean
+  readonly name?: string
+  readonly description?: string
+  readonly broken?: string
+}
+
+/** The Agent-preset roster read used by Workloom project settings. */
+interface AgentPresetsFace {
+  list(): Promise<RemoteResult<{ presets: readonly AgentPresetRowFace[] }>>
+}
+
 declare module '@deepseek-ai/dsh-api-gateway/client' {
   interface ClientRemote {
     /** Native workspace file reads, used by the Loom preview. */
     readonly workspaceFiles: WorkspaceFilesFace
+    /** Native Agent-preset roster, used by project settings. */
+    readonly agentPresets: AgentPresetsFace
   }
 }
 
@@ -101,7 +117,7 @@ export function apply(ctx: ClientContext): void {
       return () => { controller.openResource = original }
     }, 'loom: route file links to the workbench preview')
   })
-  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom', 'remote.workspaceFiles'], (ui) => {
+  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom', 'remote.workspaceFiles', 'remote.agentPresets'], (ui) => {
     ui.effect(() => ui.locale.register(NS, { en, zh }), 'loom: dictionary')
     const t = ui.locale.bind(NS)
     ui.slots.inject('main', () => ui.slots.register({
@@ -123,6 +139,8 @@ export function apply(ctx: ClientContext): void {
         prepareWorkspace: (request: PrepareWorkspaceRequest) => ui.remote.loom.prepareWorkspace(request),
         startAttempt: (request: StartAttemptRequest) => ui.remote.loom.startAttempt(request),
         attachSession: (request: AttachSessionRequest) => ui.remote.loom.attachSession(request),
+        registerTemporarySession: (request: RegisterTemporarySessionRequest) => ui.remote.loom.registerTemporarySession(request),
+        listAgentPresets: () => ui.remote.agentPresets.list(),
         transitionTask: (request: TransitionTaskRequest) => ui.remote.loom.transitionTask(request),
         workspaceChanges: (request: WorkspaceChangesRequest) => ui.remote.loom.workspaceChanges(request),
         readFile: (sessionId, path, offset, signal): Promise<RemoteResult<WorkspaceFileText>> => ui.remote.workspaceFiles.read(sessionId, path, { offset }, signal),
@@ -130,9 +148,9 @@ export function apply(ctx: ClientContext): void {
         acquireExecution: (request: ExecutionRequest) => ui.remote.loom.acquireExecution(request),
         releaseExecution: (request: ReleaseExecutionRequest) => ui.remote.loom.releaseExecution(request),
         takeoverExecution: (request: ExecutionRequest) => ui.remote.loom.takeoverExecution(request),
-        createSessionInWorkspace: async (path: string) => {
+        createSessionInWorkspace: async (path: string, agentPreset?: string) => {
           const workspace = await ui.workspaces.create({ path })
-          return ui.sessions.create({ workspaceId: workspace.workspaceId })
+          return ui.sessions.create({ workspaceId: workspace.workspaceId, ...(agentPreset === undefined ? {} : { agentPreset }) })
         },
       }),
     }, LoomPanel))

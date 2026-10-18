@@ -31,8 +31,14 @@ export interface TaskRecord extends Task {
 }
 /** Already-prepared workspace metadata; a cleaned record keeps its history but no longer owns files. */
 export interface WorkspaceRecord extends Workspace { path: string; branches?: Record<string, string> | undefined; managed?: boolean | undefined; cleaned?: boolean | undefined }
+/** A native Session started from Workloom without a task attachment. */
+export interface TemporarySessionRecord {
+  readonly sessionId: Branded<'SessionId'>
+  readonly workspacePath: string
+  readonly createdAt: number
+}
 /** Detached durable catalog snapshot. */
-export interface CatalogSnapshot { projects: ProjectRecord[]; versions: VersionRecord[]; locks: Lock[]; tasks: TaskRecord[]; workspaces: WorkspaceRecord[]; audit: AuditEntry[]; executions: ExecutionState[] }
+export interface CatalogSnapshot { projects: ProjectRecord[]; versions: VersionRecord[]; locks: Lock[]; tasks: TaskRecord[]; workspaces: WorkspaceRecord[]; temporarySessions: TemporarySessionRecord[]; audit: AuditEntry[]; executions: ExecutionState[] }
 /** Catalog operation rejection, suitable for caller-owned localization. */
 export class CatalogError extends Error {
   constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_task_running' | 'workspace_branch_failed' | 'invalid_task' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed' | 'project_has_versions' | 'version_has_tasks' | 'version_has_workspaces' | 'task_busy' | 'task_workspace_uncleaned') { super(code); this.name = 'CatalogError' }
@@ -55,6 +61,11 @@ const taskSchema = z.strictObject({
   attempts: z.array(z.strictObject({ id: id<'loom.attempt'>(), lock: lockSchema, workspaceId: id<'loom.workspace'>(), sessionIds: z.array(id<'SessionId'>()), status })),
 })
 const workspaceSchema = z.strictObject({ id: id<'loom.workspace'>(), path: z.string().refine(value => isAbsolute(value) && normalize(value) === value), versionId: id<'loom.version'>(), lockId: id<'loom.lock'>(), branches: z.record(z.string(), text).optional(), managed: z.boolean().optional(), cleaned: z.boolean().optional() })
+const temporarySessionSchema = z.strictObject({
+  sessionId: id<'SessionId'>(),
+  workspacePath: z.string().refine(value => isAbsolute(value) && normalize(value) === value),
+  createdAt: z.number().int().nonnegative(),
+})
 const auditEvents = ['project.created', 'project.updated', 'project.deleted', 'version.created', 'version.updated', 'version.deleted', 'lock.generated', 'task.created', 'task.updated', 'task.deleted', 'task.transitioned', 'workspace.prepared', 'workspace.cleaned', 'attempt.started', 'session.attached', 'execution.acquired', 'execution.queued', 'execution.released', 'execution.takeover-requested', 'execution.takeover-stopped', 'execution.takeover-blocked'] as const
 const auditSchema = z.strictObject({
   id: text,
@@ -78,6 +89,7 @@ const executionSchema = z.strictObject({
 const schema = z.strictObject({
   projects: z.array(z.strictObject({ id: id<'loom.project'>(), config: z.unknown().transform(parseProject) })),
   versions: z.array(versionSchema), locks: z.array(lockSchema), tasks: z.array(taskSchema), workspaces: z.array(workspaceSchema),
+  temporarySessions: z.array(temporarySessionSchema).optional().transform(value => value ?? []),
   audit: z.array(auditSchema).max(500).optional().transform(value => value ?? []),
   executions: z.array(executionSchema).optional().transform(value => value ?? []),
 })
@@ -127,6 +139,10 @@ function parseCatalog(value: unknown): CatalogSnapshot {
     }
   }
   if (!distinct(attempts)) fail()
+  if (!distinct(data.temporarySessions.map(row => row.sessionId))) fail()
+  for (const temporary of data.temporarySessions) {
+    if (!data.workspaces.some(workspace => workspace.path === temporary.workspacePath && workspace.cleaned !== true)) fail()
+  }
   return data
 }
 /** Optional task metadata admitted with the title. */
@@ -157,6 +173,8 @@ export interface Catalog {
   registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   startAttempt(taskId: TaskRecord['id'], workspaceId: WorkspaceRecord['id']): Promise<TaskRecord>
   attachSession(taskId: TaskRecord['id'], sessionId: Branded<'SessionId'>): Promise<TaskRecord>
+  registerTemporarySession(sessionId: Branded<'SessionId'>, workspacePath: string): Promise<TemporarySessionRecord>
+  forgetTemporarySession(sessionId: Branded<'SessionId'>): Promise<void>
   transitionTask(taskId: TaskRecord['id'], target: TaskStatus, actor: 'human' | 'agent'): Promise<TaskRecord>
   acquireExecution(workspaceId: WorkspaceRecord['id'], sessionId: Branded<'SessionId'>): Promise<ExecutionState>
   releaseExecution(workspaceId: WorkspaceRecord['id'], expected: ExecutionOwner): Promise<ExecutionState>
@@ -174,7 +192,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
   let state: CatalogSnapshot
   try { state = await store.load() } catch (error) {
     if (!(error instanceof JsonStoreError) || error.code !== 'missing') throw error
-    state = { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }
+    state = { projects: [], versions: [], locks: [], tasks: [], workspaces: [], temporarySessions: [], audit: [], executions: [] }
     await store.write(state)
   }
   let queue: Promise<void> = Promise.resolve()
@@ -308,6 +326,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         const index = draft.workspaces.findIndex(item => item.id === workspaceId)
         if (referenced) draft.workspaces[index] = { ...draft.workspaces[index]!, cleaned: true }
         else draft.workspaces.splice(index, 1)
+        draft.temporarySessions = draft.temporarySessions.filter(temporary => temporary.workspacePath !== record.path)
         draft.executions = draft.executions.filter(execution => execution.workspaceId !== workspaceId)
         recordAudit(draft, 'workspace.cleaned', 'human', { workspaceId, detail: record.path })
       })
@@ -343,8 +362,20 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       const task = taskIn(draft, taskId)
       const updated = { ...task, ...attachSession(task, sessionId) }
       draft.tasks[draft.tasks.indexOf(task)] = updated
+      draft.temporarySessions = draft.temporarySessions.filter(temporary => temporary.sessionId !== sessionId)
       recordAudit(draft, 'session.attached', 'human', { taskId, sessionId, workspaceId: updated.attempts.at(-1)?.workspaceId })
       return updated
+    }),
+    registerTemporarySession: (sessionId, workspacePath) => transaction(draft => {
+      const workspace = draft.workspaces.find(candidate => candidate.path === workspacePath)
+      if (workspace === undefined || workspace.cleaned === true) throw new CatalogError('missing_workspace')
+      const previous = draft.temporarySessions.find(temporary => temporary.sessionId === sessionId)
+      const record: TemporarySessionRecord = { sessionId, workspacePath, createdAt: previous?.createdAt ?? Date.now() }
+      draft.temporarySessions = [...draft.temporarySessions.filter(temporary => temporary.sessionId !== sessionId), record]
+      return record
+    }),
+    forgetTemporarySession: sessionId => transaction(draft => {
+      draft.temporarySessions = draft.temporarySessions.filter(temporary => temporary.sessionId !== sessionId)
     }),
     transitionTask: (taskId, target, actor) => transaction(draft => {
       const task = taskIn(draft, taskId)

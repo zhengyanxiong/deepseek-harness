@@ -98,6 +98,10 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   expect(workspace.path).toBe(root)
   expect(await readFile(join(root, 'web', 'file'), 'utf8')).toBe('content')
   expect(await call('snapshot')).toMatchObject({ workspaces: [{ id: workspace.id, versionId: version.id, lockId: lock.id }] })
+  expect(await call('registerTemporarySession', { request: { sessionId: 'session-temp', workspacePath: root } })).toMatchObject({ sessionId: 'session-temp', workspacePath: root })
+  expect(await call('snapshot')).toMatchObject({ temporarySessions: [{ sessionId: 'session-temp', workspacePath: root }] })
+  await call('forgetTemporarySession', { request: { sessionId: 'session-temp' } })
+  expect(await call('snapshot')).toMatchObject({ temporarySessions: [] })
   await writeFile(join(root, 'web', 'file'), 'changed\nsecond\n')
   await writeFile(join(root, 'web', 'new.txt'), 'added\n')
   const changes = await call('workspaceChanges', { request: { workspaceId: workspace.id } }) as { repositories: { files: { path: string; added: number; deleted: number; before: boolean; after: boolean; hunks: { lines: string[] }[] }[] }[] }

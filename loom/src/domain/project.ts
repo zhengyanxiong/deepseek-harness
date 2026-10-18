@@ -18,6 +18,8 @@ export interface ProjectConfig {
   readonly name: string
   readonly sources: readonly SourceConfig[]
   readonly modules: readonly ModuleConfig[]
+  /** Agent preset every Session created for this project starts with; omitted means the DSH default. */
+  readonly agentPreset?: string
 }
 /** Structured import failure for localized UI rendering. */
 export class ProjectError extends Error {
@@ -59,8 +61,9 @@ function unique(ids: readonly string[], at: string): void {
  * @returns admitted configuration; no repositories are fetched or scripts executed.
  */
 export function parseProject(input: unknown): ProjectConfig {
-  const root = object(input, ['name', 'sources', 'modules'], 'project')
+  const root = object(input, ['name', 'sources', 'modules', 'agentPreset'], 'project')
   const name = text(root.name, 'name')
+  const agentPreset = root.agentPreset === undefined ? undefined : text(root.agentPreset, 'agentPreset').trim()
   const sources = list(root.sources, 'sources').map((item, index): SourceConfig => {
     const at = `sources.${index}`
     const source = object(item, ['id', 'repo', 'path'], at)
@@ -83,5 +86,5 @@ export function parseProject(input: unknown): ProjectConfig {
     return { id: brandString<ModuleConfig['id']>(text(module.id, `${at}.id`)), sourceId, path: relative(module.path, `${at}.path`, true) }
   })
   unique(modules.map(module => module.id), 'modules')
-  return { name, sources, modules }
+  return { name, sources, modules, ...(agentPreset === undefined ? {} : { agentPreset }) }
 }

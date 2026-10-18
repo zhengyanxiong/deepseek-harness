@@ -33,3 +33,8 @@ it('returns detached configuration data', () => {
   value.sources[0]!.path = 'changed'
   expect(parsed.sources[0]?.path).toBe('frontend')
 })
+it('admits an optional project Agent preset', () => {
+  expect(parseProject({ ...input(), agentPreset: 'planner' }).agentPreset).toBe('planner')
+  expect(parseProject(input()).agentPreset).toBeUndefined()
+  expect(() => parseProject({ ...input(), agentPreset: '   ' })).toThrow('invalid_string')
+})

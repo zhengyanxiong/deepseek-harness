@@ -252,6 +252,27 @@ it('loads a catalog written before audit and execution records existed', async (
   const catalog = await createCatalog(file, async () => 'a'.repeat(40))
   expect(catalog.snapshot().audit).toEqual([])
   expect(catalog.snapshot().executions).toEqual([])
+  expect(catalog.snapshot().temporarySessions).toEqual([])
+})
+
+it('tracks temporary Sessions until they attach to a task or are forgotten', async () => {
+  const { catalog } = await fixture()
+  const project = await catalog.createProject(config())
+  const version = await catalog.createVersion(project.id, 'v', [{ sourceId: project.config.sources[0]!.id, ref: 'main' }])
+  const lock = await catalog.generateLock(version.id)
+  const workspace = await catalog.registerPreparedWorkspace({ path: '/tmp/loom-temporary', versionId: version.id, lockId: lock.id })
+  const temporary = brandString<Branded<'SessionId'>>('session-temporary')
+  const bound = brandString<Branded<'SessionId'>>('session-bound')
+  expect(await catalog.registerTemporarySession(temporary, workspace.path)).toMatchObject({ sessionId: temporary, workspacePath: workspace.path })
+  await expect(catalog.registerTemporarySession(bound, '/tmp/loom-missing')).rejects.toThrow('missing_workspace')
+  expect(catalog.snapshot().temporarySessions.map(row => row.sessionId)).toEqual([temporary])
+  await catalog.forgetTemporarySession(temporary)
+  expect(catalog.snapshot().temporarySessions).toEqual([])
+  await catalog.registerTemporarySession(bound, workspace.path)
+  const task = await catalog.createTask(version.id, 'Checkout')
+  await catalog.startAttempt(task.id, workspace.id)
+  await catalog.attachSession(task.id, bound)
+  expect(catalog.snapshot().temporarySessions).toEqual([])
 })
 
 it('shares an idle workspace between tasks in one version and refuses while another task runs', async () => {

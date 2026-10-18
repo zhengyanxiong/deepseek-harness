@@ -42,6 +42,7 @@ it('lists only Loom task Sessions in the task sidebar', () => {
   const rows = [1, 2, 3, 4, 5, 6, 7].map(index => ({ id: `s${String(index)}`, displayTitle: `Session ${String(index)}`, cwd: `/work/space-${String(index)}`, updatedAt: index, running: index === 7 }))
   const bound = new Set(['s2', 's5', 's7'])
   expect(taskSessionRows(rows, bound, '').map(row => row.id)).toEqual(['s7', 's5', 's2'])
+  expect(taskSessionRows(rows, bound, '', 2).map(row => row.id)).toEqual(['s7', 's5'])
   expect(taskSessionRows(rows, bound, 'session 5').map(row => row.id)).toEqual(['s5'])
   expect(taskSessionRows(rows, new Set(), '').map(row => row.id)).toEqual([])
   const labeled = taskSessionRows([{ id: 'x', displayTitle: 'X', cwd: '/a/b/', updatedAt: 1, running: false }], new Set(['x']), '')

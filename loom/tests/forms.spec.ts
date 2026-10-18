@@ -25,6 +25,8 @@ it('preserves existing repository and module ids when editing', () => {
   expect(sourceIds([{ id: legacy, repo: '/repo/shop', path: 'web' }])).toEqual(['legacy'])
   expect(projectRequest('Shop', [{ id: legacy, repo: '/repo/shop', path: 'web' }], [{ id: brandString<'loom.module'>('api'), source: 'legacy', path: 'src/api' }]))
     .toEqual({ name: 'Shop', sources: [{ id: 'legacy', repo: '/repo/shop', path: 'web' }], modules: [{ id: 'api', sourceId: 'legacy', path: 'src/api' }] })
+  expect(projectRequest('Shop', [{ repo: '/repo/shop', path: 'web' }], [], 'planner')).toMatchObject({ agentPreset: 'planner' })
+  expect(projectRequest('Shop', [{ repo: '/repo/shop', path: 'web' }], [])).not.toHaveProperty('agentPreset')
 })
 
 it('renders an existing project in the edit form instead of a creation trigger', () => {
@@ -43,6 +45,8 @@ it('renders a numbered project setup rail with a primary next action', () => {
   const html = renderToStaticMarkup(createElement(ProjectForm, { t, open: true, create: async () => ({ ok: true, value: project }), onCreated: () => undefined }))
   for (const label of [en['project.step.name'], en['project.step.sources'], en['project.step.modules'], en['project.step.preview']]) expect(html).toContain(label)
   expect(html).toContain(en['project.nameHint'])
+  expect(html).toContain(en['project.agentPreset'])
+  expect(html).toContain(en['project.agentPresetHint'])
   expect(html).toContain(`>${en['form.next']}<`)
   expect(html).not.toContain(`>${en['form.save']}<`)
 })

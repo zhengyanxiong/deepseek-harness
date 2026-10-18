@@ -112,6 +112,15 @@ export interface AttachSessionRequest {
   readonly taskId: string
   readonly sessionId: string
 }
+/** Mark a native Session as a Loom temporary Session for one prepared workspace. */
+export interface RegisterTemporarySessionRequest {
+  readonly sessionId: string
+  readonly workspacePath: string
+}
+/** Stop treating one native Session as a Loom temporary Session. */
+export interface ForgetTemporarySessionRequest {
+  readonly sessionId: string
+}
 /** Change one task's business status. */
 export interface TransitionTaskRequest {
   readonly taskId: string

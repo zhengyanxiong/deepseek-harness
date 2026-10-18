@@ -121,7 +121,7 @@ function moduleIds(modules: readonly ModuleDraft[], ids: readonly string[]): str
  * @param modules - Optional business module rows.
  * @returns detached request, or undefined while a required field is blank.
  */
-export function projectRequest(name: string, sources: readonly SourceDraft[], modules: readonly ModuleDraft[]): ProjectConfig | undefined {
+export function projectRequest(name: string, sources: readonly SourceDraft[], modules: readonly ModuleDraft[], agentPreset = ''): ProjectConfig | undefined {
   const admittedName = name.trim()
   if (admittedName === '' || sources.length === 0) return undefined
   const rows = sources.map(source => ({ ...(source.id === undefined ? {} : { id: source.id }), repo: source.repo.trim(), path: source.path.trim() }))
@@ -146,7 +146,8 @@ export function projectRequest(name: string, sources: readonly SourceDraft[], mo
     sourceId: module.source as SourceConfig['id'],
     path: module.path.trim(),
   }))
-  return { name: admittedName, sources: admittedSources, modules: admittedModules }
+  const admittedPreset = agentPreset.trim()
+  return { name: admittedName, sources: admittedSources, modules: admittedModules, ...(admittedPreset === '' ? {} : { agentPreset: admittedPreset }) }
 }
 
 /**
@@ -193,11 +194,21 @@ export function taskRequest(version: VersionRecord, title: string, metadata?: Ta
   }
 }
 
+/** One native Agent preset offered by the project form. */
+export interface AgentPresetOption {
+  readonly id: string
+  readonly isDefault: boolean
+  readonly name?: string
+  readonly description?: string
+  readonly broken?: string
+}
+
 interface ProjectFormProps {
   t: Translate
   create(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
   update?(request: UpdateProjectRequest): Promise<RemoteResult<ProjectRecord>>
   project?: ProjectRecord
+  agentPresets?: readonly AgentPresetOption[]
   onCreated(project: ProjectRecord): void
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -213,7 +224,7 @@ const PROJECT_STEPS: readonly { readonly key: ProjectStep; readonly label: LoomK
 ]
 
 /** Create or edit one project with its repositories, optional modules and a preview before saving. */
-export function ProjectForm({ t, create, update, project, onCreated, open: controlledOpen, onOpenChange }: ProjectFormProps) {
+export function ProjectForm({ t, create, update, project, agentPresets = [], onCreated, open: controlledOpen, onOpenChange }: ProjectFormProps) {
   const editing = project !== undefined
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
@@ -222,11 +233,13 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   const [name, setName] = useState(project?.config.name ?? '')
   const [sources, setSources] = useState<SourceDraft[]>(project === undefined ? [emptySourceRow()] : project.config.sources.map(source => ({ id: source.id, repo: source.repo, path: source.path })))
   const [modules, setModules] = useState<ModuleDraft[]>(project === undefined ? [] : project.config.modules.map(module => ({ id: module.id, source: module.sourceId, path: module.path })))
+  const [agentPreset, setAgentPreset] = useState(project?.config.agentPreset ?? '')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string>()
   if (!open) return editing ? null : <Button variant="outline" icon={<IconPlusOutlineRegular />} onClick={() => setOpen(true)}>{t('project.new')}</Button>
   const ids = sourceIds(sources)
-  const request = projectRequest(name, sources, modules)
+  const request = projectRequest(name, sources, modules, agentPreset)
+  const presetName = agentPresets.find(candidate => candidate.id === agentPreset)?.name ?? agentPreset
   const nameReady = name.trim() !== ''
   const sourcesReady = projectRequest(name, sources, []) !== undefined
   const stepIndex = PROJECT_STEPS.findIndex(candidate => candidate.key === step)
@@ -251,7 +264,7 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   }
   function reset(): void {
     if (editing) { setOpen(false); setFailure(undefined); return }
-    setName(''); setSources([emptySourceRow()]); setModules([]); setStep('name'); setOpen(false); setFailure(undefined)
+    setName(''); setSources([emptySourceRow()]); setModules([]); setAgentPreset(''); setStep('name'); setOpen(false); setFailure(undefined)
   }
   function updateSource(index: number, patch: Partial<SourceDraft>): void {
     setSources(current => current.map((source, at) => at === index ? { ...source, ...patch } : source))
@@ -304,6 +317,16 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
         <input aria-label={t('project.name')} placeholder={t('project.name')} value={name} onChange={event => setName(event.target.value)} style={input} />
       </label>
       <p style={hint}>{t('project.nameHint')}</p>
+      <label style={field}><span style={fieldLabel}>{t('project.agentPreset')}</span>
+        <select aria-label={t('project.agentPreset')} value={agentPreset} onChange={event => setAgentPreset(event.target.value)} style={input}>
+          <option value="">{t('project.agentPresetDefault')}</option>
+          {agentPreset !== '' && !agentPresets.some(candidate => candidate.id === agentPreset) && <option value={agentPreset}>{agentPreset}</option>}
+          {agentPresets.map(candidate => <option key={candidate.id} value={candidate.id} disabled={candidate.broken !== undefined}>
+            {candidate.name ?? candidate.id}{candidate.broken === undefined ? '' : ` · ${t('project.agentPresetBroken')}`}
+          </option>)}
+        </select>
+      </label>
+      <p style={hint}>{t('project.agentPresetHint')}</p>
     </section>}
     {step === 'sources' && <section style={stack}>
       <p style={hint}>{t('source.hint')}</p>
@@ -344,6 +367,7 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
       <p style={hint}>{t('project.previewHint')}</p>
       {request === undefined ? <p role="alert" style={alert}>{t('form.required')}</p> : <div style={card}>
         <div style={field}><span style={fieldLabel}>{t('project.name')}</span><span>{request.name}</span></div>
+        <div style={field}><span style={fieldLabel}>{t('project.agentPreset')}</span><span>{presetName === '' ? t('project.agentPresetDefault') : presetName}</span></div>
         <div style={field}><span style={fieldLabel}>{t('source.title')}</span>
           {request.sources.map(source => <div key={source.id} style={previewRow}>
             <span style={{ color: COLORS.dim, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{source.id}</span>

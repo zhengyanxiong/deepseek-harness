@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   IconCloseOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconPanelLeftOutlineRegular, IconPinFillRegular, IconPinOutlineRegular,
-  IconPlusOutlineRegular, IconSettingsOutlineRegular, Button, Tooltip,
+  IconPlusOutlineRegular, IconSettingsOutlineRegular, Button, Tag, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CSSProperties, ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
@@ -15,8 +15,9 @@ import type {
   PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskPriority, TaskRecord, TransitionTaskRequest, VersionRecord,
   WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
   UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest, DeleteProjectRequest, DeleteVersionRequest, DeleteTaskRequest,
+  RegisterTemporarySessionRequest, TemporarySessionRecord,
 } from 'dsh-workloom/types'
-import { ImportProjectForm, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
+import { ImportProjectForm, ProjectForm, TaskForm, VersionForm, type AgentPresetOption } from './LoomForms.tsx'
 import { LoomSettings, readPreferences, writePreferences, type LoomPreferences } from './LoomSettings.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
@@ -26,7 +27,7 @@ import { LoomReviewPreview } from './LoomReviewPreview.tsx'
 import { openFilePreview, workspacePreview, workspaceReviewPreview } from './preview.ts'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
 import { LoomKanban, LoomKanbanAside } from './LoomKanban.tsx'
-import { activeWorkspaceCount, aggregateTokenUsage, boundSessions, currentWorkspace, taskSessionRows, workspaceName, type ShellFilter } from './projection.ts'
+import { activeWorkspaceCount, aggregateTokenUsage, boundSessions, currentWorkspace, taskSessionRows, workspaceName, type RecentSession, type ShellFilter } from './projection.ts'
 import { COLORS, metaLine, pill, select, shortCommit, PRIORITY_META, STATUS_META } from './shell.ts'
 import { NS } from './locales.ts'
 
@@ -47,8 +48,10 @@ export interface LoomInjected {
   prepareWorkspace(request: PrepareWorkspaceRequest): Promise<RemoteResult<WorkspaceRecord>>
   startAttempt(request: StartAttemptRequest): Promise<RemoteResult<TaskRecord>>
   attachSession(request: AttachSessionRequest): Promise<RemoteResult<TaskRecord>>
+  registerTemporarySession(request: RegisterTemporarySessionRequest): Promise<RemoteResult<TemporarySessionRecord>>
+  listAgentPresets(): Promise<RemoteResult<{ presets: readonly AgentPresetOption[] }>>
   transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
-  createSessionInWorkspace(path: string): Promise<SessionId>
+  createSessionInWorkspace(path: string, agentPreset?: string): Promise<SessionId>
   workspaceChanges(request: WorkspaceChangesRequest): Promise<RemoteResult<{ repositories: WorkspaceRepositoryChangesRecord[] }>>
   readFile(sessionId: SessionId, path: string, offset: number, signal: AbortSignal): Promise<RemoteResult<WorkspaceFileText>>
   cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
@@ -124,6 +127,29 @@ function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?
   </button>
 }
 
+function SidebarSessionRow({ t, row, taskTitle, temporary, active, onSelect }: {
+  t: LoomPanelProps['t']
+  row: RecentSession
+  taskTitle?: string | undefined
+  temporary: boolean
+  active: boolean
+  onSelect: () => void
+}) {
+  const workspace = workspaceName(row.cwd)
+  const detail = [row.title, taskTitle, workspace].filter((value): value is string => value !== undefined && value !== '').join(' · ')
+  return <button type="button" aria-pressed={active} title={detail === '' ? row.title : detail} onClick={onSelect}
+    style={{ display: 'flex', alignItems: 'flex-start', gap: 7, width: '100%', padding: '6px 10px', textAlign: 'left', border: 'none', borderRadius: 'var(--dsw-radius-sm)', background: active ? COLORS.panel3 : 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit' }}>
+    <span aria-hidden style={{ flex: 'none', width: 6, height: 6, marginTop: 6, borderRadius: 999, background: row.running ? COLORS.green : COLORS.border }} />
+    <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, fontWeight: active ? 500 : 400, color: active ? COLORS.text : COLORS.dim }}>{row.title || t('untitledSession')}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 10.5, color: COLORS.faint }}>
+        {temporary ? <Tag tone="info">{t('session.temporary')}</Tag> : taskTitle !== undefined && <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{taskTitle}</span>}
+        {workspace !== undefined && <span style={{ flex: 'none', color: COLORS.faint }}>{temporary ? workspace : `· ${workspace}`}</span>}
+      </span>
+    </span>
+  </button>
+}
+
 function PinButton({ pinned, label, onToggle }: { pinned: boolean; label: string; onToggle: () => void }) {
   return <button type="button" aria-label={label} aria-pressed={pinned} title={label} onClick={onToggle}
     style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, border: 'none', background: 'transparent', color: pinned ? COLORS.green : COLORS.faint, cursor: 'pointer', opacity: pinned ? 1 : 0.6 }}>
@@ -180,7 +206,7 @@ function readPinnedProjects(): ProjectRecord['id'][] {
  * @param props - locale, native catalog, session acquisition, catalog actions, and renderer seats.
  * @returns the whole Loom page.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, updateProject, deleteProject, createVersion, updateVersion, deleteVersion, createTask, updateTask, deleteTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, updateProject, deleteProject, createVersion, updateVersion, deleteVersion, createTask, updateTask, deleteTask, generateLock, prepareWorkspace, startAttempt, attachSession, registerTemporarySession, listAgentPresets, transitionTask, createSessionInWorkspace, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [preferences, setPreferences] = useState<LoomPreferences>(readPreferences)
   const [view, setView] = useState<View>(preferences.view)
@@ -198,6 +224,9 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const heldRef = useRef<{ id: SessionId; reference: SessionReference } | undefined>(undefined)
   const [failure, setFailure] = useState<SessionId>()
   const [search, setSearch] = useState('')
+  const [temporaryFailure, setTemporaryFailure] = useState<string>()
+  const [agentPresets, setAgentPresets] = useState<readonly AgentPresetOption[]>([])
+  const presetsLoaded = useRef(false)
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [asideOpen, setAsideOpen] = useState(preferences.contextOpen)
@@ -221,6 +250,21 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     const timeout = setTimeout(() => writePreferences(preferences), 120)
     return () => clearTimeout(timeout)
   }, [preferences])
+  useEffect(() => {
+    if (presetsLoaded.current) return
+    presetsLoaded.current = true
+    let active = true
+    listAgentPresets().then((result) => {
+      if (active && result.ok) setAgentPresets(result.value.presets)
+    }, () => { /* the project picker keeps the deployment default */ })
+    return () => { active = false }
+  }, [listAgentPresets])
+  useEffect(() => {
+    if (!settingsOpen) return
+    const close = (event: KeyboardEvent): void => { if (event.key === 'Escape') setSettingsOpen(false) }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [settingsOpen])
   useEffect(() => {
     const resize = (): void => {
       setNarrow(window.innerWidth <= 940)
@@ -285,7 +329,13 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const taskSessionCandidates = [...boundIds]
     .map(id => sessions.byId[id as SessionId])
     .filter(row => row !== undefined)
-  const taskSessionList = snapshot === undefined ? [] : taskSessionRows(taskSessionCandidates, boundIds, search)
+  const taskSessionList = snapshot === undefined ? [] : taskSessionRows(taskSessionCandidates, boundIds, search, preferences.sessionLimit)
+  const taskTitleBySession = new Map(boundRows.map(row => [row.sessionId, row.task.title]))
+  const temporaryIds = new Set((snapshot?.temporarySessions ?? []).map(row => row.sessionId))
+  const temporarySessionCandidates = [...temporaryIds]
+    .map(id => sessions.byId[id as SessionId])
+    .filter(row => row !== undefined)
+  const temporarySessionList = snapshot === undefined ? [] : taskSessionRows(temporarySessionCandidates, temporaryIds, search, preferences.sessionLimit)
   const detailTask = task === undefined ? undefined : snapshot?.tasks.find(candidate => candidate.id === task.id) ?? task
   const taskVersion = detailTask === undefined || snapshot === undefined ? undefined : snapshot.versions.find(candidate => candidate.id === detailTask.versionId)
   const displayProject = currentProject ?? (taskVersion === undefined ? undefined : snapshot?.projects.find(candidate => candidate.id === taskVersion.projectId))
@@ -357,10 +407,15 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   }
   async function openTemporary(): Promise<void> {
     if (temporaryWorkspace === undefined) return
+    const temporaryVersion = snapshot?.versions.find(candidate => candidate.id === temporaryWorkspace.versionId)
+    const agentPreset = snapshot?.projects.find(candidate => candidate.id === temporaryVersion?.projectId)?.config.agentPreset
+    setTemporaryFailure(undefined)
     try {
-      const id = await createSessionInWorkspace(temporaryWorkspace.path)
+      const id = await createSessionInWorkspace(temporaryWorkspace.path, agentPreset)
+      const registered = await registerTemporarySession({ sessionId: id, workspacePath: temporaryWorkspace.path })
+      if (!registered.ok) setTemporaryFailure(registered.error.message)
       setDismissed(undefined); setTask(undefined); setSelected(id); setView('workbench')
-    } catch { /* the next snapshot keeps native Session state authoritative */ }
+    } catch (error) { setTemporaryFailure(error instanceof Error ? error.message : t('state.error')) }
   }
   async function moveTask(record: TaskRecord, target: TaskRecord['status']): Promise<void> {
     try {
@@ -532,34 +587,34 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           />)}
           <button type="button" style={{ margin: '6px 12px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: 'pointer' }} onClick={() => openCreate('project')}>＋ {t('side.newProject')}</button>
         </section>
-        <section style={{ marginBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>{t('side.tasks')}<span style={{ marginLeft: 'auto', fontWeight: 400 }}>{t('side.recent')}</span></div>
-          {taskSessionList.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.empty')}</p>}
+        <section style={{ marginBottom: 4 }} aria-label={t('side.sessions')}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '7px 12px 2px', ...metaLine, fontWeight: 500 }}>{t('side.sessions')}<span style={{ marginLeft: 'auto', fontWeight: 400 }}>{t('side.sessionLimit').replace('{limit}', String(preferences.sessionLimit))}</span></div>
+          <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...select, cursor: 'text', width: 'calc(100% - 24px)', margin: '4px 12px 6px', boxSizing: 'border-box' }} />
+          {taskSessionList.length === 0 && temporarySessionList.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.empty')}</p>}
+          {taskSessionList.length > 0 && <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '2px 12px 3px', ...metaLine }}>
+            <span>{t('side.tasks')}</span><span style={{ marginLeft: 'auto' }}>{taskSessionList.length}</span>
+          </div>}
           {taskSessionList.map(row => {
-            const workspace = workspaceName(row.cwd)
-            const active = selected === row.id
-            return <button key={row.id} type="button" title={row.cwd} onClick={() => { setSelected(row.id as SessionId); setDismissed(undefined); setTask(undefined); setView('workbench') }}
-              style={{ display: 'flex', alignItems: 'flex-start', gap: 7, width: '100%', textAlign: 'left', background: active ? COLORS.panel3 : 'transparent', border: 'none', borderLeft: `2px solid ${active ? COLORS.accent : 'transparent'}`, padding: '5px 12px 5px 27px', color: active ? COLORS.text : COLORS.dim, cursor: 'pointer', font: 'inherit' }}>
-              <span style={{ fontSize: 12 }}>💬</span>
-              <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.title || t('untitledSession')}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: COLORS.faint }}>
-                  {workspace !== undefined && <span style={{ color: COLORS.cyan, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📁 {workspace}</span>}
-                  {row.running && <span style={{ color: COLORS.green }}>●</span>}
-                  {active && <span style={{ color: COLORS.accent }}>{t('session.current')}</span>}
-                </span>
-              </span>
-            </button>
+            const owner = boundRows.find(candidate => candidate.sessionId === row.id)?.task
+            return <SidebarSessionRow key={row.id} t={t} row={row} taskTitle={taskTitleBySession.get(row.id)} temporary={false} active={selected === row.id}
+              onSelect={() => { setSelected(row.id as SessionId); setDismissed(undefined); setTask(owner); setView('workbench') }} />
           })}
-          <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...select, cursor: 'text', width: 'calc(100% - 24px)', margin: '2px 12px 6px', boxSizing: 'border-box' }} />
-          <button type="button" style={{ margin: '2px 12px 8px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: createDisabledTask ? 'not-allowed' : 'pointer', opacity: createDisabledTask ? 0.5 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>＋ {t('side.newTask')}</button>
-          <button type="button" title={temporaryWorkspace?.path} style={{ margin: '0 12px 8px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: temporaryWorkspace === undefined ? 'not-allowed' : 'pointer', opacity: temporaryWorkspace === undefined ? 0.5 : 1 }} disabled={temporaryWorkspace === undefined} onClick={() => { void openTemporary() }}>{t('side.newTemporary')}</button>
+          {temporarySessionList.length > 0 && <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4, padding: '4px 12px 3px', borderTop: `0.5px solid ${COLORS.border}`, ...metaLine }}>
+            <span>{t('side.temporarySessions')}</span><span style={{ marginLeft: 'auto' }}>{temporarySessionList.length}</span>
+          </div>}
+          {temporarySessionList.map(row => <SidebarSessionRow key={row.id} t={t} row={row} temporary active={selected === row.id}
+            onSelect={() => { setSelected(row.id as SessionId); setDismissed(undefined); setTask(undefined); setView('workbench') }} />)}
+          {temporaryFailure !== undefined && <p role="alert" style={{ ...metaLine, margin: '2px 12px 6px', color: COLORS.error, overflowWrap: 'anywhere' }}>{temporaryFailure}</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 12px 8px' }}>
+            <button type="button" style={{ display: 'block', width: '100%', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, font: 'inherit', fontSize: 12, cursor: createDisabledTask ? 'not-allowed' : 'pointer', opacity: createDisabledTask ? 0.5 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>＋ {t('side.newTask')}</button>
+            <button type="button" title={temporaryWorkspace?.path} style={{ display: 'block', width: '100%', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, font: 'inherit', fontSize: 12, cursor: temporaryWorkspace === undefined ? 'not-allowed' : 'pointer', opacity: temporaryWorkspace === undefined ? 0.5 : 1 }} disabled={temporaryWorkspace === undefined} onClick={() => { void openTemporary() }}>{t('side.newTemporary')}</button>
+          </div>
         </section>
       </aside>
       {view === 'kanban'
         ? <LoomKanban
             t={t}
-            snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }}
+            snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], temporarySessions: [], audit: [], executions: [] }}
             filter={filter}
             mode={kbMode}
             projectValue={filterProject}
@@ -651,7 +706,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             </div>
             : view === 'kanban'
             ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
-            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} onDeleteProject={displayProject === undefined ? undefined : () => removeProject(displayProject)} onDeleteVersion={displayVersion === undefined ? undefined : () => removeVersion(displayVersion)} onDeleteTask={detailTask === undefined ? undefined : () => removeTask(detailTask)} />}
+            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], temporarySessions: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} onDeleteProject={displayProject === undefined ? undefined : () => removeProject(displayProject)} onDeleteVersion={displayVersion === undefined ? undefined : () => removeVersion(displayVersion)} onDeleteTask={detailTask === undefined ? undefined : () => removeTask(detailTask)} />}
       </aside>}
     </div>
     {!bottomCollapsed && <LoomResizeHandle label={t('layout.resizeBottom')} orientation="horizontal" value={bottomHeight} min={80} max={bottomMax} invert onChange={(height) => setPreferences(current => ({ ...current, bottomHeight: height }))} />}
@@ -685,7 +740,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           <strong style={drawerTitle}>{create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
           <Button size="sm" variant="outline" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setCreate(undefined)} style={{ marginLeft: 'auto' }} />
         </div>
-        {create === 'project' && <ProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'project' && <ProjectForm t={t} open agentPresets={agentPresets} onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'import' && <ImportProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'version' && currentProject !== undefined && <VersionForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} project={currentProject} create={createVersion} onCreated={created => { setVersion(created.id); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'task' && currentVersion !== undefined && currentVersionProject !== undefined && <TaskForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} version={currentVersion} project={currentVersionProject} create={createTask} onCreated={created => { setTask(created); setView('workbench'); setCreate(undefined); setAttempt(current => current + 1) }} />}
@@ -699,7 +754,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           <strong style={drawerTitle}>{edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')}</strong>
           <Button size="sm" variant="outline" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setEdit(undefined)} style={{ marginLeft: 'auto' }} />
         </div>
-        {edit === 'project' && displayProject !== undefined && <ProjectForm t={t} open project={displayProject} create={createProject} update={updateProject} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setProject(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
+        {edit === 'project' && displayProject !== undefined && <ProjectForm t={t} open project={displayProject} agentPresets={agentPresets} create={createProject} update={updateProject} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setProject(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
         {edit === 'version' && displayVersion !== undefined && displayVersionProject !== undefined && <VersionForm t={t} open version={displayVersion} project={displayVersionProject} create={createVersion} update={updateVersion} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setVersion(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
         {edit === 'task' && detailTask !== undefined && displayVersion !== undefined && displayVersionProject !== undefined && <TaskForm t={t} open task={detailTask} version={displayVersion} project={displayVersionProject} create={createTask} update={updateTask} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setTask(updated); setView('workbench'); setEdit(undefined); setAttempt(current => current + 1) }} />}
       </div>

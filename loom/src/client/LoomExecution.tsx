@@ -26,7 +26,7 @@ export interface ExecutionActions {
   startAttempt(request: StartAttemptRequest): Promise<RemoteResult<TaskRecord>>
   attachSession(request: AttachSessionRequest): Promise<RemoteResult<TaskRecord>>
   transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
-  createSessionInWorkspace(path: string): Promise<SessionId>
+  createSessionInWorkspace(path: string, agentPreset?: string): Promise<SessionId>
   cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
   acquireExecution(request: ExecutionRequest): Promise<RemoteResult<ExecutionState>>
   releaseExecution(request: ReleaseExecutionRequest): Promise<RemoteResult<ExecutionState>>
@@ -59,6 +59,7 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, lo
   const [takeoverConfirm, setTakeoverConfirm] = useState(false)
   const current = task.attempts.at(-1)
   const version = snapshot.versions.find(candidate => candidate.id === task.versionId)
+  const agentPreset = snapshot.projects.find(candidate => candidate.id === version?.projectId)?.config.agentPreset
   const workspace = current === undefined ? undefined : snapshot.workspaces.find(candidate => candidate.id === current.workspaceId)
   const execution = currentExecution(snapshot, task)
   const boundSession = current?.sessionIds.at(-1)
@@ -129,7 +130,7 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, lo
     if (workspace === undefined) return
     setBusy(true); setFailed(false)
     try {
-      const sessionId = await actions.createSessionInWorkspace(workspace.path)
+      const sessionId = await actions.createSessionInWorkspace(workspace.path, agentPreset)
       const result = await actions.attachSession({ taskId: task.id, sessionId })
       if (!result.ok) { setFailed(true); return }
       actions.onSession(sessionId)
@@ -226,6 +227,7 @@ function Failure({ t, failure }: { t: Translate; failure: string }): ReactNode {
 /** Prepare an isolated workspace from one Lock, start the round, then open its native Session. */
 function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const locks = snapshot.locks.filter(lock => lock.versionId === versionId)
+  const agentPreset = snapshot.projects.find(candidate => candidate.id === snapshot.versions.find(version => version.id === versionId)?.projectId)?.config.agentPreset
   const [lockId, setLockId] = useState<Lock['id'] | undefined>(locks.at(-1)?.id)
   const [custom, setCustom] = useState(false)
   const [path, setPath] = useState('')
@@ -255,7 +257,7 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
       if (target === undefined) { setFailure(t('state.error')); return }
       const started = await actions.startAttempt({ taskId: task.id, workspaceId: target.id })
       if (!started.ok) { setFailure(started.error.message); return }
-      const sessionId = await actions.createSessionInWorkspace(target.path)
+      const sessionId = await actions.createSessionInWorkspace(target.path, agentPreset)
       const attached = await actions.attachSession({ taskId: task.id, sessionId })
       if (!attached.ok) { setFailure(attached.error.message); return }
       setPath('')
