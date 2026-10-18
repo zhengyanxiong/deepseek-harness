@@ -13,6 +13,7 @@ it('renders cleanup confirmation as a dialog with a real Diff entry point', () =
   expect(html).toContain('role="dialog"')
   expect(html).toContain(en['workspace.cleanupWarning'])
   expect(html).toContain(en['workspace.cleanupViewChanges'])
+  expect(html).toContain(en['workspace.cleanupMaximize'])
   expect(html).toContain(en['workspace.cleanupConfirm'])
   expect(html).toContain(workspace.path)
 })
