@@ -66,6 +66,7 @@ export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   missing_lock: 'error.lockMissing',
   workspace_busy: 'error.workspaceBusy',
   workspace_task_running: 'error.workspaceTaskRunning',
+  workspace_branch_failed: 'error.workspaceBranchFailed',
   workspace_changes: 'error.workspaceChanges',
   workspace_unpushed: 'error.workspaceUnpushed',
   workspace_mismatch: 'error.workspaceMismatch',

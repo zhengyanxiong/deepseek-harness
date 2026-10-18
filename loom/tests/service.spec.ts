@@ -157,7 +157,7 @@ it('runs a task round through a prepared workspace, Session association, review 
   const version = await call('createVersion', { request: { projectId: project.id, name: 'v', sources: [{ sourceId: 'web', ref: 'HEAD' }] } }) as { id: string }
   const lock = await call('generateLock', { request: { versionId: version.id } }) as { id: string }
   const task = await call('createTask', { request: { versionId: version.id, title: 'Checkout' } }) as { id: string }
-  const workspace = await call('registerWorkspace', { request: { path: join(dir, 'ws'), versionId: version.id, lockId: lock.id } }) as { id: string }
+  const workspace = await call('registerWorkspace', { request: { path: join(dir, 'ws'), versionId: version.id, lockId: lock.id, branches: { web: 'loom/v1/web-test0001' } } }) as { id: string }
   const started = await call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } }) as { status: string; attempts: { workspaceId: string; lock: { id: string }; sessionIds: string[] }[] }
   expect(started).toMatchObject({ status: 'running', attempts: [{ workspaceId: workspace.id, lock: { id: lock.id }, sessionIds: [] }] })
   const attached = await call('attachSession', { request: { taskId: task.id, sessionId: 'session-1' } }) as { attempts: { sessionIds: string[] }[] }
@@ -179,7 +179,7 @@ it('exposes execution acquisition, blocked handoff and release through the gatew
   const project = await call('createProject', { request: { name: 'Git', sources: [{ id: 'web', repo, path: 'web' }], modules: [] } }) as { id: string }
   const version = await call('createVersion', { request: { projectId: project.id, name: 'v', sources: [{ sourceId: 'web', ref: 'HEAD' }] } }) as { id: string }
   const lock = await call('generateLock', { request: { versionId: version.id } }) as { id: string }
-  const workspace = await call('registerWorkspace', { request: { path: join(dir, 'workspace'), versionId: version.id, lockId: lock.id } }) as { id: string }
+  const workspace = await call('registerWorkspace', { request: { path: join(dir, 'workspace'), versionId: version.id, lockId: lock.id, branches: { web: 'loom/v1/web-test0001' } } }) as { id: string }
   const first = await call('acquireExecution', { request: { workspaceId: workspace.id, sessionId: 'session-a' } }) as { owner: { sessionId: string; generation: number }; waiting: string[] }
   expect(first.owner.sessionId).toBe('session-a')
   const second = await call('acquireExecution', { request: { workspaceId: workspace.id, sessionId: 'session-b' } }) as { owner: { sessionId: string }; waiting: string[] }

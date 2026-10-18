@@ -1,9 +1,12 @@
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { createCatalog, type ProjectRecord } from '../src/host/catalog.ts'
+const exec = promisify(execFile)
 const dirs: string[] = []
 afterEach(async () => { for (const dir of dirs.splice(0)) { if (!resolve(dir).startsWith(join(tmpdir(), 'loom-catalog-'))) throw Error('unsafe cleanup'); await rm(dir, { recursive: true, force: true }) } })
 async function fixture() { const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir); const file = join(dir, 'state.json'); return { file, catalog: await createCatalog(file, async () => 'a'.repeat(40)) } }
@@ -182,4 +185,55 @@ it('shares an idle workspace between tasks in one version and refuses while anot
   expect(shared.status).toBe('running')
   expect(shared.attempts[0]?.workspaceId).toBe(workspace.id)
   expect(shared.attempts[0]?.lock.id).toBe(lock.id)
+})
+
+
+it('creates worktrees on deterministic branches recorded with the workspace', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
+  const repo = join(dir, 'repo')
+  await mkdir(repo)
+  await exec('git', ['init', '--quiet', repo])
+  await exec('git', ['-C', repo, 'config', 'user.name', 'Loom Test'])
+  await exec('git', ['-C', repo, 'config', 'user.email', 'loom@example.invalid'])
+  await writeFile(join(repo, 'file.txt'), 'content')
+  await exec('git', ['-C', repo, 'add', 'file.txt'])
+  await exec('git', ['-C', repo, 'commit', '--quiet', '-m', 'initial'])
+  const resolveHead = async (): Promise<string> => (await exec('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim()
+  const catalog = await createCatalog(join(dir, 'state.json'), resolveHead)
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo, path: 'web' }], modules: [] })
+  const version = await catalog.createVersion(project.id, 'Release', [{ sourceId: project.config.sources[0]!.id, ref: 'HEAD' }])
+  const lock = await catalog.generateLock(version.id)
+  const workspace = await catalog.prepareWorkspace({ path: join(dir, 'workspace'), versionId: version.id, lockId: lock.id })
+  const branch = workspace.branches?.['web']
+  expect(branch).toMatch(/^loom\/Release\/web-[a-f0-9]{8}$/u)
+  expect((await exec('git', ['-C', join(workspace.path, 'web'), 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe(branch)
+  expect((await exec('git', ['-C', repo, 'branch', '--list', branch!])).stdout).toContain(branch)
+  await catalog.cleanupWorkspace(workspace.id, true)
+  expect((await exec('git', ['-C', repo, 'branch', '--list', branch!])).stdout.trim()).toBe('')
+})
+
+it('attaches a legacy detached workspace to a recorded branch before start', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
+  const repo = join(dir, 'repo')
+  await mkdir(repo)
+  await exec('git', ['init', '--quiet', repo])
+  await exec('git', ['-C', repo, 'config', 'user.name', 'Loom Test'])
+  await exec('git', ['-C', repo, 'config', 'user.email', 'loom@example.invalid'])
+  await writeFile(join(repo, 'file.txt'), 'content')
+  await exec('git', ['-C', repo, 'add', 'file.txt'])
+  await exec('git', ['-C', repo, 'commit', '--quiet', '-m', 'initial'])
+  const commit = (await exec('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim()
+  const root = join(dir, 'legacy')
+  await mkdir(root)
+  await exec('git', ['-C', repo, 'worktree', 'add', '--detach', '--', join(root, 'web'), commit])
+  const catalog = await createCatalog(join(dir, 'state.json'), async () => commit)
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo, path: 'web' }], modules: [] })
+  const version = await catalog.createVersion(project.id, 'Release', [{ sourceId: project.config.sources[0]!.id, ref: 'HEAD' }])
+  const lock = await catalog.generateLock(version.id)
+  const workspace = await catalog.registerPreparedWorkspace({ path: root, versionId: version.id, lockId: lock.id })
+  expect(workspace.branches).toBeUndefined()
+  const repaired = await catalog.ensureWorkspaceBranches(workspace.id)
+  const branch = repaired.branches?.['web']
+  expect(branch).toMatch(/^loom\/Release\/web-[a-f0-9]{8}$/u)
+  expect((await exec('git', ['-C', join(root, 'web'), 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe(branch)
 })

@@ -44,6 +44,7 @@ export function LoomContextPanel({ t, snapshot, project, version, task, generate
         <Row k={t('top.version')} v={version === undefined ? '—' : refs === '' ? version.name : `${version.name} · ${refs}`} />
         <Row k={t('ctx.lock')} v={shortCommit(lock) ?? '—'} />
         <Row k={t('ctx.workspace')} v={workspace?.path ?? '—'} />
+        <Row k={t('ctx.branch')} v={Object.values(workspace?.branches ?? {}).join(' · ') || '—'} />
         <Row k={t('ctx.status')} v={task === undefined ? '—' : t(STATUS_META[task.status].key)} />
         <Row k={t('sessions')} v={String(sessions.length)} />
         {version !== undefined && <LockButton t={t} version={version} generate={generateLock} onCreated={onLockChanged} />}
@@ -62,7 +63,7 @@ export function LoomContextPanel({ t, snapshot, project, version, task, generate
     {project !== undefined && <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>
       <h4 style={sectionTitle}>{t('ctx.repos')}</h4>
       <div style={{ fontSize: 11.5, color: COLORS.dim, lineHeight: 2, fontFamily: 'ui-monospace, monospace' }}>
-        {project.config.sources.map(source => <div key={source.id}><span style={{ color: '#7db3ff' }}>{source.id}</span> → <span style={{ color: COLORS.cyan }}>{source.path}</span></div>)}
+        {project.config.sources.map(source => <div key={source.id}><span style={{ color: '#7db3ff' }}>{source.id}</span> → <span style={{ color: COLORS.cyan }}>{source.path}</span><div style={{ paddingLeft: 12, color: COLORS.text }}>{workspace?.branches?.[source.id] ?? t('ctx.noBranch')}</div></div>)}
       </div>
     </section>}
     <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>

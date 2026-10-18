@@ -8,6 +8,7 @@ This directory contains the in-progress Loom bundle, domain model, storage, loca
 - Version repository references resolved to immutable commit snapshots.
 - Task execution rounds retain one workspace across successive Sessions.
 - A new task may explicitly reuse another task's idle workspace from the same version and Lock; the Host refuses while any other task is running on it or an Agent still owns its execution.
+- Each repository worktree is attached to a deterministic version-owned branch (`loom/<version>/<source>-<workspace>`) created at the Lock commit, so code lives on a real branch rather than a detached HEAD. Existing registered workspaces are attached to a branch at startup or before their next start without changing their files; branches Loom created are removed with the workspace.
 - Workspace execution ownership uses generation tokens, FIFO waiting and confirmed-stop takeover.
 - Loom-attached Agent tool calls acquire execution access before running; a non-owner is denied until the current owner yields or a confirmed handoff completes.
 - Durable audit records cover project, version, Lock, task, workspace, attempt, Session and execution mutations.

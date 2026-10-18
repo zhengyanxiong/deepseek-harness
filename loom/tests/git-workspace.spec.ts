@@ -77,6 +77,26 @@ it('rolls back only worktrees created in a failed preparation', async () => {
   expect(listing.stdout).not.toContain(f.root)
   expect(await readFile(join(f.first, 'file.txt'), 'utf8')).toBe('first')
 })
+it('creates a real branch for each worktree instead of a detached HEAD', async () => {
+  const f = await fixture()
+  const commit = await resolveCommit(f.first, 'HEAD')
+  const branch = 'loom/v1/first-1a2b3c4d'
+  await prepareWorkspace(f.root, [{ repo: f.first, path: 'app', commit, branch }])
+  expect((await exec('git', ['-C', join(f.root, 'app'), 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe(branch)
+  expect((await exec('git', ['-C', f.first, 'branch', '--list', branch])).stdout).toContain(branch)
+  expect(await resolveCommit(join(f.root, 'app'), 'HEAD')).toBe(commit)
+})
+it('deletes branches created by a workspace that fails to prepare', async () => {
+  const f = await fixture()
+  const commit = await resolveCommit(f.first, 'HEAD')
+  const branch = 'loom/v1/first-abcd1234'
+  await expect(prepareWorkspace(f.root, [
+    { repo: f.first, path: 'first', commit, branch },
+    { repo: f.second, path: 'second', commit: 'f'.repeat(40) },
+  ])).rejects.toThrow()
+  expect((await exec('git', ['-C', f.first, 'branch', '--list', branch])).stdout.trim()).toBe('')
+  await expect(access(f.root)).rejects.toThrow()
+})
 it('refuses an existing root without deleting or overwriting user files', async () => {
   const f = await fixture()
   await mkdir(f.root)

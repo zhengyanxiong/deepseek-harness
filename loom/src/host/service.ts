@@ -35,7 +35,7 @@ const versionRequest = z.strictObject({ projectId: nonempty, name: nonempty, sou
 const taskRequest = z.strictObject({ versionId: nonempty, title: nonempty })
 const lockRequest = z.strictObject({ versionId: nonempty })
 const workspaceRequest = z.strictObject({ path: nonempty.optional(), versionId: nonempty, lockId: nonempty })
-const registerWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty })
+const registerWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty, branches: z.record(z.string(), nonempty).optional() })
 const attemptRequest = z.strictObject({ taskId: nonempty, workspaceId: nonempty })
 const sessionRequest = z.strictObject({ taskId: nonempty, sessionId: nonempty })
 const transitionRequest = z.strictObject({ taskId: nonempty, target: z.enum(['pending', 'running', 'review', 'completed', 'failed']), actor: z.enum(['human', 'agent']) })
@@ -71,7 +71,11 @@ export default class LoomService extends TypertRemoteService {
   }
 
   async [Service.init](): Promise<void> {
-    await this.catalog
+    const catalog = await this.catalog
+    for (const workspace of catalog.snapshot().workspaces) {
+      if (workspace.cleaned === true) continue
+      try { await catalog.ensureWorkspaceBranches(workspace.id) } catch (error) { this.ctx.logger.warn(`loom: branch reconciliation failed for ${workspace.path}: ${String(error)}`) }
+    }
     this.ctx.on('tools/pre-execute', async (exec, next) => {
       if (exec.agent === undefined) return next()
       const decision = await this.admitExecution(exec.agent.session.id)
@@ -226,25 +230,26 @@ export default class LoomService extends TypertRemoteService {
   /** Record a prepared workspace whose files already exist. @param request - absolute path and owning baseline. @returns persisted workspace. */
   @Remote
   registerWorkspace(request: RegisterWorkspaceRequest): Promise<WorkspaceRecord> {
-    return this.run(catalog => {
+    return this.run(async catalog => {
       const parsed = registerWorkspaceRequest.parse(request)
-      return catalog.registerPreparedWorkspace({
+      const workspace = await catalog.registerPreparedWorkspace({
         path: parsed.path,
         versionId: brandString<Lock['versionId']>(parsed.versionId),
         lockId: brandString<Lock['id']>(parsed.lockId),
+        ...(parsed.branches === undefined ? {} : { branches: parsed.branches }),
       })
+      return catalog.ensureWorkspaceBranches(workspace.id)
     })
   }
 
   /** Start the next execution round on a prepared workspace. @param request - task and workspace identities. @returns the running task. */
   @Remote
   startAttempt(request: StartAttemptRequest): Promise<TaskRecord> {
-    return this.run(catalog => {
+    return this.run(async catalog => {
       const parsed = attemptRequest.parse(request)
-      return catalog.startAttempt(
-        brandString<TaskRecord['id']>(parsed.taskId),
-        brandString<WorkspaceRecord['id']>(parsed.workspaceId),
-      )
+      const workspaceId = brandString<WorkspaceRecord['id']>(parsed.workspaceId)
+      await catalog.ensureWorkspaceBranches(workspaceId)
+      return catalog.startAttempt(brandString<TaskRecord['id']>(parsed.taskId), workspaceId)
     })
   }
 

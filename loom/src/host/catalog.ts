@@ -5,9 +5,10 @@ import { brandNumber, brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { parseProject, type ProjectConfig } from '../domain/project.ts'
 import { resolveLock } from '../domain/version.ts'
 import { isAbsolute, normalize, resolve } from 'node:path'
+import { workspaceBranchName } from '../domain/branch.ts'
 import { createTask as pendingTask, startAttempt, attachSession, transitionTask, type Task, type Lock, type Workspace, type TaskStatus } from '../domain/task.ts'
 import { createJsonStore, JsonStoreError } from '../storage/json-store.ts'
-import { commitsSince, prepareWorkspace as materializeWorkspace, removeWorkspace, workingTreeChanges, type WorkspaceRepositoryChanges } from '../git/workspace.ts'
+import { commitsSince, ensureWorktreeBranch, prepareWorkspace as materializeWorkspace, removeWorkspace, workingTreeChanges, WorkspacePreparationError, type WorkspaceRepositoryChanges } from '../git/workspace.ts'
 import type { AuditEntry, AuditEvent } from '../domain/audit.ts'
 import {
   confirmStop, createExecution, releaseExecution as releaseExecutionState, requestExecution,
@@ -21,12 +22,12 @@ export interface VersionRecord { id: Branded<'loom.version'>; projectId: Project
 /** Named task with its fixed version and execution history. */
 export interface TaskRecord extends Task { title: string }
 /** Already-prepared workspace metadata; a cleaned record keeps its history but no longer owns files. */
-export interface WorkspaceRecord extends Workspace { path: string; cleaned?: boolean | undefined }
+export interface WorkspaceRecord extends Workspace { path: string; branches?: Record<string, string> | undefined; managed?: boolean | undefined; cleaned?: boolean | undefined }
 /** Detached durable catalog snapshot. */
 export interface CatalogSnapshot { projects: ProjectRecord[]; versions: VersionRecord[]; locks: Lock[]; tasks: TaskRecord[]; workspaces: WorkspaceRecord[]; audit: AuditEntry[]; executions: ExecutionState[] }
 /** Catalog operation rejection, suitable for caller-owned localization. */
 export class CatalogError extends Error {
-  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_task_running' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed') { super(code); this.name = 'CatalogError' }
+  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_task_running' | 'workspace_branch_failed' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed') { super(code); this.name = 'CatalogError' }
 }
 const text = z.string().trim().min(1)
 const id = <B extends string>() => text.transform(value => brandString<Branded<B>>(value))
@@ -35,7 +36,7 @@ const versionSchema = z.strictObject({ id: id<'loom.version'>(), projectId: id<'
 const lockSchema = z.strictObject({ id: id<'loom.lock'>(), versionId: id<'loom.version'>(), repositories: z.array(z.strictObject({ sourceId: id<'loom.source'>(), commit: z.string().regex(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u) })).min(1) })
 const status = z.enum(['running', 'review', 'completed', 'failed'])
 const taskSchema = z.strictObject({ id: id<'loom.task'>(), versionId: id<'loom.version'>(), title: text, status: z.enum(['pending', 'running', 'review', 'completed', 'failed']), attempts: z.array(z.strictObject({ id: id<'loom.attempt'>(), lock: lockSchema, workspaceId: id<'loom.workspace'>(), sessionIds: z.array(id<'SessionId'>()), status })) })
-const workspaceSchema = z.strictObject({ id: id<'loom.workspace'>(), path: z.string().refine(value => isAbsolute(value) && normalize(value) === value), versionId: id<'loom.version'>(), lockId: id<'loom.lock'>(), cleaned: z.boolean().optional() })
+const workspaceSchema = z.strictObject({ id: id<'loom.workspace'>(), path: z.string().refine(value => isAbsolute(value) && normalize(value) === value), versionId: id<'loom.version'>(), lockId: id<'loom.lock'>(), branches: z.record(z.string(), text).optional(), managed: z.boolean().optional(), cleaned: z.boolean().optional() })
 const auditEvents = ['project.created', 'version.created', 'lock.generated', 'task.created', 'task.transitioned', 'workspace.prepared', 'workspace.cleaned', 'attempt.started', 'session.attached', 'execution.acquired', 'execution.queued', 'execution.released', 'execution.takeover-requested', 'execution.takeover-stopped', 'execution.takeover-blocked'] as const
 const auditSchema = z.strictObject({
   id: text,
@@ -118,6 +119,7 @@ export interface Catalog {
   workspaceChanges(workspaceId: WorkspaceRecord['id']): Promise<{ repositories: WorkspaceRepositoryChanges[] }>
   workspaceStatus(workspaceId: WorkspaceRecord['id']): Promise<{ running: boolean; repositories: WorkspaceRepositoryChanges[] }>
   cleanupWorkspace(workspaceId: WorkspaceRecord['id'], discardChanges: boolean): Promise<void>
+  ensureWorkspaceBranches(workspaceId: WorkspaceRecord['id']): Promise<WorkspaceRecord>
   registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   startAttempt(taskId: TaskRecord['id'], workspaceId: WorkspaceRecord['id']): Promise<TaskRecord>
   attachSession(taskId: TaskRecord['id'], sessionId: Branded<'SessionId'>): Promise<TaskRecord>
@@ -167,7 +169,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
     if (!task) throw new CatalogError('missing_task')
     return task
   }
-  function workspaceWorktrees(draft: CatalogSnapshot, workspaceId: WorkspaceRecord['id']): { repo: string; directory: string; commit: string }[] {
+  function workspaceWorktrees(draft: CatalogSnapshot, workspaceId: WorkspaceRecord['id']): { repo: string; directory: string; commit: string; branch?: string | undefined }[] {
     const workspace = workspaceIn(draft, workspaceId)
     const version = versionIn(draft, workspace.versionId)
     const project = draft.projects.find(item => item.id === version.projectId)
@@ -177,7 +179,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
     return project.config.sources.map(source => {
       const pinned = lock.repositories.find(repository => repository.sourceId === source.id)
       if (pinned === undefined) throw new CatalogError('workspace_mismatch')
-      return { repo: source.repo, directory: resolve(workspace.path, source.path), commit: pinned.commit }
+      return { repo: source.repo, directory: resolve(workspace.path, source.path), commit: pinned.commit, branch: workspace.branches?.[source.id] }
     })
   }
   function workspaceIn(draft: CatalogSnapshot, workspaceId: WorkspaceRecord['id']): WorkspaceRecord {
@@ -205,17 +207,52 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       const project = draft.projects.find(item => item.id === version.projectId)
       if (!project) throw new CatalogError('missing_project')
       if (draft.workspaces.some(item => item.path === input.path)) throw new CatalogError('workspace_path_registered')
+      const id = brandString<WorkspaceRecord['id']>(randomUUID())
+      const branches = Object.fromEntries(project.config.sources.map(source => [source.id, workspaceBranchName(version.name, id, source.id)]))
       const repositories = project.config.sources.map(source => {
         const pinned = lock.repositories.find(repository => repository.sourceId === source.id)
         if (pinned === undefined) throw new CatalogError('workspace_mismatch')
-        return { repo: source.repo, path: source.path, commit: pinned.commit }
+        return { repo: source.repo, path: source.path, commit: pinned.commit, branch: branches[source.id]! }
       })
       await materializeWorkspace(input.path, repositories)
-      const record = { id: brandString<WorkspaceRecord['id']>(randomUUID()), path: input.path, versionId: version.id, lockId: lock.id }
+      const record = { id, path: input.path, versionId: version.id, lockId: lock.id, branches, managed: true }
       draft.workspaces.push(record)
       recordAudit(draft, 'workspace.prepared', 'human', { workspaceId: record.id, detail: input.path })
       return record
     }),
+    ensureWorkspaceBranches: async workspaceId => {
+      const workspace = workspaceIn(state, workspaceId)
+      if (workspace.cleaned === true) return workspace
+      if (state.executions.some(execution => execution.workspaceId === workspaceId && execution.owner !== null)) return workspace
+      const version = versionIn(state, workspace.versionId)
+      const project = state.projects.find(item => item.id === version.projectId)
+      if (!project) throw new CatalogError('missing_project')
+      if (project.config.sources.every(source => workspace.branches?.[source.id] !== undefined)) return workspace
+      const branches = { ...workspace.branches }
+      let changed = false
+      for (const source of project.config.sources) {
+        const directory = resolve(workspace.path, source.path)
+        const base = branches[source.id] ?? workspaceBranchName(version.name, workspace.id, source.id)
+        let branch = base
+        let attached: string | undefined
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try { attached = await ensureWorktreeBranch(directory, branch); break }
+          catch (error) {
+            if (!(error instanceof WorkspacePreparationError) || error.code !== 'branch_exists' || attempt === 2) throw new CatalogError('workspace_branch_failed')
+            branch = `${base}-${randomUUID().slice(0, 4)}`
+          }
+        }
+        if (attached === undefined) throw new CatalogError('workspace_branch_failed')
+        if (branches[source.id] !== attached) { branches[source.id] = attached; changed = true }
+      }
+      if (!changed) return workspace
+      return transaction(draft => {
+        const index = draft.workspaces.findIndex(item => item.id === workspaceId)
+        if (index === -1) throw new CatalogError('missing_workspace')
+        draft.workspaces[index] = { ...draft.workspaces[index]!, branches }
+        return draft.workspaces[index]!
+      })
+    },
     workspaceChanges: async workspaceId => ({ repositories: await workingTreeChanges(workspaceWorktrees(state, workspaceId)) }),
     workspaceStatus: async workspaceId => {
       const running = state.tasks.some(task => task.status === 'running' && task.attempts.some(attempt => attempt.workspaceId === workspaceId))
@@ -230,7 +267,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         if (changes.some(repository => repository.files.length > 0)) throw new CatalogError('workspace_changes')
       }
       const record = state.workspaces.find(item => item.id === workspaceId)!
-      const failures = await removeWorkspace(record.path, worktrees.map(({ repo, directory }) => ({ repo, directory })))
+      const failures = await removeWorkspace(record.path, worktrees.map(({ repo, directory, branch }) => ({ repo, directory, ...(record.managed === true && branch !== undefined ? { branch } : {}) })))
       if (failures.length > 0) throw new CatalogError('workspace_cleanup_failed')
       const referenced = state.tasks.some(task => task.attempts.some(attempt => attempt.workspaceId === workspaceId))
       await transaction(draft => {
