@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { CatalogSnapshot, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
-import { activeWorkspaceCount, boardMetrics, boundSessions, currentLock, projectLanes, recentSessions, workspaceName } from '../src/client/projection.ts'
+import { activeWorkspaceCount, aggregateTokenUsage, boardMetrics, boundSessions, currentLock, projectLanes, recentSessions, workspaceName } from '../src/client/projection.ts'
 const projectId = brandString<ProjectRecord['id']>('p1')
 const versionId = brandString<VersionRecord['id']>('v1')
 const lock: Lock = { id: brandString<Lock['id']>('l1'), versionId, repositories: [{ sourceId: brandString<'loom.source'>('web'), commit: 'a'.repeat(40) }] }
@@ -51,4 +51,10 @@ it('lists only newest loose Sessions with their workspace labels', () => {
     { id: 'child', displayTitle: 'child', updatedAt: 8, running: false, origin: 'subagent' },
     { id: 'real', displayTitle: 'real', updatedAt: 7, running: false },
   ], new Set(), '').map(row => row.id)).toEqual(['real'])
+})
+it('aggregates provider token usage and ignores missing projections', () => {
+  const first = { tokenUsage: { uncachedInputTokens: 10, outputTokens: 4, cacheReadTokens: 2, cacheWriteTokens: 1 } }
+  const second = { tokenUsage: { uncachedInputTokens: 5, outputTokens: 6, cacheReadTokens: 0, cacheWriteTokens: 0 } }
+  expect(aggregateTokenUsage([first, undefined, second])).toEqual({ uncachedInputTokens: 15, outputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 1 })
+  expect(aggregateTokenUsage([undefined, {}])).toBeUndefined()
 })

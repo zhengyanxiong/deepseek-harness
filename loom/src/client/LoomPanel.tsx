@@ -17,7 +17,7 @@ import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
 import { LoomKanban, LoomKanbanAside } from './LoomKanban.tsx'
-import { activeWorkspaceCount, boundSessions, currentWorkspace, recentSessions, workspaceName, type ShellFilter } from './projection.ts'
+import { activeWorkspaceCount, aggregateTokenUsage, boundSessions, currentWorkspace, recentSessions, workspaceName, type ShellFilter } from './projection.ts'
 import { COLORS, metaLine, pill, select, shortCommit, PRIORITY_META, STATUS_META } from './shell.ts'
 import { NS } from './locales.ts'
 
@@ -220,6 +220,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const detailPriority = detailTask?.priority ?? 'normal'
   const detailModules = (detailTask?.moduleIds ?? []).map(moduleId => displayProject?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
+  const taskSessions = snapshot === undefined || detailTask === undefined ? [] : boundSessions(snapshot).filter(row => row.task.id === detailTask.id)
+  const tokenUsage = aggregateTokenUsage(taskSessions.map(row => sessions.projectionsBySession[row.sessionId as SessionId]?.values))
   const temporaryWorkspace = snapshot?.workspaces.filter(candidate => candidate.cleaned !== true).at(-1)
   useEffect(() => {
     if (detailWorkspace?.id === undefined || detailWorkspace.cleaned === true) { setDiffCount(0); return }
@@ -494,7 +496,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       {asideOpen && <aside className="loom-aside" style={aside}>
         {view === 'kanban'
           ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
-          : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} />}
+          : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} />}
       </aside>}
     </div>
     <LoomBottomPanel
@@ -503,6 +505,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       pane={pane}
       audit={auditRows}
       diffCount={diffCount}
+      usage={tokenUsage}
       workspaceId={detailWorkspace?.id}
       loadChanges={workspaceChanges}
       renderFactorySlot={renderFactorySlot}

@@ -219,3 +219,49 @@ export function currentExecution(snapshot: CatalogSnapshot, task: TaskRecord | u
 export function boundSessionId(task: TaskRecord | undefined): string | undefined {
   return task?.attempts.at(-1)?.sessionIds.at(-1)
 }
+
+/** Provider-reported token buckets from the native token-meter projection. */
+export interface TokenUsageView {
+  readonly uncachedInputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens: number
+  readonly cacheWriteTokens: number
+}
+
+function isTokenUsage(value: unknown): value is TokenUsageView {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record.uncachedInputTokens === 'number' && typeof record.outputTokens === 'number'
+    && typeof record.cacheReadTokens === 'number' && typeof record.cacheWriteTokens === 'number'
+}
+
+/**
+ * Read the token-meter projection from an opaque projection-values object.
+ * @param values - one Session's projected values, when loaded.
+ * @returns admitted usage buckets, or undefined when the plugin reported none.
+ */
+export function tokenUsageOf(values: object | undefined): TokenUsageView | undefined {
+  if (values === undefined) return undefined
+  const candidate = Reflect.get(values, 'tokenUsage')
+  return isTokenUsage(candidate) ? candidate : undefined
+}
+
+/**
+ * Sum token usage across the Sessions bound to one task.
+ * @param values - projection values for each bound Session.
+ * @returns cumulative buckets, or undefined when no Session reported usage.
+ */
+export function aggregateTokenUsage(values: readonly (object | undefined)[]): TokenUsageView | undefined {
+  let total: TokenUsageView | undefined
+  for (const value of values) {
+    const usage = tokenUsageOf(value)
+    if (usage === undefined) continue
+    total = total === undefined ? usage : {
+      uncachedInputTokens: total.uncachedInputTokens + usage.uncachedInputTokens,
+      outputTokens: total.outputTokens + usage.outputTokens,
+      cacheReadTokens: total.cacheReadTokens + usage.cacheReadTokens,
+      cacheWriteTokens: total.cacheWriteTokens + usage.cacheWriteTokens,
+    }
+  }
+  return total
+}
