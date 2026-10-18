@@ -115,6 +115,17 @@ it('rejects overlapping paths before creating anything', async () => {
   await expect(prepareWorkspace(f.root, [{ repo: f.first, path: 'a', commit }, { repo: f.first, path: 'a/b', commit }])).rejects.toThrow('overlapping_paths')
   await expect(access(f.root)).rejects.toThrow()
 })
+it('reports a missing Git executable distinctly from an unreadable repository', async () => {
+  const f = await fixture()
+  const path = process.env.PATH
+  process.env.PATH = ''
+  try {
+    await expect(resolveCommit(f.first, 'HEAD')).rejects.toMatchObject({ code: 'git_not_found' })
+  } finally {
+    process.env.PATH = path
+  }
+})
+
 it('reports the repository path and Git diagnostic for an unreadable repository', async () => {
   const f = await fixture()
   const plain = join(f.base, 'plain')

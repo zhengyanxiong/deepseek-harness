@@ -1,5 +1,8 @@
 /** Inline creation and edit forms for Loom projects, versions and tasks. */
 import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
+import {
+  Button, IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ModuleConfig,
@@ -12,13 +15,27 @@ import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
 
-const button: CSSProperties = { color: 'inherit', background: 'transparent', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', font: 'inherit' }
-const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, padding: 12, borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)' }
-const input: CSSProperties = { ...button, cursor: 'text', width: '100%', boxSizing: 'border-box' }
-const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
-const fieldLabel: CSSProperties = { color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }
-const alert: CSSProperties = { margin: 0, color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }
-const failureCode: CSSProperties = { display: 'block', marginTop: 4, color: 'var(--dsw-alias-label-error)', fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
+const formStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 16, marginTop: 12 }
+const stack: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10 }
+const card: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10, padding: 12, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, background: COLORS.panel2 }
+const input: CSSProperties = {
+  width: '100%', height: 36, boxSizing: 'border-box', padding: '0 10px', border: `0.5px solid ${COLORS.borderStrong}`,
+  borderRadius: 'var(--dsw-radius-sm)', background: COLORS.panel, color: COLORS.text, font: 'inherit', fontSize: 13, lineHeight: '20px',
+}
+const textarea: CSSProperties = { ...input, height: 'auto', minHeight: 88, padding: '8px 10px', resize: 'vertical' }
+const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 5 }
+const fieldLabel: CSSProperties = { color: COLORS.dim, fontSize: 12, fontWeight: 500 }
+const hint: CSSProperties = { margin: 0, color: COLORS.faint, fontSize: 11.5, lineHeight: 1.55 }
+const alert: CSSProperties = { margin: 0, color: COLORS.dim, fontSize: 12 }
+const failureCode: CSSProperties = { display: 'block', marginTop: 4, color: COLORS.error, fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
+const footer: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }
+const footerSpacer: CSSProperties = { flex: 1, minWidth: 8 }
+const stepRail: CSSProperties = { display: 'grid', listStyle: 'none', padding: 0, margin: '2px 0 4px' }
+const stepItem: CSSProperties = { position: 'relative', display: 'flex', minWidth: 0, justifyContent: 'center' }
+const stepLine: CSSProperties = { position: 'absolute', top: 10, right: '50%', width: '100%', height: 1, zIndex: 0 }
+const stepButton: CSSProperties = { position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, padding: 0, border: 'none', background: 'transparent', font: 'inherit', color: 'inherit' }
+const stepCircle: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 21, height: 21, boxSizing: 'border-box', borderRadius: 999, border: '1px solid', fontSize: 10.5, fontWeight: 500 }
+const previewRow: CSSProperties = { display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', padding: '7px 8px', borderRadius: 7, background: COLORS.panel, border: `0.5px solid ${COLORS.border}` }
 
 function FailureNotice({ failure, t }: { failure: string; t: Translate }) {
   const key = failureKey(failure)

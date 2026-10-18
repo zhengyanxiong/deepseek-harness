@@ -81,6 +81,7 @@ async function localRepository(repo: string): Promise<string> {
   } catch (error) {
     if (error instanceof WorkspacePreparationError) throw error
     const detail = gitDetail(error)
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new WorkspacePreparationError('git_not_found', [], error, repo)
     throw new WorkspacePreparationError('invalid_repository', [], error, `${repo}${detail === undefined ? '' : ` (${detail})`}`)
   }
 }

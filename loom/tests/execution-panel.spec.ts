@@ -179,5 +179,6 @@ it('explains known workspace failures instead of only showing a code', () => {
   expect(failureKey('workspace_path_registered')).toBe('error.pathRegistered')
   expect(failureKey('existing_root; rollback: failed')).toBe('error.existingRoot')
   expect(failureKey('invalid_repository: /tmp/repo (spawn git ENOENT)')).toBe('error.invalidRepository')
+  expect(failureKey('git_not_found: /tmp/repo')).toBe('error.gitNotFound')
   expect(failureKey('unmapped_failure')).toBeUndefined()
 })
