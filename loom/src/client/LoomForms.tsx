@@ -41,7 +41,7 @@ function FailureNotice({ failure, t }: { failure: string; t: Translate }) {
   const key = failureKey(failure)
   return <div role="alert" style={alert}>
     <p style={{ margin: 0 }}>{key === undefined ? t('state.error') : t(key)}</p>
-    <code style={failureCode}>{failure}</code>
+    {failure !== 'invalid_form' && <code style={failureCode}>{failure}</code>}
   </div>
 }
 
@@ -239,9 +239,11 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   function goTo(candidate: ProjectStep): void {
     if (canVisit(candidate)) { setStep(candidate); setFailure(undefined) }
   }
-  function next(): void {
+  function advance(): boolean {
     const candidate = PROJECT_STEPS[stepIndex + 1]
-    if (candidate !== undefined) goTo(candidate.key)
+    if (candidate === undefined || !canVisit(candidate.key)) return false
+    goTo(candidate.key)
+    return true
   }
   function back(): void {
     const candidate = PROJECT_STEPS[stepIndex - 1]
@@ -259,8 +261,11 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   }
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
+    if (!editing && step !== 'preview') {
+      if (!advance()) setFailure('invalid_form')
+      return
+    }
     if (request === undefined) { setFailure('invalid_form'); return }
-    if (!editing && step !== 'preview') { next(); return }
     setBusy(true); setFailure(undefined)
     try {
       const result = editing

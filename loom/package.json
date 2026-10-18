@@ -1,6 +1,6 @@
 {
   "name": "dsh-workloom",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "DSH Workloom project workbench and task workspace bundle.",
   "type": "module",
   "main": "lib/index.js",

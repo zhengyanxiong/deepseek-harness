@@ -7,10 +7,10 @@ Workloom is a DSH bundle. DSH `0.2.1-rc.2` through `0.2.x` and Node.js `>=22.19`
 ```sh
 pnpm run build
 npm pack
-dsh plugin --profile web add ./dsh-workloom-0.1.2.tgz
+dsh plugin --profile web add ./dsh-workloom-0.1.3.tgz
 ```
 
-From a source checkout without a global `dsh` command, use `pnpm dsh plugin --profile web add ./dsh-workloom-0.1.2.tgz` from the repository root.
+From a source checkout without a global `dsh` command, use `pnpm dsh plugin --profile web add ./dsh-workloom-0.1.3.tgz` from the repository root.
 
 Start the profile with `dsh --profile web`. The Web sidebar then lists **Workloom**. A bundle installed from a built tarball needs no install-time build permission. The package is named `dsh-workloom`; publish it under that name or a scope you own, and install the published version with the same name. The package name in `package.json` must match the plugin row `name` in `cordis.patch.yml`.
 
