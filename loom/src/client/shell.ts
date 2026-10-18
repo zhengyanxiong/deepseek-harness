@@ -51,9 +51,12 @@ export const PRIORITY_META: Readonly<Record<TaskPriority, { readonly key: LoomKe
 /** Locale keys for audited business events. */
 export const AUDIT_LABEL: Readonly<Record<AuditEvent, LoomKey>> = {
   'project.created': 'audit.project.created',
+  'project.updated': 'audit.project.updated',
   'version.created': 'audit.version.created',
+  'version.updated': 'audit.version.updated',
   'lock.generated': 'audit.lock.generated',
   'task.created': 'audit.task.created',
+  'task.updated': 'audit.task.updated',
   'task.transitioned': 'audit.task.transitioned',
   'workspace.prepared': 'audit.workspace.prepared',
   'workspace.cleaned': 'audit.workspace.cleaned',
@@ -87,6 +90,7 @@ export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   workspace_unpushed: 'error.workspaceUnpushed',
   workspace_mismatch: 'error.workspaceMismatch',
   invalid_task: 'error.invalidTask',
+  invalid_version: 'error.invalidVersion',
 }
 
 /**
@@ -95,7 +99,8 @@ export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
  * @returns the locale key, or undefined for an unmapped failure.
  */
 export function failureKey(failure: string): LoomKey | undefined {
-  return ERROR_LABEL[failure.split(';')[0]!.trim()]
+  const code = /^([a-z][a-z0-9_]*)/u.exec(failure)?.[1]
+  return code === undefined ? undefined : ERROR_LABEL[code]
 }
 
 export const pill: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, border: `0.5px solid ${COLORS.border}`, borderRadius: 999, padding: '1px 8px', fontSize: 11, color: COLORS.dim, whiteSpace: 'nowrap' }

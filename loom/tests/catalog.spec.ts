@@ -31,6 +31,33 @@ it('persists optional task metadata and rejects modules outside the project', as
   await expect(catalog.createTask(version.id, 'Bad', { moduleIds: [brandString<Branded<'loom.module'>>('missing')] })).rejects.toThrow('invalid_task')
 })
 
+it('edits projects, versions and tasks while preserving referenced ids', async () => {
+  const { catalog } = await fixture()
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo: '/repos/web', path: 'web' }], modules: [{ id: 'api', sourceId: 'web', path: 'src/api' }] })
+  const version = await catalog.createVersion(project.id, 'Release', [{ sourceId: project.config.sources[0]!.id, ref: 'main' }])
+  const task = await catalog.createTask(version.id, 'Checkout', { moduleIds: [project.config.modules[0]!.id] })
+  const updatedProject = await catalog.updateProject(project.id, {
+    name: 'Shop renamed',
+    sources: [{ id: project.config.sources[0]!.id, repo: '/repos/renamed', path: 'web' }],
+    modules: [{ id: project.config.modules[0]!.id, sourceId: project.config.sources[0]!.id, path: 'src/api' }],
+  })
+  expect(updatedProject.config).toMatchObject({ name: 'Shop renamed', sources: [{ id: 'web', repo: '/repos/renamed' }] })
+  const updatedVersion = await catalog.updateVersion(version.id, 'Release 2', [{ sourceId: project.config.sources[0]!.id, ref: 'release' }])
+  expect(updatedVersion).toMatchObject({ name: 'Release 2', sources: [{ sourceId: 'web', ref: 'release' }] })
+  const updatedTask = await catalog.updateTask(task.id, 'Checkout 2', { description: 'Updated', moduleIds: [project.config.modules[0]!.id], priority: 'high' })
+  expect(updatedTask).toMatchObject({ title: 'Checkout 2', description: 'Updated', priority: 'high' })
+  expect(catalog.snapshot().audit.map(entry => entry.event)).toEqual(expect.arrayContaining(['project.updated', 'version.updated', 'task.updated']))
+})
+
+it('rejects edits that would orphan versions or tasks', async () => {
+  const { catalog } = await fixture()
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo: '/repos/web', path: 'web' }, { id: 'api', repo: '/repos/api', path: 'api' }], modules: [{ id: 'core', sourceId: 'api', path: 'src/core' }] })
+  const version = await catalog.createVersion(project.id, 'Release', [{ sourceId: project.config.sources[1]!.id, ref: 'main' }])
+  await catalog.createTask(version.id, 'Checkout', { moduleIds: [project.config.modules[0]!.id] })
+  await expect(catalog.updateProject(project.id, { name: 'Shop', sources: [project.config.sources[0]!], modules: [] })).rejects.toThrow('invalid_version')
+  await expect(catalog.updateProject(project.id, { name: 'Shop', sources: [project.config.sources[0]!, project.config.sources[1]!], modules: [] })).rejects.toThrow('invalid_task')
+})
+
 it('fills metadata defaults for tasks persisted before those fields existed', async () => {
   const { file, catalog } = await fixture()
   const project = await catalog.createProject(config())

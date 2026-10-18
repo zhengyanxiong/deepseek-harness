@@ -3,9 +3,12 @@
 /** Stable audit event names; labels and presentation belong to callers. */
 export type AuditEvent =
   | 'project.created'
+  | 'project.updated'
   | 'version.created'
+  | 'version.updated'
   | 'lock.generated'
   | 'task.created'
+  | 'task.updated'
   | 'task.transitioned'
   | 'workspace.prepared'
   | 'workspace.cleaned'

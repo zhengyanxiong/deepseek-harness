@@ -11,7 +11,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
-import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest } from 'dsh-workloom/types'
+import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest } from 'dsh-workloom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { openFilePreview, openReviewPreview, previewTargetFromAddress, reviewIndexFromOptions, reviewTargetFromAddress } from './preview.ts'
@@ -111,8 +111,11 @@ export function apply(ctx: ClientContext): void {
         retainSession: id => ui.sessions.retain(id, { source: 'loom' }),
         loadSnapshot: () => ui.remote.loom.snapshot(),
         createProject: (request: ProjectConfig) => ui.remote.loom.createProject(request),
+        updateProject: (request: UpdateProjectRequest) => ui.remote.loom.updateProject(request),
         createVersion: (request: CreateVersionRequest) => ui.remote.loom.createVersion(request),
+        updateVersion: (request: UpdateVersionRequest) => ui.remote.loom.updateVersion(request),
         createTask: (request: CreateTaskRequest) => ui.remote.loom.createTask(request),
+        updateTask: (request: UpdateTaskRequest) => ui.remote.loom.updateTask(request),
         generateLock: (request: GenerateLockRequest) => ui.remote.loom.generateLock(request),
         prepareWorkspace: (request: PrepareWorkspaceRequest) => ui.remote.loom.prepareWorkspace(request),
         startAttempt: (request: StartAttemptRequest) => ui.remote.loom.startAttempt(request),

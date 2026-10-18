@@ -3,6 +3,7 @@
  * the request bodies accepted by its Remote endpoints.
  */
 export type * from './domain/project.ts'
+import type { ProjectConfig } from './domain/project.ts'
 export type * from './domain/task.ts'
 export type * from './domain/version.ts'
 export type * from './domain/execution.ts'
@@ -18,6 +19,25 @@ export interface CreateVersionRequest {
 /** Create one task under a version. */
 export interface CreateTaskRequest {
   readonly versionId: string
+  readonly title: string
+  readonly description?: string
+  readonly moduleIds?: readonly string[]
+  readonly priority?: 'low' | 'normal' | 'high'
+}
+/** Replace an existing project's admitted configuration. */
+export interface UpdateProjectRequest {
+  readonly projectId: string
+  readonly config: ProjectConfig
+}
+/** Replace one version's name and repository refs. */
+export interface UpdateVersionRequest {
+  readonly versionId: string
+  readonly name: string
+  readonly sources: readonly { readonly sourceId: string; readonly ref: string }[]
+}
+/** Replace editable task metadata without changing its version or execution history. */
+export interface UpdateTaskRequest {
+  readonly taskId: string
   readonly title: string
   readonly description?: string
   readonly moduleIds?: readonly string[]

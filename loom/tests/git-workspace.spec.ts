@@ -115,6 +115,17 @@ it('rejects overlapping paths before creating anything', async () => {
   await expect(prepareWorkspace(f.root, [{ repo: f.first, path: 'a', commit }, { repo: f.first, path: 'a/b', commit }])).rejects.toThrow('overlapping_paths')
   await expect(access(f.root)).rejects.toThrow()
 })
+it('reports the repository path and Git diagnostic for an unreadable repository', async () => {
+  const f = await fixture()
+  const plain = join(f.base, 'plain')
+  await mkdir(plain)
+  const failure = await resolveCommit(plain, 'HEAD').catch((error: unknown) => error)
+  expect(failure).toBeInstanceOf(WorkspacePreparationError)
+  expect((failure as WorkspacePreparationError).code).toBe('invalid_repository')
+  expect((failure as WorkspacePreparationError).message).toContain(plain)
+  expect((failure as WorkspacePreparationError).message).toMatch(/not a git repository|dubious ownership|spawn git/iu)
+})
+
 it('rejects Git option-shaped refs and nonlocal repository sources', async () => {
   const f = await fixture()
   await expect(resolveCommit(f.first, '--help')).rejects.toThrow()

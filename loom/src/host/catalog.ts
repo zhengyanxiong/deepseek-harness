@@ -55,7 +55,7 @@ const taskSchema = z.strictObject({
   attempts: z.array(z.strictObject({ id: id<'loom.attempt'>(), lock: lockSchema, workspaceId: id<'loom.workspace'>(), sessionIds: z.array(id<'SessionId'>()), status })),
 })
 const workspaceSchema = z.strictObject({ id: id<'loom.workspace'>(), path: z.string().refine(value => isAbsolute(value) && normalize(value) === value), versionId: id<'loom.version'>(), lockId: id<'loom.lock'>(), branches: z.record(z.string(), text).optional(), managed: z.boolean().optional(), cleaned: z.boolean().optional() })
-const auditEvents = ['project.created', 'version.created', 'lock.generated', 'task.created', 'task.transitioned', 'workspace.prepared', 'workspace.cleaned', 'attempt.started', 'session.attached', 'execution.acquired', 'execution.queued', 'execution.released', 'execution.takeover-requested', 'execution.takeover-stopped', 'execution.takeover-blocked'] as const
+const auditEvents = ['project.created', 'project.updated', 'version.created', 'version.updated', 'lock.generated', 'task.created', 'task.updated', 'task.transitioned', 'workspace.prepared', 'workspace.cleaned', 'attempt.started', 'session.attached', 'execution.acquired', 'execution.queued', 'execution.released', 'execution.takeover-requested', 'execution.takeover-stopped', 'execution.takeover-blocked'] as const
 const auditSchema = z.strictObject({
   id: text,
   at: z.number().int().nonnegative(),
@@ -140,9 +140,12 @@ export interface CreateTaskOptions {
 export interface Catalog {
   snapshot(): CatalogSnapshot
   createProject(config: unknown): Promise<ProjectRecord>
+  updateProject(projectId: ProjectRecord['id'], config: ProjectConfig): Promise<ProjectRecord>
   createVersion(projectId: ProjectRecord['id'], name: string, sources: readonly { sourceId: Branded<'loom.source'>; ref: string }[]): Promise<VersionRecord>
+  updateVersion(versionId: VersionRecord['id'], name: string, sources: readonly { sourceId: Branded<'loom.source'>; ref: string }[]): Promise<VersionRecord>
   generateLock(versionId: VersionRecord['id']): Promise<Lock>
   createTask(versionId: VersionRecord['id'], title: string, options?: CreateTaskOptions): Promise<TaskRecord>
+  updateTask(taskId: TaskRecord['id'], title: string, options?: CreateTaskOptions): Promise<TaskRecord>
   prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   workspaceChanges(workspaceId: WorkspaceRecord['id']): Promise<{ repositories: WorkspaceRepositoryChanges[] }>
   workspaceStatus(workspaceId: WorkspaceRecord['id']): Promise<{ running: boolean; repositories: WorkspaceRepositoryChanges[] }>
@@ -406,6 +409,27 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         return record
       })
     },
+    updateProject: async (projectId, input) => {
+      const config = parseProject(input)
+      return transaction(draft => {
+        const project = draft.projects.find(candidate => candidate.id === projectId)
+        if (project === undefined) throw new CatalogError('missing_project')
+        const sourceIds = new Set(config.sources.map(source => source.id))
+        if (draft.versions.some(version => version.projectId === projectId && version.sources.some(source => !sourceIds.has(source.sourceId)))) {
+          throw new CatalogError('invalid_version')
+        }
+        const moduleIds = new Set(config.modules.map(module => module.id))
+        const invalidTask = draft.tasks.some(task => {
+          const version = draft.versions.find(candidate => candidate.id === task.versionId)
+          return version?.projectId === projectId && (task.moduleIds ?? []).some(moduleId => !moduleIds.has(moduleId))
+        })
+        if (invalidTask) throw new CatalogError('invalid_task')
+        const next: ProjectRecord = { ...project, config }
+        draft.projects[draft.projects.indexOf(project)] = next
+        recordAudit(draft, 'project.updated', 'human', { detail: config.name })
+        return next
+      })
+    },
     createVersion: async (projectId, name, sources) => {
       const record = versionSchema.parse({ id: randomUUID(), projectId, name, sources })
       return transaction(draft => {
@@ -415,6 +439,20 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         draft.versions.push(record)
         recordAudit(draft, 'version.created', 'human', { detail: record.name })
         return record
+      })
+    },
+    updateVersion: async (versionId, name, sources) => {
+      const admittedName = text.parse(name)
+      return transaction(draft => {
+        const version = versionIn(draft, versionId)
+        const project = draft.projects.find(candidate => candidate.id === version.projectId)
+        if (project === undefined) throw new CatalogError('missing_project')
+        const record = versionSchema.parse({ ...version, name: admittedName, sources })
+        if (!validVersion(project, record)) throw new CatalogError('invalid_version')
+        const next: VersionRecord = { ...version, name: admittedName, sources: record.sources }
+        draft.versions[draft.versions.indexOf(version)] = next
+        recordAudit(draft, 'version.updated', 'human', { detail: admittedName })
+        return next
       })
     },
     generateLock: versionId => transaction(async draft => {
@@ -446,6 +484,24 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         draft.tasks.push(record)
         recordAudit(draft, 'task.created', 'human', { taskId: record.id, detail: admittedTitle })
         return record
+      })
+    },
+    updateTask: async (taskId, title, options = {}) => {
+      const admittedTitle = text.parse(title)
+      const description = options.description?.trim() ?? ''
+      if (description.length > 4000) throw new CatalogError('invalid_task')
+      const moduleIds = [...(options.moduleIds ?? [])]
+      if (!distinct(moduleIds)) throw new CatalogError('invalid_task')
+      const priority = options.priority ?? 'normal'
+      return transaction(draft => {
+        const task = taskIn(draft, taskId)
+        const version = versionIn(draft, task.versionId)
+        const project = draft.projects.find(candidate => candidate.id === version.projectId)
+        if (project === undefined || moduleIds.some(moduleId => !project.config.modules.some(module => module.id === moduleId))) throw new CatalogError('invalid_task')
+        const next: TaskRecord = { ...task, title: admittedTitle, description, moduleIds, priority }
+        draft.tasks[draft.tasks.indexOf(task)] = next
+        recordAudit(draft, 'task.updated', 'human', { taskId: next.id, detail: admittedTitle })
+        return next
       })
     },
   }

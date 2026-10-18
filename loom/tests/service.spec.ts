@@ -35,6 +35,19 @@ it('creates durable catalog records through the real gateway', async () => {
   await call('createTask', { request: { versionId: version.id, title: 'Checkout' } })
   expect(await call('snapshot')).toMatchObject({ projects: [{ id: project.id }], tasks: [{ title: 'Checkout', status: 'pending' }] })
 })
+it('edits catalog records through the real gateway', async () => {
+  const { call } = await setup()
+  const project = await call('createProject', { request: { name: 'Shop', sources: [{ id: 'web', repo: '/local/web', path: 'web' }], modules: [{ id: 'api', sourceId: 'web', path: 'src/api' }] } }) as { id: string }
+  const version = await call('createVersion', { request: { projectId: project.id, name: 'v1', sources: [{ sourceId: 'web', ref: 'main' }] } }) as { id: string }
+  const task = await call('createTask', { request: { versionId: version.id, title: 'Checkout' } }) as { id: string }
+  const updatedProject = await call('updateProject', { request: { projectId: project.id, config: { name: 'Shop 2', sources: [{ id: 'web', repo: '/local/renamed', path: 'web' }], modules: [{ id: 'api', sourceId: 'web', path: 'src/api' }] } } }) as { config: { name: string } }
+  const updatedVersion = await call('updateVersion', { request: { versionId: version.id, name: 'v2', sources: [{ sourceId: 'web', ref: 'release' }] } }) as { name: string }
+  const updatedTask = await call('updateTask', { request: { taskId: task.id, title: 'Checkout 2', priority: 'high' } }) as { title: string; priority: string }
+  expect(updatedProject.config.name).toBe('Shop 2')
+  expect(updatedVersion.name).toBe('v2')
+  expect(updatedTask).toMatchObject({ title: 'Checkout 2', priority: 'high' })
+})
+
 it('resolves exact Git commits through the Lock endpoint', async () => {
   const { call, dir } = await setup()
   const repo = join(dir, 'repo'); await mkdir(repo)

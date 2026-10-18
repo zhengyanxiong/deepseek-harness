@@ -20,6 +20,23 @@ const version: VersionRecord = {
   name: 'v1',
   sources: [{ sourceId: brandString<'loom.source'>('web'), ref: 'main' }],
 }
+it('preserves existing repository and module ids when editing', () => {
+  const legacy = brandString<'loom.source'>('legacy')
+  expect(sourceIds([{ id: legacy, repo: '/repo/shop', path: 'web' }])).toEqual(['legacy'])
+  expect(projectRequest('Shop', [{ id: legacy, repo: '/repo/shop', path: 'web' }], [{ id: brandString<'loom.module'>('api'), source: 'legacy', path: 'src/api' }]))
+    .toEqual({ name: 'Shop', sources: [{ id: 'legacy', repo: '/repo/shop', path: 'web' }], modules: [{ id: 'api', sourceId: 'legacy', path: 'src/api' }] })
+})
+
+it('renders an existing project in the edit form instead of a creation trigger', () => {
+  const markup = renderToStaticMarkup(createElement(ProjectForm, {
+    t, open: true, project, create: async () => ({ ok: true, value: project }), update: async () => ({ ok: true, value: project }), onCreated: () => undefined,
+  }))
+  expect(markup).toContain('value="Shop"')
+  expect(markup).toContain('value="/repo/shop"')
+  expect(markup).toContain('>Next<')
+  expect(markup).not.toContain('＋ New project')
+})
+
 it('starts a repository row empty instead of pre-filling placeholder values', () => {
   expect(emptySourceRow()).toEqual({ repo: '', path: '' })
 })

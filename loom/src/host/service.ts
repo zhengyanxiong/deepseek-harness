@@ -9,10 +9,11 @@ import { dirname, isAbsolute, join, normalize } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createCatalog, type Catalog } from './catalog.ts'
+import { parseProject } from '../domain/project.ts'
 import type {
   AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest,
   CleanupWorkspaceRequest, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceChangesRequest, WorkspaceRepositoryChangesRecord, WorkspaceStatusResult,
-  VersionRecord, WorkspaceRecord, ExecutionRequest, ReleaseExecutionRequest,
+  VersionRecord, WorkspaceRecord, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest,
 } from '../types.ts'
 import type { Lock } from '../domain/task.ts'
 import { ExecutionError, type ExecutionState, type StopOutcome } from '../domain/execution.ts'
@@ -32,7 +33,10 @@ const configSchema: Schema<Config> = Schema.object({
 })
 const nonempty = z.string().trim().min(1)
 const versionRequest = z.strictObject({ projectId: nonempty, name: nonempty, sources: z.array(z.strictObject({ sourceId: nonempty, ref: nonempty })).min(1) })
+const updateProjectRequest = z.strictObject({ projectId: nonempty, config: z.unknown() })
+const updateVersionRequest = z.strictObject({ versionId: nonempty, name: nonempty, sources: z.array(z.strictObject({ sourceId: nonempty, ref: nonempty })).min(1) })
 const taskRequest = z.strictObject({ versionId: nonempty, title: nonempty, description: z.string().max(4000).optional(), moduleIds: z.array(nonempty).max(50).optional(), priority: z.enum(['low', 'normal', 'high']).optional() })
+const updateTaskRequest = z.strictObject({ taskId: nonempty, title: nonempty, description: z.string().max(4000).optional(), moduleIds: z.array(nonempty).max(50).optional(), priority: z.enum(['low', 'normal', 'high']).optional() })
 const lockRequest = z.strictObject({ versionId: nonempty })
 const workspaceRequest = z.strictObject({ path: nonempty.optional(), versionId: nonempty, lockId: nonempty })
 const registerWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty, branches: z.record(z.string(), nonempty).optional() })
@@ -188,12 +192,30 @@ export default class LoomService extends TypertRemoteService {
   @Remote
   createProject(request: ProjectConfig): Promise<ProjectRecord> { return this.run(catalog => catalog.createProject(request)) }
 
+  /** Replace a project's admitted configuration. @param request - project identity and new configuration. @returns persisted project. */
+  @Remote
+  updateProject(request: UpdateProjectRequest): Promise<ProjectRecord> {
+    return this.run(catalog => {
+      const parsed = updateProjectRequest.parse(request)
+      return catalog.updateProject(brandString<ProjectRecord['id']>(parsed.projectId), parseProject(parsed.config))
+    })
+  }
+
   /** Create a version. @param request - project, title and repository refs. @returns persisted version. */
   @Remote
   createVersion(request: CreateVersionRequest): Promise<VersionRecord> {
     return this.run(catalog => {
       const parsed = versionRequest.parse(request)
       return catalog.createVersion(brandString<ProjectRecord['id']>(parsed.projectId), parsed.name, parsed.sources.map(source => ({ sourceId: brandString<VersionRecord['sources'][number]['sourceId']>(source.sourceId), ref: source.ref })))
+    })
+  }
+
+  /** Replace a version's name and repository refs. @param request - version identity and new refs. @returns persisted version. */
+  @Remote
+  updateVersion(request: UpdateVersionRequest): Promise<VersionRecord> {
+    return this.run(catalog => {
+      const parsed = updateVersionRequest.parse(request)
+      return catalog.updateVersion(brandString<VersionRecord['id']>(parsed.versionId), parsed.name, parsed.sources.map(source => ({ sourceId: brandString<VersionRecord['sources'][number]['sourceId']>(source.sourceId), ref: source.ref })))
     })
   }
 
@@ -209,6 +231,19 @@ export default class LoomService extends TypertRemoteService {
     return this.run(catalog => {
       const parsed = taskRequest.parse(request)
       return catalog.createTask(brandString<VersionRecord['id']>(parsed.versionId), parsed.title, {
+        ...(parsed.description === undefined ? {} : { description: parsed.description }),
+        ...(parsed.moduleIds === undefined ? {} : { moduleIds: parsed.moduleIds.map(moduleId => brandString<Branded<'loom.module'>>(moduleId)) }),
+        ...(parsed.priority === undefined ? {} : { priority: parsed.priority }),
+      })
+    })
+  }
+
+  /** Replace editable task metadata. @param request - task identity and metadata. @returns persisted task. */
+  @Remote
+  updateTask(request: UpdateTaskRequest): Promise<TaskRecord> {
+    return this.run(catalog => {
+      const parsed = updateTaskRequest.parse(request)
+      return catalog.updateTask(brandString<TaskRecord['id']>(parsed.taskId), parsed.title, {
         ...(parsed.description === undefined ? {} : { description: parsed.description }),
         ...(parsed.moduleIds === undefined ? {} : { moduleIds: parsed.moduleIds.map(moduleId => brandString<Branded<'loom.module'>>(moduleId)) }),
         ...(parsed.priority === undefined ? {} : { priority: parsed.priority }),

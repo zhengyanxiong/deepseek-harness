@@ -14,6 +14,7 @@ import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock,
   PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskPriority, TaskRecord, TransitionTaskRequest, VersionRecord,
   WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
+  UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest,
 } from 'dsh-workloom/types'
 import { ImportProjectForm, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { LoomSettings, readPreferences, writePreferences, type LoomPreferences } from './LoomSettings.tsx'
@@ -34,8 +35,11 @@ export interface LoomInjected {
   retainSession(id: SessionId): SessionReference
   loadSnapshot(): Promise<RemoteResult<CatalogSnapshot>>
   createProject(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
+  updateProject(request: UpdateProjectRequest): Promise<RemoteResult<ProjectRecord>>
   createVersion(request: CreateVersionRequest): Promise<RemoteResult<VersionRecord>>
+  updateVersion(request: UpdateVersionRequest): Promise<RemoteResult<VersionRecord>>
   createTask(request: CreateTaskRequest): Promise<RemoteResult<TaskRecord>>
+  updateTask(request: UpdateTaskRequest): Promise<RemoteResult<TaskRecord>>
   generateLock(request: GenerateLockRequest): Promise<RemoteResult<Lock>>
   prepareWorkspace(request: PrepareWorkspaceRequest): Promise<RemoteResult<WorkspaceRecord>>
   startAttempt(request: StartAttemptRequest): Promise<RemoteResult<TaskRecord>>
@@ -62,6 +66,7 @@ type CatalogState =
   | { readonly status: 'ready'; readonly snapshot: CatalogSnapshot }
 type View = 'workbench' | 'kanban'
 type CreateKind = 'project' | 'import' | 'version' | 'task'
+type EditKind = 'project' | 'version' | 'task'
 
 const frame: CSSProperties = { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: COLORS.text, background: COLORS.bg, fontSize: 13, overflow: 'hidden' }
 const topbar: CSSProperties = {
@@ -169,7 +174,7 @@ function readPinnedProjects(): ProjectRecord['id'][] {
  * @param props - locale, native catalog, session acquisition, catalog actions, and renderer seats.
  * @returns the whole Loom page.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, updateProject, createVersion, updateVersion, createTask, updateTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [preferences, setPreferences] = useState<LoomPreferences>(readPreferences)
   const [view, setView] = useState<View>(preferences.view)
@@ -204,6 +209,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [expandedProjects, setExpandedProjects] = useState<ReadonlySet<string>>(new Set())
   const [expandedVersions, setExpandedVersions] = useState<ReadonlySet<string>>(new Set())
   const [create, setCreate] = useState<CreateKind>()
+  const [edit, setEdit] = useState<EditKind>()
   const [menuOpen, setMenuOpen] = useState(false)
   useEffect(() => {
     const timeout = setTimeout(() => writePreferences(preferences), 120)
@@ -275,6 +281,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const taskVersion = detailTask === undefined || snapshot === undefined ? undefined : snapshot.versions.find(candidate => candidate.id === detailTask.versionId)
   const displayProject = currentProject ?? (taskVersion === undefined ? undefined : snapshot?.projects.find(candidate => candidate.id === taskVersion.projectId))
   const displayVersion = currentVersion ?? taskVersion
+  const displayVersionProject = snapshot?.projects.find(candidate => candidate.id === displayVersion?.projectId)
   const detailPriority = detailTask?.priority ?? 'normal'
   const detailModules = (detailTask?.moduleIds ?? []).map(moduleId => displayProject?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
@@ -353,6 +360,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     } catch { /* the next snapshot keeps the authoritative status */ }
   }
   function openCreate(kind: CreateKind): void { setCreate(kind); setMenuOpen(false) }
+  function openEdit(kind: EditKind): void { setEdit(kind); setMenuOpen(false) }
   function updatePreferences(next: LoomPreferences): void {
     setPreferences(next)
     setView(next.view)
@@ -606,7 +614,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             </div>
             : view === 'kanban'
             ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
-            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} />}
+            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} />}
       </aside>}
     </div>
     {!bottomCollapsed && <LoomResizeHandle label={t('layout.resizeBottom')} orientation="horizontal" value={bottomHeight} min={80} max={bottomMax} invert onChange={(height) => setPreferences(current => ({ ...current, bottomHeight: height }))} />}
@@ -646,6 +654,17 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
         {create === 'task' && currentVersion !== undefined && currentVersionProject !== undefined && <TaskForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} version={currentVersion} project={currentVersionProject} create={createTask} onCreated={created => { setTask(created); setView('workbench'); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'version' && currentProject === undefined && <p style={note}>{t('project.select')}</p>}
         {create === 'task' && currentVersion === undefined && <p style={note}>{t('version.select')}</p>}
+      </div>
+    </div>}
+    {edit !== undefined && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 60 }} onClick={() => setEdit(undefined)}>
+      <div style={{ width: 380, maxWidth: '92%', height: '100%', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}`, padding: 16, overflowY: 'auto' }} onClick={event => event.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+          <strong style={{ fontSize: 14 }}>{edit === 'project' ? t('project.edit') : edit === 'version' ? `${t('form.edit')} · ${t('version.title')}` : `${t('form.edit')} · ${t('task.title')}`}</strong>
+          <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => setEdit(undefined)}>{t('form.close')}</button>
+        </div>
+        {edit === 'project' && displayProject !== undefined && <ProjectForm t={t} open project={displayProject} create={createProject} update={updateProject} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setProject(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
+        {edit === 'version' && displayVersion !== undefined && displayVersionProject !== undefined && <VersionForm t={t} open version={displayVersion} project={displayVersionProject} create={createVersion} update={updateVersion} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setVersion(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
+        {edit === 'task' && detailTask !== undefined && displayVersion !== undefined && displayProject !== undefined && <TaskForm t={t} open task={detailTask} version={displayVersion} project={displayProject} create={createTask} update={updateTask} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setTask(updated); setView('workbench'); setEdit(undefined); setAttempt(current => current + 1) }} />}
       </div>
     </div>}
   </div>

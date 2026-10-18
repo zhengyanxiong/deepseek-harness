@@ -29,10 +29,20 @@ export interface PreparedWorkspace {
 }
 /** Preparation failure with independent rollback diagnostics. */
 export class WorkspacePreparationError extends Error {
-  constructor(readonly code: string, readonly rollbackErrors: readonly string[] = [], cause?: unknown) {
-    super(`${code}${rollbackErrors.length === 0 ? '' : `; rollback: ${rollbackErrors.join('; ')}`}`, { cause })
+  constructor(readonly code: string, readonly rollbackErrors: readonly string[] = [], cause?: unknown, readonly detail?: string) {
+    super(`${code}${detail === undefined || detail === '' ? '' : `: ${detail}`}${rollbackErrors.length === 0 ? '' : `; rollback: ${rollbackErrors.join('; ')}`}`, { cause })
     this.name = 'WorkspacePreparationError'
   }
+}
+
+/** Keep Git's own diagnostic short enough to travel through a Remote failure. */
+function gitDetail(error: unknown): string | undefined {
+  const stderr = (error as { stderr?: unknown } | null)?.stderr
+  const message = error instanceof Error ? error.message : undefined
+  const text = typeof stderr === 'string' && stderr.trim() !== '' ? stderr : message
+  if (typeof text !== 'string') return undefined
+  const line = text.split(/\r?\n/u).map(part => part.trim()).find(part => part !== '')
+  return line === undefined ? undefined : line.slice(0, 300)
 }
 
 function safeRelativePath(path: string): string {
@@ -60,7 +70,9 @@ async function exists(path: string): Promise<boolean> {
 }
 
 async function localRepository(repo: string): Promise<string> {
-  if (!isAbsolute(repo) || !(await stat(repo).then(value => value.isDirectory()).catch(() => false))) throw new WorkspacePreparationError('local_repository_required')
+  if (!isAbsolute(repo) || !(await stat(repo).then(value => value.isDirectory()).catch(() => false))) {
+    throw new WorkspacePreparationError('local_repository_required', [], undefined, repo)
+  }
   try {
     const result = await execFile('git', ['-C', repo, 'rev-parse', '--show-toplevel'], { windowsHide: true })
     const top = resolve(result.stdout.trim())
@@ -68,7 +80,8 @@ async function localRepository(repo: string): Promise<string> {
     return top
   } catch (error) {
     if (error instanceof WorkspacePreparationError) throw error
-    throw new WorkspacePreparationError('invalid_repository', [], error)
+    const detail = gitDetail(error)
+    throw new WorkspacePreparationError('invalid_repository', [], error, `${repo}${detail === undefined ? '' : ` (${detail})`}`)
   }
 }
 
@@ -79,15 +92,16 @@ async function localRepository(repo: string): Promise<string> {
  */
 export async function resolveCommit(repo: string, ref: string): Promise<string> {
   const top = await localRepository(repo)
-  if (ref.startsWith('-')) throw new WorkspacePreparationError('invalid_ref')
+  if (ref.startsWith('-')) throw new WorkspacePreparationError('invalid_ref', [], undefined, ref)
   try {
     const result = await execFile('git', ['-C', top, 'rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`], { windowsHide: true })
     const commit = result.stdout.trim()
-    if (!COMMIT.test(commit)) throw new WorkspacePreparationError('invalid_commit')
+    if (!COMMIT.test(commit)) throw new WorkspacePreparationError('invalid_commit', [], undefined, `${repo} @ ${ref}`)
     return commit
   } catch (error) {
     if (error instanceof WorkspacePreparationError) throw error
-    throw new WorkspacePreparationError('invalid_commit', [], error)
+    const detail = gitDetail(error)
+    throw new WorkspacePreparationError('invalid_commit', [], error, `${repo} @ ${ref}${detail === undefined ? '' : ` (${detail})`}`)
   }
 }
 
@@ -168,7 +182,7 @@ export async function prepareWorkspace(root: string, repositories: readonly Work
         if ((rollback as NodeJS.ErrnoException).code !== 'ENOENT') rollbackErrors.push(`remove directory ${directory}: ${String(rollback)}`)
       }
     }
-    if (error instanceof WorkspacePreparationError) throw new WorkspacePreparationError(error.code, rollbackErrors, error)
+    if (error instanceof WorkspacePreparationError) throw new WorkspacePreparationError(error.code, rollbackErrors, error, error.detail)
     throw new WorkspacePreparationError('worktree_add_failed', rollbackErrors, error)
   }
 }

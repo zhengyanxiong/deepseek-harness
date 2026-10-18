@@ -4,9 +4,10 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ModuleConfig,
   ProjectConfig, ProjectRecord, SourceConfig, TaskRecord, TaskPriority, VersionRecord,
+  UpdateProjectRequest, UpdateTaskRequest, UpdateVersionRequest,
 } from 'dsh-workloom/types'
 import { parseProject, ProjectError } from '../domain/project.ts'
-import { COLORS } from './shell.ts'
+import { COLORS, failureKey } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
@@ -17,15 +18,26 @@ const input: CSSProperties = { ...button, cursor: 'text', width: '100%', boxSizi
 const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
 const fieldLabel: CSSProperties = { color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }
 const alert: CSSProperties = { margin: 0, color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }
+const failureCode: CSSProperties = { display: 'block', marginTop: 4, color: 'var(--dsw-alias-label-error)', fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
+
+function FailureNotice({ failure, t }: { failure: string; t: Translate }) {
+  const key = failureKey(failure)
+  return <div role="alert" style={alert}>
+    <p style={{ margin: 0 }}>{key === undefined ? t('state.error') : t(key)}</p>
+    <code style={failureCode}>{failure}</code>
+  </div>
+}
 
 /** One repository row of the project form. */
 export interface SourceDraft {
+  readonly id?: SourceConfig['id']
   readonly repo: string
   readonly path: string
 }
 
 /** One business module row; the repository choice names a derived source id. */
 export interface ModuleDraft {
+  readonly id?: ModuleConfig['id']
   readonly source: string
   readonly path: string
 }
@@ -70,12 +82,16 @@ function uniqueId(base: string, used: Set<string>): string {
  */
 export function sourceIds(sources: readonly SourceDraft[]): string[] {
   const used = new Set<string>()
-  return sources.map(source => uniqueId(slug(source.path) || slug(source.repo) || 'repo', used))
+  return sources.map((source) => {
+    if (source.id !== undefined && !used.has(source.id)) { used.add(source.id); return source.id }
+    return uniqueId(slug(source.path) || slug(source.repo) || 'repo', used)
+  })
 }
 
 function moduleIds(modules: readonly ModuleDraft[], ids: readonly string[]): string[] {
   const used = new Set<string>()
   return modules.map((module) => {
+    if (module.id !== undefined && !used.has(module.id)) { used.add(module.id); return module.id }
     const sourceId = ids[ids.indexOf(module.source)] ?? 'module'
     return uniqueId(slug(module.path) === '' ? `${sourceId}-root` : slug(module.path), used)
   })
@@ -91,7 +107,7 @@ function moduleIds(modules: readonly ModuleDraft[], ids: readonly string[]): str
 export function projectRequest(name: string, sources: readonly SourceDraft[], modules: readonly ModuleDraft[]): ProjectConfig | undefined {
   const admittedName = name.trim()
   if (admittedName === '' || sources.length === 0) return undefined
-  const rows = sources.map(source => ({ repo: source.repo.trim(), path: source.path.trim() }))
+  const rows = sources.map(source => ({ ...(source.id === undefined ? {} : { id: source.id }), repo: source.repo.trim(), path: source.path.trim() }))
   if (rows.some(source => source.repo === '' || source.path === '')) return undefined
   const ids = sourceIds(rows)
   const admittedSources = rows.map((source, index) => ({
@@ -163,6 +179,8 @@ export function taskRequest(version: VersionRecord, title: string, metadata?: Ta
 interface ProjectFormProps {
   t: Translate
   create(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
+  update?(request: UpdateProjectRequest): Promise<RemoteResult<ProjectRecord>>
+  project?: ProjectRecord
   onCreated(project: ProjectRecord): void
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -170,24 +188,26 @@ interface ProjectFormProps {
 
 type ProjectStep = 'basics' | 'modules' | 'preview'
 
-/** Create one project with its repositories, optional modules and a preview before saving. */
-export function ProjectForm({ t, create, onCreated, open: controlledOpen, onOpenChange }: ProjectFormProps) {
+/** Create or edit one project with its repositories, optional modules and a preview before saving. */
+export function ProjectForm({ t, create, update, project, onCreated, open: controlledOpen, onOpenChange }: ProjectFormProps) {
+  const editing = project !== undefined
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
   const [step, setStep] = useState<ProjectStep>('basics')
-  const [name, setName] = useState('')
-  const [sources, setSources] = useState<SourceDraft[]>([emptySourceRow()])
-  const [modules, setModules] = useState<ModuleDraft[]>([])
+  const [name, setName] = useState(project?.config.name ?? '')
+  const [sources, setSources] = useState<SourceDraft[]>(project === undefined ? [emptySourceRow()] : project.config.sources.map(source => ({ id: source.id, repo: source.repo, path: source.path })))
+  const [modules, setModules] = useState<ModuleDraft[]>(project === undefined ? [] : project.config.modules.map(module => ({ id: module.id, source: module.sourceId, path: module.path })))
   const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(false)
-  if (!open) return <button style={button} onClick={() => setOpen(true)}>{t('project.new')}</button>
+  const [failure, setFailure] = useState<string>()
+  if (!open) return editing ? null : <button style={button} onClick={() => setOpen(true)}>{t('project.new')}</button>
   const ids = sourceIds(sources)
   const request = projectRequest(name, sources, modules)
   function reset(): void {
-    setName(''); setSources([emptySourceRow()]); setModules([]); setStep('basics'); setOpen(false); setFailed(false)
+    if (editing) { setOpen(false); setFailure(undefined); return }
+    setName(''); setSources([emptySourceRow()]); setModules([]); setStep('basics'); setOpen(false); setFailure(undefined)
   }
-  function update(index: number, patch: Partial<SourceDraft>): void {
+  function updateSource(index: number, patch: Partial<SourceDraft>): void {
     setSources(current => current.map((source, at) => at === index ? { ...source, ...patch } : source))
   }
   function updateModule(index: number, patch: Partial<ModuleDraft>): void {
@@ -196,13 +216,17 @@ export function ProjectForm({ t, create, onCreated, open: controlledOpen, onOpen
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     if (step !== 'preview') { setStep(step === 'basics' ? 'modules' : 'preview'); return }
-    if (request === undefined) { setFailed(true); return }
-    setBusy(true); setFailed(false)
+    if (request === undefined) { setFailure(t('state.error')); return }
+    setBusy(true); setFailure(undefined)
     try {
-      const result = await create(request)
-      if (!result.ok) { setFailed(true); return }
+      const result = editing
+        ? update === undefined ? undefined : await update({ projectId: project.id, config: request })
+        : await create(request)
+      if (result === undefined || !result.ok) { setFailure(result === undefined ? t('state.error') : result.error.message); return }
       reset(); onCreated(result.value)
-    } catch { setFailed(true) } finally { setBusy(false) }
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error))
+    } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>
     <div style={{ display: 'flex', gap: 6, color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }}>
@@ -214,10 +238,10 @@ export function ProjectForm({ t, create, onCreated, open: controlledOpen, onOpen
       </label>
       {sources.map((source, index) => <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label style={field}><span style={fieldLabel}>{t('source.repo')}</span>
-          <input aria-label={t('source.repo')} placeholder={t('source.repo')} value={source.repo} onChange={event => update(index, { repo: event.target.value })} style={input} />
+          <input aria-label={t('source.repo')} placeholder={t('source.repo')} value={source.repo} onChange={event => updateSource(index, { repo: event.target.value })} style={input} />
         </label>
         <label style={field}><span style={fieldLabel}>{t('source.path')}</span>
-          <input aria-label={t('source.path')} placeholder={t('source.path')} value={source.path} onChange={event => update(index, { path: event.target.value })} style={input} />
+          <input aria-label={t('source.path')} placeholder={t('source.path')} value={source.path} onChange={event => updateSource(index, { path: event.target.value })} style={input} />
         </label>
         {sources.length > 1 && <button type="button" style={button} onClick={() => setSources(current => current.filter((_source, at) => at !== index))}>{t('source.remove')}</button>}
       </div>)}
@@ -243,12 +267,12 @@ export function ProjectForm({ t, create, onCreated, open: controlledOpen, onOpen
       <p style={{ ...fieldLabel, margin: 0 }}>{t('project.previewHint')}</p>
       <pre style={{ margin: 0, overflow: 'auto', maxHeight: 220, fontSize: 11, lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' }}>{JSON.stringify(request ?? null, undefined, 2)}</pre>
     </>}
-    {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
+    {failure !== undefined && <FailureNotice failure={failure} t={t} />}
     <div style={{ display: 'flex', gap: 8 }}>
       {step === 'basics' && <button type="submit" style={button} disabled={name.trim() === ''}>{t('form.next')}</button>}
       {step === 'modules' && <button type="submit" style={button} disabled={request === undefined}>{t('form.next')}</button>}
       {step !== 'basics' && <button type="button" style={button} onClick={() => setStep(step === 'preview' ? 'modules' : 'basics')}>{t('form.back')}</button>}
-      {step === 'preview' && <button type="submit" style={button} disabled={busy || request === undefined}>{busy ? t('form.submitPending') : t('form.confirm')}</button>}
+      {step === 'preview' && <button type="submit" style={button} disabled={busy || request === undefined}>{busy ? t('form.submitPending') : editing ? t('form.save') : t('form.confirm')}</button>}
       <button type="button" style={button} onClick={reset}>{t('form.cancel')}</button>
     </div>
   </form>
@@ -258,40 +282,49 @@ interface VersionFormProps {
   t: Translate
   project: ProjectRecord
   create(request: CreateVersionRequest): Promise<RemoteResult<VersionRecord>>
+  update?(request: UpdateVersionRequest): Promise<RemoteResult<VersionRecord>>
+  version?: VersionRecord
   onCreated(version: VersionRecord): void
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }
 
-/** Create one version with a ref per project repository; Lock generation stays separate. */
-export function VersionForm({ t, project, create, onCreated, open: controlledOpen, onOpenChange }: VersionFormProps) {
+/** Create or edit one version with a ref per project repository; Lock generation stays separate. */
+export function VersionForm({ t, project, create, update, version, onCreated, open: controlledOpen, onOpenChange }: VersionFormProps) {
+  const editing = version !== undefined
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
-  const [name, setName] = useState('')
-  const [refs, setRefs] = useState<Record<string, string>>({})
+  const [name, setName] = useState(version?.name ?? '')
+  const [refs, setRefs] = useState<Record<string, string>>(version === undefined ? {} : Object.fromEntries(version.sources.map(source => [source.sourceId, source.ref])))
   const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(false)
-  if (!open) return <button style={button} onClick={() => setOpen(true)}>{t('version.new')}</button>
+  const [failure, setFailure] = useState<string>()
+  if (!open) return editing ? null : <button style={button} onClick={() => setOpen(true)}>{t('version.new')}</button>
+  function close(): void { setOpen(false); setFailure(undefined) }
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     const request = versionRequest(project, name, refs)
-    if (request === undefined) { setFailed(true); return }
-    setBusy(true); setFailed(false)
+    if (request === undefined) { setFailure(t('state.error')); return }
+    setBusy(true); setFailure(undefined)
     try {
-      const result = await create(request)
-      if (!result.ok) { setFailed(true); return }
-      setName(''); setRefs({}); setOpen(false); onCreated(result.value)
-    } catch { setFailed(true) } finally { setBusy(false) }
+      const result = editing
+        ? update === undefined ? undefined : await update({ versionId: version.id, name: request.name, sources: request.sources })
+        : await create(request)
+      if (result === undefined || !result.ok) { setFailure(result === undefined ? t('state.error') : result.error.message); return }
+      if (!editing) { setName(''); setRefs({}) }
+      close(); onCreated(result.value)
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error))
+    } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>
     <input aria-label={t('version.name')} placeholder={t('version.name')} value={name} onChange={event => setName(event.target.value)} style={input} />
     {project.config.sources.map(source => <input key={source.id} aria-label={`${t('source.ref')} ${source.id}`} placeholder={`${source.id}: ${t('source.ref')}`}
       value={refs[source.id] ?? ''} onChange={event => setRefs(current => ({ ...current, [source.id]: event.target.value }))} style={input} />)}
-    {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
+    {failure !== undefined && <FailureNotice failure={failure} t={t} />}
     <div style={{ display: 'flex', gap: 8 }}>
-      <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('form.create')}</button>
-      <button type="button" style={button} onClick={() => { setOpen(false); setFailed(false) }}>{t('form.cancel')}</button>
+      <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : editing ? t('form.save') : t('form.create')}</button>
+      <button type="button" style={button} onClick={close}>{t('form.cancel')}</button>
     </div>
   </form>
 }
@@ -301,33 +334,48 @@ interface TaskFormProps {
   version: VersionRecord
   project: ProjectRecord
   create(request: CreateTaskRequest): Promise<RemoteResult<TaskRecord>>
+  update?(request: UpdateTaskRequest): Promise<RemoteResult<TaskRecord>>
+  task?: TaskRecord
   onCreated(task: TaskRecord): void
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }
 
-/** Create one task under the selected version. */
-export function TaskForm({ t, version, project, create, onCreated, open: controlledOpen, onOpenChange }: TaskFormProps) {
+/** Create or edit one task under the selected version. */
+export function TaskForm({ t, version, project, create, update, task, onCreated, open: controlledOpen, onOpenChange }: TaskFormProps) {
+  const editing = task !== undefined
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [priority, setPriority] = useState<TaskPriority>('normal')
-  const [moduleIds, setModuleIds] = useState<string[]>([])
+  const [title, setTitle] = useState(task?.title ?? '')
+  const [description, setDescription] = useState(task?.description ?? '')
+  const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 'normal')
+  const [moduleIds, setModuleIds] = useState<string[]>([...(task?.moduleIds ?? [])])
   const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(false)
-  if (!open) return <button style={button} onClick={() => setOpen(true)}>{t('task.new')}</button>
+  const [failure, setFailure] = useState<string>()
+  if (!open) return editing ? null : <button style={button} onClick={() => setOpen(true)}>{t('task.new')}</button>
+  function close(): void { setOpen(false); setFailure(undefined) }
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     const request = taskRequest(version, title, { description, priority, moduleIds })
-    if (request === undefined) { setFailed(true); return }
-    setBusy(true); setFailed(false)
+    if (request === undefined) { setFailure(t('state.error')); return }
+    setBusy(true); setFailure(undefined)
     try {
-      const result = await create(request)
-      if (!result.ok) { setFailed(true); return }
-      setTitle(''); setDescription(''); setPriority('normal'); setModuleIds([]); setOpen(false); onCreated(result.value)
-    } catch { setFailed(true) } finally { setBusy(false) }
+      const result = editing
+        ? update === undefined ? undefined : await update({
+          taskId: task.id,
+          title: request.title,
+          ...(request.description === undefined ? {} : { description: request.description }),
+          ...(request.moduleIds === undefined ? {} : { moduleIds: request.moduleIds }),
+          ...(request.priority === undefined ? {} : { priority: request.priority }),
+        })
+        : await create(request)
+      if (result === undefined || !result.ok) { setFailure(result === undefined ? t('state.error') : result.error.message); return }
+      if (!editing) { setTitle(''); setDescription(''); setPriority('normal'); setModuleIds([]) }
+      close(); onCreated(result.value)
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error))
+    } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>
     <label style={field}><span style={fieldLabel}>{t('task.name')}</span>
@@ -351,10 +399,10 @@ export function TaskForm({ t, version, project, create, onCreated, open: control
         <span>{module.path}</span>
       </label>)}
     </div>
-    {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
+    {failure !== undefined && <FailureNotice failure={failure} t={t} />}
     <div style={{ display: 'flex', gap: 8 }}>
-      <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('form.create')}</button>
-      <button type="button" style={button} onClick={() => { setOpen(false); setFailed(false) }}>{t('form.cancel')}</button>
+      <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : editing ? t('form.save') : t('form.create')}</button>
+      <button type="button" style={button} onClick={close}>{t('form.cancel')}</button>
     </div>
   </form>
 }
@@ -434,7 +482,7 @@ export function ImportProjectForm({ t, create, onCreated, open: controlledOpen, 
         </div>)}
       </div>
     </>}
-    {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
+    {failed && <FailureNotice failure={t('state.error')} t={t} />}
     <div style={{ display: 'flex', gap: 8 }}>
       <button type="submit" style={button} disabled={busy || result?.ok !== true}>{busy ? t('form.submitPending') : t('project.importConfirm')}</button>
       <button type="button" style={button} onClick={() => { setOpen(false); setResult(undefined); setFileName(''); setFailed(false) }}>{t('form.cancel')}</button>
@@ -452,17 +500,19 @@ interface LockButtonProps {
 /** Pin every repository ref of the selected version into a new immutable Lock. */
 export function LockButton({ t, version, generate, onCreated }: LockButtonProps) {
   const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const [failure, setFailure] = useState<string>()
   async function run(): Promise<void> {
-    setBusy(true); setFailed(false)
+    setBusy(true); setFailure(undefined)
     try {
       const result = await generate({ versionId: version.id })
-      if (!result.ok) { setFailed(true); return }
+      if (!result.ok) { setFailure(result.error.message); return }
       onCreated()
-    } catch { setFailed(true) } finally { setBusy(false) }
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error))
+    } finally { setBusy(false) }
   }
   return <div style={{ marginTop: 8 }}>
     <button style={button} disabled={busy} onClick={() => { void run() }}>{busy ? t('lock.resolving') : t('lock.new')}</button>
-    {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
+    {failure !== undefined && <FailureNotice failure={failure} t={t} />}
   </div>
 }
