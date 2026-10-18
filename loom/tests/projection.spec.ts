@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { CatalogSnapshot, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-workloom/types'
-import { activeWorkspaceCount, aggregateTokenUsage, boardMetrics, boundSessions, currentLock, projectLanes, recentSessions, workspaceName } from '../src/client/projection.ts'
+import { activeWorkspaceCount, aggregateTokenUsage, boardMetrics, boundSessions, currentLock, projectLanes, taskSessionRows, workspaceName } from '../src/client/projection.ts'
 const projectId = brandString<ProjectRecord['id']>('p1')
 const versionId = brandString<VersionRecord['id']>('v1')
 const lock: Lock = { id: brandString<Lock['id']>('l1'), versionId, repositories: [{ sourceId: brandString<'loom.source'>('web'), commit: 'a'.repeat(40) }] }
@@ -38,19 +38,20 @@ it('filters cards by priority and module while searching descriptions', () => {
   expect(boardMetrics(rows, { search: 'totals' }).cards).toBe(1)
 })
 
-it('lists only newest loose Sessions with their workspace labels', () => {
+it('lists only Loom task Sessions in the task sidebar', () => {
   const rows = [1, 2, 3, 4, 5, 6, 7].map(index => ({ id: `s${String(index)}`, displayTitle: `Session ${String(index)}`, cwd: `/work/space-${String(index)}`, updatedAt: index, running: index === 7 }))
-  const recent = recentSessions(rows, new Set(['s7']), '')
-  expect(recent.map(row => row.id)).toEqual(['s6', 's5', 's4', 's3', 's2'])
-  expect(recentSessions(rows, new Set(), 'session 3').map(row => row.id)).toEqual(['s3'])
-  const labeled = recentSessions([{ id: 'x', displayTitle: 'X', cwd: '/a/b/', updatedAt: 1, running: false }], new Set(), '')
+  const bound = new Set(['s2', 's5', 's7'])
+  expect(taskSessionRows(rows, bound, '').map(row => row.id)).toEqual(['s7', 's5', 's2'])
+  expect(taskSessionRows(rows, bound, 'session 5').map(row => row.id)).toEqual(['s5'])
+  expect(taskSessionRows(rows, new Set(), '').map(row => row.id)).toEqual([])
+  const labeled = taskSessionRows([{ id: 'x', displayTitle: 'X', cwd: '/a/b/', updatedAt: 1, running: false }], new Set(['x']), '')
   expect(workspaceName(labeled[0]?.cwd)).toBe('b')
   expect(workspaceName(undefined)).toBeUndefined()
-  expect(recentSessions([
+  expect(taskSessionRows([
     { id: 'blank', displayTitle: 'blank', updatedAt: 9, running: false, blank: true },
     { id: 'child', displayTitle: 'child', updatedAt: 8, running: false, origin: 'subagent' },
     { id: 'real', displayTitle: 'real', updatedAt: 7, running: false },
-  ], new Set(), '').map(row => row.id)).toEqual(['real'])
+  ], new Set(['blank', 'child', 'real']), '').map(row => row.id)).toEqual(['real'])
 })
 it('aggregates provider token usage and ignores missing projections', () => {
   const first = { tokenUsage: { uncachedInputTokens: 10, outputTokens: 4, cacheReadTokens: 2, cacheWriteTokens: 1 } }

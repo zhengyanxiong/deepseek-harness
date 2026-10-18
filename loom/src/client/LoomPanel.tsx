@@ -26,7 +26,7 @@ import { LoomReviewPreview } from './LoomReviewPreview.tsx'
 import { openFilePreview, workspacePreview, workspaceReviewPreview } from './preview.ts'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
 import { LoomKanban, LoomKanbanAside } from './LoomKanban.tsx'
-import { activeWorkspaceCount, aggregateTokenUsage, boundSessions, currentWorkspace, recentSessions, workspaceName, type ShellFilter } from './projection.ts'
+import { activeWorkspaceCount, aggregateTokenUsage, boundSessions, currentWorkspace, taskSessionRows, workspaceName, type ShellFilter } from './projection.ts'
 import { COLORS, metaLine, pill, select, shortCommit, PRIORITY_META, STATUS_META } from './shell.ts'
 import { NS } from './locales.ts'
 
@@ -282,7 +282,10 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const currentVersionProject = snapshot?.projects.find(candidate => candidate.id === currentVersion?.projectId)
   const boundRows = snapshot === undefined ? [] : boundSessions(snapshot)
   const boundIds = new Set(boundRows.map(row => row.sessionId))
-  const looseSessions = recentSessions(sessions.ids.map(id => sessions.byId[id]).filter(row => row !== undefined), boundIds, search)
+  const taskSessionCandidates = [...boundIds]
+    .map(id => sessions.byId[id as SessionId])
+    .filter(row => row !== undefined)
+  const taskSessionList = snapshot === undefined ? [] : taskSessionRows(taskSessionCandidates, boundIds, search)
   const detailTask = task === undefined ? undefined : snapshot?.tasks.find(candidate => candidate.id === task.id) ?? task
   const taskVersion = detailTask === undefined || snapshot === undefined ? undefined : snapshot.versions.find(candidate => candidate.id === detailTask.versionId)
   const displayProject = currentProject ?? (taskVersion === undefined ? undefined : snapshot?.projects.find(candidate => candidate.id === taskVersion.projectId))
@@ -531,8 +534,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
         </section>
         <section style={{ marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>{t('side.tasks')}<span style={{ marginLeft: 'auto', fontWeight: 400 }}>{t('side.recent')}</span></div>
-          {looseSessions.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.empty')}</p>}
-          {looseSessions.map(row => {
+          {taskSessionList.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.empty')}</p>}
+          {taskSessionList.map(row => {
             const workspace = workspaceName(row.cwd)
             const active = selected === row.id
             return <button key={row.id} type="button" title={row.cwd} onClick={() => { setSelected(row.id as SessionId); setDismissed(undefined); setTask(undefined); setView('workbench') }}

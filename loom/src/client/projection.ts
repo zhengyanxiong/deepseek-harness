@@ -29,7 +29,7 @@ export interface BoardMetrics {
   readonly activeSessions: number
 }
 
-/** One recent native Session row shown in the sidebar. */
+/** One native Session row shown in the Loom task sidebar. */
 export interface RecentSession {
   readonly id: string
   readonly title: string
@@ -38,7 +38,7 @@ export interface RecentSession {
   readonly running: boolean
 }
 
-/** Minimal native Session list row consumed by the recent list. */
+/** Minimal native Session list row consumed by the Loom task sidebar. */
 export interface RecentSessionInput {
   readonly id: string
   readonly displayTitle: string
@@ -152,21 +152,25 @@ export function workspaceName(cwd: string | undefined): string | undefined {
   return name === undefined || name === '' ? undefined : name
 }
 
-/** Most recent loose Sessions, bound Sessions excluded.
- * @param rows - native Session list rows in host order.
- * @param bound - Session ids attached to a Loom task attempt.
- * @param search - case-insensitive title filter.
- * @param limit - maximum rows returned, newest first.
- * @returns at most `limit` rows sorted by descending update time.
- */
-export function recentSessions(rows: readonly RecentSessionInput[], bound: ReadonlySet<string>, search: string, limit = 5): RecentSession[] {
+function selectRecentSessions(rows: readonly RecentSessionInput[], accept: (row: RecentSessionInput) => boolean, search: string, limit: number): RecentSession[] {
   const query = search.trim().toLowerCase()
   return rows
-    .filter(row => !bound.has(row.id) && row.blank !== true && row.origin !== 'subagent' && (query === '' || row.displayTitle.toLowerCase().includes(query)))
+    .filter(row => accept(row) && row.blank !== true && row.origin !== 'subagent' && (query === '' || row.displayTitle.toLowerCase().includes(query)))
     .slice()
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, limit)
     .map(row => ({ id: row.id, title: row.displayTitle, ...(row.cwd === undefined ? {} : { cwd: row.cwd }), updatedAt: row.updatedAt, running: row.running }))
+}
+
+/** Most recent Sessions attached to a Loom task, newest first.
+ * @param rows - native Session list rows in host order.
+ * @param bound - Session ids attached to a Loom task attempt.
+ * @param search - case-insensitive title filter.
+ * @param limit - maximum rows returned, newest first.
+ * @returns at most `limit` bound Sessions; global unbound Sessions are excluded.
+ */
+export function taskSessionRows(rows: readonly RecentSessionInput[], bound: ReadonlySet<string>, search: string, limit = 5): RecentSession[] {
+  return selectRecentSessions(rows, row => bound.has(row.id), search, limit)
 }
 
 /** Count distinct workspaces used by a running task.
