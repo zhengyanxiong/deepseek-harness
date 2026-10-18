@@ -1,6 +1,6 @@
 /** Native-Diff review of one turn's changed files, for the Loom right aside. */
 import { useEffect, useState, type ReactNode } from 'react'
-import { IconDeliverDocRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { LoomFileCounts, LoomFileRow } from './LoomFileRow.tsx'
 import type { RenderFileDiffSlot } from './LoomDiff.tsx'
 import type { LoomKey } from './locales.ts'
 
@@ -98,12 +98,6 @@ function readDiff(value: unknown): ReviewDiff {
   return { kind: 'text', path, display, before, after, coarse, hunks: listed }
 }
 
-function counts(file: ReviewFile, t: Translate): ReactNode {
-  if (file.binary === true) return <span style={{ color: 'var(--dsw-alias-label-tertiary)' }}>{t('review.binary')}</span>
-  if (file.oversized === true) return <span style={{ color: 'var(--dsw-alias-label-tertiary)' }}>{t('review.oversized')}</span>
-  return <span style={{ color: 'var(--dsw-alias-label-tertiary)' }}><span style={{ color: 'var(--dsw-alias-label-success)' }}>+{String(file.added)}</span> −{String(file.deleted)}</span>
-}
-
 /**
  * Draw one turn's changed files as a selector over the native comparison.
  * @param props - coordinates, native Diff factory, and the optional whole-file opener.
@@ -160,23 +154,16 @@ export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderF
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 6px' }}>
         {files.map((entry, position) => {
           const selected = position === index
-          return <button type="button" key={`${entry.path}:${String(position)}`} aria-pressed={selected} title={entry.display} onClick={() => setSelected(position)} style={{
-            display: 'flex', flexDirection: 'column', gap: 1, width: '100%', minWidth: 0, padding: '5px 6px', border: 'none', borderLeft: `2px solid ${selected ? 'var(--dsw-alias-label-accent, #2f81f7)' : 'transparent'}`,
-            borderRadius: 4, background: selected ? 'var(--dsw-alias-bg-layer-3)' : 'transparent', color: selected ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)', cursor: 'pointer', font: 'inherit', fontSize: 11.5, textAlign: 'left',
-          }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, width: '100%' }}>
-              <IconDeliverDocRegular size={13} />
-              <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.display}</span>
-            </span>
-            <span style={{ display: 'flex', gap: 4, paddingLeft: 19, fontSize: 10.5 }}>{counts(entry, t)}</span>
-          </button>
+          return <LoomFileRow key={`${entry.path}:${String(position)}`} display={entry.display} added={entry.added} deleted={entry.deleted}
+            {...entry.binary === true ? { binary: true } : {}} {...entry.oversized === true ? { oversized: true } : {}}
+            t={t} selected={selected} onClick={() => setSelected(position)} />
         })}
       </div>
     </div>
     <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
       {selectedFile !== undefined && <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 9px', borderBottom: '0.5px solid var(--dsw-alias-border-l4)', flex: 'none', minWidth: 0 }}>
         <strong style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5 }}>{selectedFile.display}</strong>
-        <span style={{ flex: 'none', display: 'flex', gap: 4 }}>{counts(selectedFile, t)}</span>
+        <span style={{ flex: 'none', display: 'flex', gap: 4 }}><LoomFileCounts file={selectedFile} t={t} /></span>
         {onOpenFile !== undefined && <button type="button" style={{ marginLeft: 'auto', flex: 'none', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', font: 'inherit', fontSize: 11 }} onClick={() => onOpenFile(selectedFile.path)}>{t('review.openFile')}</button>}
       </div>}
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>

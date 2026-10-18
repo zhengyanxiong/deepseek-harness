@@ -2,12 +2,12 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
-  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconDeliverDocRegular,
-  IconFolderCloseRegular, IconFolderOpenRegular,
+  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   WorkspaceChangesRequest, WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord,
 } from 'dsh-loom/types'
+import { LoomFileRow } from './LoomFileRow.tsx'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
@@ -108,6 +108,7 @@ const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, widt
 const count: CSSProperties = { color: 'var(--dsw-alias-label-tertiary)', fontSize: 10.5, marginLeft: 'auto', whiteSpace: 'nowrap' }
 
 interface TreeBranchProps {
+  readonly t: Translate
   readonly node: DiffTreeDirectory
   readonly depth: number
   readonly collapsed: ReadonlySet<string>
@@ -116,7 +117,7 @@ interface TreeBranchProps {
   readonly onSelectFile: (entry: DiffTreeFile) => void
 }
 
-function TreeBranch({ node, depth, collapsed, selectedKey, onToggle, onSelectFile }: TreeBranchProps): ReactNode {
+function TreeBranch({ t, node, depth, collapsed, selectedKey, onToggle, onSelectFile }: TreeBranchProps): ReactNode {
   const open = !collapsed.has(node.path)
   return <>
     <button type="button" aria-expanded={open} style={{ ...row, paddingLeft: 6 + depth * 14 }} onClick={() => onToggle(node.path)}>
@@ -125,15 +126,9 @@ function TreeBranch({ node, depth, collapsed, selectedKey, onToggle, onSelectFil
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
       <span style={count}>{String(fileCount(node))}</span>
     </button>
-    {open && node.directories.map(child => <TreeBranch key={child.path} node={child} depth={depth + 1} collapsed={collapsed} selectedKey={selectedKey} onToggle={onToggle} onSelectFile={onSelectFile} />)}
-    {open && node.files.map(entry => {
-      const selected = entry.key === selectedKey
-      return <button type="button" key={entry.key} aria-pressed={selected} title={entry.file.path} onClick={() => onSelectFile(entry)} style={{ ...row, paddingLeft: 6 + (depth + 1) * 14, background: selected ? 'var(--dsw-alias-bg-layer-3)' : 'transparent' }}>
-        <IconDeliverDocRegular size={13} />
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.file.path.split('/').at(-1) ?? entry.file.path}</span>
-        <span style={{ ...count, color: 'var(--dsw-alias-label-tertiary)' }}>+{String(entry.file.added)} −{String(entry.file.deleted)}</span>
-      </button>
-    })}
+    {open && node.directories.map(child => <TreeBranch key={child.path} t={t} node={child} depth={depth + 1} collapsed={collapsed} selectedKey={selectedKey} onToggle={onToggle} onSelectFile={onSelectFile} />)}
+    {open && node.files.map(entry => <LoomFileRow key={entry.key} display={entry.file.path.split('/').at(-1) ?? entry.file.path} title={entry.file.path}
+      added={entry.file.added} deleted={entry.file.deleted} {...entry.file.binary ? { binary: true } : {}} t={t} selected={entry.key === selectedKey} depth={depth + 1} onClick={() => onSelectFile(entry)} />)}
   </>
 }
 
@@ -171,12 +166,12 @@ export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, onOpe
   const deleted = files.reduce((total, entry) => total + entry.file.deleted, 0)
   return <div style={{ display: 'grid', gridTemplateColumns: 'minmax(190px, 280px) 1fr', gap: 12, padding: 8, minHeight: 0, height: '100%', boxSizing: 'border-box', fontSize: 11.5, lineHeight: 1.5 }}>
     <div aria-label={t('diff.files')} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', borderRight: '0.5px solid var(--dsw-alias-border-l4)' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '2px 6px 7px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '7px 8px 6px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11 }}>
         <span>{t('diff.files')} {String(files.length)}</span>
         <span style={{ marginLeft: 'auto', color: 'var(--dsw-alias-label-tertiary)' }}>+{String(added)} −{String(deleted)}</span>
       </div>
-      <div style={{ minHeight: 0, overflow: 'auto', paddingBottom: 4 }}>
-        {trees.map(tree => <TreeBranch key={tree.path} node={tree} depth={0} collapsed={collapsed} selectedKey={selected.key} onToggle={(path) => setCollapsed(current => {
+      <div role="group" aria-label={t('diff.files')} style={{ minHeight: 0, overflow: 'auto', padding: '0 4px 6px' }}>
+        {trees.map(tree => <TreeBranch key={tree.path} t={t} node={tree} depth={0} collapsed={collapsed} selectedKey={selected.key} onToggle={(path) => setCollapsed(current => {
           const next = new Set(current)
           if (next.has(path)) next.delete(path); else next.add(path)
           return next
