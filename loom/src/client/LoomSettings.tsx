@@ -11,10 +11,16 @@ export interface LoomPreferences {
   readonly view: 'workbench' | 'kanban'
   readonly kanbanMode: 'flat' | 'grouped'
   readonly contextOpen: boolean
+  /** Context-aside width in pixels. */
+  readonly asideWidth: number
+  /** File- and turn-preview aside width in pixels. */
+  readonly previewWidth: number
+  /** Expanded bottom-pane body height in pixels. */
+  readonly bottomHeight: number
 }
 
 /** Defaults used when storage is empty or malformed. */
-export const DEFAULT_PREFERENCES: LoomPreferences = { view: 'workbench', kanbanMode: 'grouped', contextOpen: true }
+export const DEFAULT_PREFERENCES: LoomPreferences = { view: 'workbench', kanbanMode: 'grouped', contextOpen: true, asideWidth: 272, previewWidth: 560, bottomHeight: 170 }
 const STORAGE_KEY = 'loom.preferences'
 
 /**
@@ -30,7 +36,16 @@ export function readPreferences(): LoomPreferences {
     const view = record.view === 'kanban' ? 'kanban' : 'workbench'
     const kanbanMode = record.kanbanMode === 'flat' ? 'flat' : 'grouped'
     const contextOpen = record.contextOpen !== false
-    return { view, kanbanMode, contextOpen }
+    const size = (key: 'asideWidth' | 'previewWidth' | 'bottomHeight', fallback: number, min: number, max: number): number => {
+      const raw = record[key]
+      return typeof raw === 'number' && Number.isFinite(raw) ? Math.min(Math.max(Math.round(raw), min), max) : fallback
+    }
+    return {
+      view, kanbanMode, contextOpen,
+      asideWidth: size('asideWidth', DEFAULT_PREFERENCES.asideWidth, 220, 720),
+      previewWidth: size('previewWidth', DEFAULT_PREFERENCES.previewWidth, 300, 960),
+      bottomHeight: size('bottomHeight', DEFAULT_PREFERENCES.bottomHeight, 80, 900),
+    }
   } catch { return DEFAULT_PREFERENCES }
 }
 

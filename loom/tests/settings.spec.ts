@@ -9,8 +9,12 @@ const storage = new Map<string, string>()
 afterEach(() => { vi.unstubAllGlobals(); storage.clear() })
 it('round-trips browser-local Loom preferences', () => {
   vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value) } })
-  writePreferences({ view: 'kanban', kanbanMode: 'flat', contextOpen: false })
-  expect(readPreferences()).toEqual({ view: 'kanban', kanbanMode: 'flat', contextOpen: false })
+  writePreferences({ view: 'kanban', kanbanMode: 'flat', contextOpen: false, asideWidth: 300, previewWidth: 560, bottomHeight: 220 })
+  expect(readPreferences()).toEqual({ view: 'kanban', kanbanMode: 'flat', contextOpen: false, asideWidth: 300, previewWidth: 560, bottomHeight: 220 })
+})
+it('clamps stored pane sizes and falls back for non-finite values', () => {
+  vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ asideWidth: 9999, previewWidth: -4, bottomHeight: '170' }), setItem: () => {} })
+  expect(readPreferences()).toEqual({ ...DEFAULT_PREFERENCES, asideWidth: 720, previewWidth: 300 })
 })
 it('falls back to defaults for malformed storage values', () => {
   vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ view: 'sideways', kanbanMode: 3, contextOpen: 'yes' }), setItem: () => {} })

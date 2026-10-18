@@ -16,6 +16,7 @@ import { ImportProjectForm, ProjectForm, TaskForm, VersionForm } from './LoomFor
 import { LoomSettings, readPreferences, writePreferences, type LoomPreferences } from './LoomSettings.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
+import { LoomResizeHandle } from './LoomResizeHandle.tsx'
 import { LoomFilePreview } from './LoomFilePreview.tsx'
 import { LoomReviewPreview } from './LoomReviewPreview.tsx'
 import { openFilePreview, workspacePreview, workspaceReviewPreview } from './preview.ts'
@@ -141,6 +142,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [view, setView] = useState<View>(preferences.view)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 940)
+  const [viewport, setViewport] = useState(() => ({ width: typeof window === 'undefined' ? 1440 : window.innerWidth, height: typeof window === 'undefined' ? 900 : window.innerHeight }))
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [project, setProject] = useState<ProjectRecord['id']>()
   const [version, setVersion] = useState<VersionRecord['id']>()
@@ -170,9 +172,15 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [expandedVersions, setExpandedVersions] = useState<ReadonlySet<string>>(new Set())
   const [create, setCreate] = useState<CreateKind>()
   const [menuOpen, setMenuOpen] = useState(false)
-  useEffect(() => { writePreferences(preferences) }, [preferences])
   useEffect(() => {
-    const resize = (): void => setNarrow(window.innerWidth <= 940)
+    const timeout = setTimeout(() => writePreferences(preferences), 120)
+    return () => clearTimeout(timeout)
+  }, [preferences])
+  useEffect(() => {
+    const resize = (): void => {
+      setNarrow(window.innerWidth <= 940)
+      setViewport({ width: window.innerWidth, height: window.innerHeight })
+    }
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
@@ -237,6 +245,16 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const detailPriority = detailTask?.priority ?? 'normal'
   const detailModules = (detailTask?.moduleIds ?? []).map(moduleId => displayProject?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
+  const anyPreviewOpen = preview !== undefined || review !== undefined
+  const asideMin = anyPreviewOpen ? 300 : 220
+  const asideCssMax = viewport.width <= 940 ? (anyPreviewOpen ? 380 : 300)
+    : viewport.width <= 1180 ? (anyPreviewOpen ? 460 : 380)
+      : anyPreviewOpen ? 960 : 720
+  const asideMax = Math.min(asideCssMax, Math.max(asideMin, viewport.width - (narrow ? 180 : 460)))
+  const asideWidth = Math.min(Math.max(anyPreviewOpen ? preferences.previewWidth : preferences.asideWidth, asideMin), asideMax)
+  const setAsideWidth = (width: number): void => setPreferences(current => ({ ...current, [anyPreviewOpen ? 'previewWidth' : 'asideWidth']: width }))
+  const bottomMax = Math.max(120, viewport.height - 220)
+  const bottomHeight = Math.min(Math.max(preferences.bottomHeight, 80), bottomMax)
   const previewSessionId: SessionId | undefined = preview?.sessionId === undefined
     ? selected ?? boundRows.find(row => row.task?.id === detailTask?.id)?.sessionId as SessionId | undefined
     : preview.sessionId as SessionId
@@ -322,9 +340,9 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const createDisabledTask = currentVersion === undefined
   return <div style={frame}>
     <style>{`
-      @media (max-width: 1180px) { .loom-sidebar { width: 196px !important; } .loom-aside { width: 224px !important; } .loom-aside.loom-aside-preview { width: 380px !important; } }
-      @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-sidebar.loom-sidebar-open { display: block !important; position: absolute; top: 44px; bottom: 0; left: 0; z-index: 70; width: 240px !important; box-shadow: 12px 0 28px rgba(0,0,0,.35); } .loom-aside { width: 210px !important; } .loom-aside.loom-aside-preview { width: 320px !important; } }
-      @media (max-width: 760px) { .loom-aside { display: none !important; } }
+      @media (max-width: 1180px) { .loom-sidebar { width: 196px !important; } .loom-aside { max-width: 380px !important; } .loom-aside.loom-aside-preview { max-width: 460px !important; } }
+      @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-sidebar.loom-sidebar-open { display: block !important; position: absolute; top: 44px; bottom: 0; left: 0; z-index: 70; width: 240px !important; box-shadow: 12px 0 28px rgba(0,0,0,.35); } .loom-aside { max-width: 300px !important; } .loom-aside.loom-aside-preview { max-width: 380px !important; } }
+      @media (max-width: 760px) { .loom-aside, .loom-aside-handle { display: none !important; } }
     `}</style>
     <header style={topbar}>
       {narrow && <button type="button" aria-label={t('side.projects')} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer' }}><IconFolderOpenRegular size={14} /></button>}
@@ -515,7 +533,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                     </div>
                   </div>}
           </main>}
-      {asideOpen && <aside className={preview === undefined && review === undefined ? 'loom-aside' : 'loom-aside loom-aside-preview'} style={preview === undefined && review === undefined ? aside : { ...aside, width: 480 }}>
+      {asideOpen && <LoomResizeHandle label={t('layout.resizeAside')} orientation="vertical" value={asideWidth} min={asideMin} max={asideMax} invert onChange={setAsideWidth} className="loom-aside-handle" />}
+      {asideOpen && <aside className={preview === undefined && review === undefined ? 'loom-aside' : 'loom-aside loom-aside-preview'} style={{ ...aside, width: asideWidth }}>
         {review !== undefined
           ? <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none' }}>
@@ -523,7 +542,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                 <span style={{ ...metaLine, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('review.title', { turn: String(review.turn) })}</span>
                 <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => { workspacePreview.close(); workspaceReviewPreview.close() }}>{t('form.close')}</button>
               </div>
-              <LoomReviewPreview t={t} sessionId={review.sessionId} seq={review.seq} turn={review.turn} initialIndex={review.index} renderFactorySlot={renderFactorySlot} onOpenFile={(path) => { openFilePreview({ sessionId: review.sessionId, path, mode: 'file' }) }} />
+              <LoomReviewPreview t={t} sessionId={review.sessionId} seq={review.seq} initialIndex={review.index} renderFactorySlot={renderFactorySlot} onOpenFile={(path) => { openFilePreview({ sessionId: review.sessionId, path, mode: 'file' }) }} />
             </div>
           : preview !== undefined
             ? <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
@@ -539,8 +558,10 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} />}
       </aside>}
     </div>
+    {!bottomCollapsed && <LoomResizeHandle label={t('layout.resizeBottom')} orientation="horizontal" value={bottomHeight} min={80} max={bottomMax} invert onChange={(height) => setPreferences(current => ({ ...current, bottomHeight: height }))} />}
     <LoomBottomPanel
       t={t}
+      height={bottomHeight}
       collapsed={bottomCollapsed}
       pane={pane}
       audit={auditRows}

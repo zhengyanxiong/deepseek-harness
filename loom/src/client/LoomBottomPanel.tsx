@@ -15,6 +15,8 @@ type Pane = 'diff' | 'terminal' | 'tests' | 'audit' | 'costs'
 export interface LoomBottomPanelProps {
   readonly t: Translate
   readonly collapsed: boolean
+  /** Expanded pane body height in pixels. */
+  readonly height: number
   readonly pane: Pane
   readonly audit: readonly AuditEntry[]
   readonly diffCount: number
@@ -41,7 +43,7 @@ const PANES: readonly { id: Pane; key: LoomKey }[] = [
  * @returns the bottom region of the Loom page.
  */
 export function LoomBottomPanel(props: LoomBottomPanelProps): ReactNode {
-  const { t, collapsed, pane, audit, diffCount, usage, workspaceId, loadChanges, renderFactorySlot, onOpenFile, onToggle, onPane } = props
+  const { t, collapsed, height, pane, audit, diffCount, usage, workspaceId, loadChanges, renderFactorySlot, onOpenFile, onToggle, onPane } = props
   const [diffExpanded, setDiffExpanded] = useState(false)
   return <section style={{ flex: 'none', borderTop: `0.5px solid ${COLORS.border}`, background: COLORS.panel, display: 'flex', flexDirection: 'column' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 8px', height: 34, overflowX: 'auto', borderBottom: collapsed ? 'none' : `0.5px solid ${COLORS.border}` }}>
@@ -49,7 +51,7 @@ export function LoomBottomPanel(props: LoomBottomPanelProps): ReactNode {
       {!collapsed && pane === 'diff' && <button type="button" title={t('diff.expand')} onClick={() => setDiffExpanded(true)} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, height: '100%', padding: '0 10px', border: 'none', background: 'transparent', color: COLORS.faint, cursor: 'pointer', font: 'inherit', fontSize: 11 }}><IconFullscreenOutlineRegular size={13} />{t('diff.expand')}</button>}
       <button type="button" onClick={onToggle} style={{ marginLeft: !collapsed && pane === 'diff' ? 0 : 'auto', background: 'none', border: 'none', color: COLORS.faint, cursor: 'pointer', font: 'inherit', fontSize: 11, padding: '0 10px' }}>{collapsed ? `▴ ${t('bottom.expand')}` : `▾ ${t('bottom.collapse')}`}</button>
     </div>
-    {!collapsed && <div style={{ height: 170, overflow: 'auto', padding: '10px 16px', fontSize: 11.5, fontFamily: 'ui-monospace, "Cascadia Code", monospace', lineHeight: 1.75 }}>
+    {!collapsed && <div style={{ height, overflow: 'auto', padding: '10px 16px', fontSize: 11.5, fontFamily: 'ui-monospace, "Cascadia Code", monospace', lineHeight: 1.75 }}>
       {pane === 'diff' && <LoomDiff t={t} workspaceId={workspaceId} loadChanges={loadChanges} renderFactorySlot={renderFactorySlot} {...onOpenFile === undefined ? {} : { onOpenFile }} />}
       {pane === 'audit' && (audit.length === 0
         ? <p style={{ ...metaLine, margin: 0 }}>{t('bottom.activityEmpty')}</p>

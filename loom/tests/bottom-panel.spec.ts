@@ -5,7 +5,7 @@ import { LoomBottomPanel } from '../src/client/LoomBottomPanel.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
 const t = (key: LoomKey) => en[key]
 const props = {
-  t, collapsed: false, pane: 'diff' as const, audit: [], diffCount: 0, usage: undefined,
+  t, collapsed: false, height: 170, pane: 'diff' as const, audit: [], diffCount: 0, usage: undefined,
   workspaceId: 'w1', loadChanges: () => Promise.reject(new Error('unused')), renderFactorySlot: () => null,
   onToggle: () => {}, onPane: () => {},
 }

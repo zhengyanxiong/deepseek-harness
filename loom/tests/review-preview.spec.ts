@@ -29,7 +29,7 @@ it('loads the turn summary and the selected native comparison', async () => {
   const root = createRoot(container)
   await act(async () => {
     root.render(createElement(LoomReviewPreview, {
-      t: (key: keyof typeof en, params?: Readonly<Record<string, string>>) => en[key].replace(/\{(\w+)\}/gu, (_match, name: string) => params?.[name] ?? ''), sessionId: 's1', seq: 9, turn: 2, initialIndex: 1,
+      t: (key: keyof typeof en) => en[key], sessionId: 's1', seq: 9, initialIndex: 1,
       renderFactorySlot: (_name, props) => {
         const kind = typeof props.state === 'string' ? props.state : props.state.kind
         states.push(kind)
@@ -40,7 +40,7 @@ it('loads the turn summary and the selected native comparison', async () => {
   await act(async () => {
     await vi.waitFor(() => { expect(container.textContent).toContain('src/b.ts') })
   })
-  expect(container.textContent).toContain(en['review.title'].replace('{turn}', '2'))
+  expect(container.textContent).toContain(en['review.fileList'])
   expect(states).toContain('text')
   await act(async () => { root.unmount() })
 })

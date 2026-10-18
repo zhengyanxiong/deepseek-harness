@@ -1,5 +1,6 @@
 /** Native-Diff review of one turn's changed files, for the Loom right aside. */
 import { useEffect, useState, type ReactNode } from 'react'
+import { IconDeliverDocRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RenderFileDiffSlot } from './LoomDiff.tsx'
 import type { LoomKey } from './locales.ts'
 
@@ -40,8 +41,6 @@ export interface LoomReviewPreviewProps {
   readonly sessionId: string | undefined
   /** Sequence of the `workspace/changes` announcement. */
   readonly seq: number
-  /** Turn number used in the review title. */
-  readonly turn: number
   /** File index to select first, when the opening row named one. */
   readonly initialIndex?: number | undefined
   /** Native comparison factory registered by ui-deliverables. */
@@ -110,7 +109,7 @@ function counts(file: ReviewFile, t: Translate): ReactNode {
  * @param props - coordinates, native Diff factory, and the optional whole-file opener.
  * @returns the review, or the state that explains why it is unavailable.
  */
-export function LoomReviewPreview({ t, sessionId, seq, turn, initialIndex = 0, renderFactorySlot, onOpenFile }: LoomReviewPreviewProps): ReactNode {
+export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderFactorySlot, onOpenFile }: LoomReviewPreviewProps): ReactNode {
   const [summaryState, setSummaryState] = useState<SummaryState>({ kind: 'loading' })
   const [diff, setDiff] = useState<ReviewDiff>({ kind: 'loading' })
   const [selected, setSelected] = useState(initialIndex)
@@ -151,30 +150,51 @@ export function LoomReviewPreview({ t, sessionId, seq, turn, initialIndex = 0, r
     return () => controller.abort()
   }, [sessionId, seq, file, index, diffAttempt])
   if (sessionId === undefined) return <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.noSession')}</p>
-  return <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: '0.5px solid var(--dsw-alias-border-l4)', flex: 'none', flexWrap: 'wrap' }}>
-      <strong style={{ fontSize: 12.5 }}>{t('review.title', { turn: String(turn) })}</strong>
-      {file !== undefined && <select aria-label={t('review.selectFile')} value={String(index)} onChange={event => setSelected(Number(event.target.value))} style={{ maxWidth: 260, minWidth: 0, background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: 5, padding: '2px 6px', font: 'inherit', fontSize: 11.5 }}>
-        {files.map((entry, position) => <option key={`${entry.path}:${String(position)}`} value={String(position)}>{entry.display}</option>)}
-      </select>}
-      {file !== undefined && counts(file, t)}
-      {file !== undefined && onOpenFile !== undefined && <button type="button" style={{ marginLeft: 'auto', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', font: 'inherit', fontSize: 11 }} onClick={() => onOpenFile(file.path)}>{t('review.openFile')}</button>}
+  const selectedFile = file
+  return <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 210px) minmax(0, 1fr)', flex: 1, minHeight: 0 }}>
+    <div role="group" aria-label={t('review.fileList')} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, borderRight: '0.5px solid var(--dsw-alias-border-l4)' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '7px 8px 6px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11, flex: 'none' }}>
+        <span>{t('review.fileList')} {summaryState.kind === 'ready' ? String(summaryState.summary.files.length) : ''}</span>
+        {summaryState.kind === 'ready' && <span style={{ marginLeft: 'auto', color: 'var(--dsw-alias-label-tertiary)' }}>+{String(summaryState.summary.added)} −{String(summaryState.summary.deleted)}</span>}
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 6px' }}>
+        {files.map((entry, position) => {
+          const selected = position === index
+          return <button type="button" key={`${entry.path}:${String(position)}`} aria-pressed={selected} title={entry.display} onClick={() => setSelected(position)} style={{
+            display: 'flex', flexDirection: 'column', gap: 1, width: '100%', minWidth: 0, padding: '5px 6px', border: 'none', borderLeft: `2px solid ${selected ? 'var(--dsw-alias-label-accent, #2f81f7)' : 'transparent'}`,
+            borderRadius: 4, background: selected ? 'var(--dsw-alias-bg-layer-3)' : 'transparent', color: selected ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)', cursor: 'pointer', font: 'inherit', fontSize: 11.5, textAlign: 'left',
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, width: '100%' }}>
+              <IconDeliverDocRegular size={13} />
+              <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.display}</span>
+            </span>
+            <span style={{ display: 'flex', gap: 4, paddingLeft: 19, fontSize: 10.5 }}>{counts(entry, t)}</span>
+          </button>
+        })}
+      </div>
     </div>
-    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-      {summaryState.kind === 'loading' && <p role="status" style={{ margin: 0, padding: 12 }}>{t('review.loading')}</p>}
-      {summaryState.kind === 'missing' && <p role="status" style={{ margin: 0, padding: 12 }}>{t('review.missing')}</p>}
-      {summaryState.kind === 'error' && <p role="alert" style={{ margin: 0, padding: 12 }}>{t('state.error')} <button type="button" onClick={() => setSummaryAttempt(current => current + 1)}>{t('form.retry')}</button></p>}
-      {summaryState.kind === 'ready' && summaryState.summary.files.length === 0 && <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.empty')}</p>}
-      {summaryState.kind === 'ready' && file !== undefined && (diff.kind === 'loading'
-        ? <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.loading')}</p>
-        : <div style={{ padding: '2px 4px' }}>{renderFactorySlot('deliverables.fileDiff', {
-            state: diff.kind === 'text' ? diff
-              : diff.kind === 'binary' ? { kind: 'binary' }
-                : diff.kind === 'oversized' ? { kind: 'oversized' }
-                  : diff.kind,
-            split: true, wrap: false,
-            retry: () => { setDiffAttempt(current => current + 1) },
-          }, { fallback: <p style={{ margin: 0, padding: 12 }}>{t('integrationUnavailable')}</p> })}</div>)}
+    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+      {selectedFile !== undefined && <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 9px', borderBottom: '0.5px solid var(--dsw-alias-border-l4)', flex: 'none', minWidth: 0 }}>
+        <strong style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5 }}>{selectedFile.display}</strong>
+        <span style={{ flex: 'none', display: 'flex', gap: 4 }}>{counts(selectedFile, t)}</span>
+        {onOpenFile !== undefined && <button type="button" style={{ marginLeft: 'auto', flex: 'none', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', font: 'inherit', fontSize: 11 }} onClick={() => onOpenFile(selectedFile.path)}>{t('review.openFile')}</button>}
+      </div>}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {summaryState.kind === 'loading' && <p role="status" style={{ margin: 0, padding: 12 }}>{t('review.loading')}</p>}
+        {summaryState.kind === 'missing' && <p role="status" style={{ margin: 0, padding: 12 }}>{t('review.missing')}</p>}
+        {summaryState.kind === 'error' && <p role="alert" style={{ margin: 0, padding: 12 }}>{t('state.error')} <button type="button" onClick={() => setSummaryAttempt(current => current + 1)} style={{ marginLeft: 6, border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: 5, padding: '2px 7px', cursor: 'pointer', font: 'inherit', fontSize: 11 }}>{t('form.retry')}</button></p>}
+        {summaryState.kind === 'ready' && summaryState.summary.files.length === 0 && <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.empty')}</p>}
+        {summaryState.kind === 'ready' && selectedFile !== undefined && (diff.kind === 'loading'
+          ? <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.loading')}</p>
+          : <div style={{ padding: '2px 4px' }}>{renderFactorySlot('deliverables.fileDiff', {
+              state: diff.kind === 'text' ? diff
+                : diff.kind === 'binary' ? { kind: 'binary' }
+                  : diff.kind === 'oversized' ? { kind: 'oversized' }
+                    : diff.kind,
+              split: true, wrap: false,
+              retry: () => { setDiffAttempt(current => current + 1) },
+            }, { fallback: <p style={{ margin: 0, padding: 12 }}>{t('integrationUnavailable')}</p> })}</div>)}
+      </div>
     </div>
   </div>
 }
