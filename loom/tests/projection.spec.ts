@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { CatalogSnapshot, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
-import { activeWorkspaceCount, boardMetrics, boundSessions, currentLock, projectLanes } from '../src/client/projection.ts'
+import { activeWorkspaceCount, boardMetrics, boundSessions, currentLock, projectLanes, recentSessions, workspaceName } from '../src/client/projection.ts'
 const projectId = brandString<ProjectRecord['id']>('p1')
 const versionId = brandString<VersionRecord['id']>('v1')
 const lock: Lock = { id: brandString<Lock['id']>('l1'), versionId, repositories: [{ sourceId: brandString<'loom.source'>('web'), commit: 'a'.repeat(40) }] }
@@ -27,4 +27,14 @@ it('resolves the latest Lock and keeps pending tasks without one', () => {
 it('filters lanes and metrics by project and version', () => {
   expect(projectLanes(snapshot, { projectId: brandString<ProjectRecord['id']>('missing') })).toEqual([])
   expect(boardMetrics(snapshot, { versionId: brandString<VersionRecord['id']>('other') }).cards).toBe(0)
+})
+
+it('lists only newest loose Sessions with their workspace labels', () => {
+  const rows = [1, 2, 3, 4, 5, 6, 7].map(index => ({ id: `s${String(index)}`, displayTitle: `Session ${String(index)}`, cwd: `/work/space-${String(index)}`, updatedAt: index, running: index === 7 }))
+  const recent = recentSessions(rows, new Set(['s7']), '')
+  expect(recent.map(row => row.id)).toEqual(['s6', 's5', 's4', 's3', 's2'])
+  expect(recentSessions(rows, new Set(), 'session 3').map(row => row.id)).toEqual(['s3'])
+  const labeled = recentSessions([{ id: 'x', displayTitle: 'X', cwd: '/a/b/', updatedAt: 1, running: false }], new Set(), '')
+  expect(workspaceName(labeled[0]?.cwd)).toBe('b')
+  expect(workspaceName(undefined)).toBeUndefined()
 })

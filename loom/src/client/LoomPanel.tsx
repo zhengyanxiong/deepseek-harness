@@ -1,5 +1,5 @@
 /** Loom workbench shell: project tree, native conversation, context and kanban. */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -15,7 +15,7 @@ import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
 import { LoomKanban, LoomKanbanAside } from './LoomKanban.tsx'
-import { activeWorkspaceCount, boundSessions, currentWorkspace, type ShellFilter } from './projection.ts'
+import { activeWorkspaceCount, boundSessions, currentWorkspace, recentSessions, workspaceName, type ShellFilter } from './projection.ts'
 import { COLORS, metaLine, pill, select, shortCommit, STATUS_META } from './shell.ts'
 import { NS } from './locales.ts'
 
@@ -84,6 +84,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [selected, setSelected] = useState<SessionId>()
   const [dismissed, setDismissed] = useState<TaskRecord['id']>()
   const [held, setHeld] = useState<{ id: SessionId; reference: SessionReference }>()
+  const heldRef = useRef<{ id: SessionId; reference: SessionReference } | undefined>(undefined)
   const [failure, setFailure] = useState<SessionId>()
   const [search, setSearch] = useState('')
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' })
@@ -115,9 +116,14 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     catch { setFailure(selected); return }
     let active = true
     setFailure(undefined)
+    heldRef.current = { id: selected, reference }
     setHeld({ id: selected, reference })
     void reference.ready.catch(() => { if (active) setFailure(selected) })
-    return () => { active = false; reference.release() }
+    return () => {
+      active = false
+      if (heldRef.current?.reference === reference) heldRef.current = undefined
+      reference.release()
+    }
   }, [selected, retainSession])
   useEffect(() => {
     if (task === undefined || selected !== undefined || dismissed === task.id || catalog.status !== 'ready') return
@@ -130,14 +136,14 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const currentVersion = snapshot?.versions.find(candidate => candidate.id === version)
   const boundRows = snapshot === undefined ? [] : boundSessions(snapshot)
   const boundIds = new Set(boundRows.map(row => row.sessionId))
-  const looseSessions = sessions.ids.filter(id => !boundIds.has(id) && (sessions.byId[id]?.displayTitle.toLowerCase().includes(search.toLowerCase()) ?? false))
+  const looseSessions = recentSessions(sessions.ids.map(id => sessions.byId[id]).filter(row => row !== undefined), boundIds, search)
   const detailTask = task === undefined ? undefined : snapshot?.tasks.find(candidate => candidate.id === task.id) ?? task
   const taskVersion = detailTask === undefined || snapshot === undefined ? undefined : snapshot.versions.find(candidate => candidate.id === detailTask.versionId)
   const displayProject = currentProject ?? (taskVersion === undefined ? undefined : snapshot?.projects.find(candidate => candidate.id === taskVersion.projectId))
   const displayVersion = currentVersion ?? taskVersion
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
   const activeCount = snapshot === undefined ? 0 : activeWorkspaceCount(snapshot)
-  const available = held !== undefined && held.id === selected && failure !== selected
+  const available = held !== undefined && held.id === selected && failure !== selected && heldRef.current?.reference === held.reference
   const execution: ExecutionActions = {
     prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, cleanupWorkspace,
     onSession: id => { setSelected(id); setView('workbench') },
@@ -149,7 +155,9 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       if (owner !== undefined) { setProject(owner.projectId); setVersion(owner.id) }
     }
     setDismissed(undefined)
-    setTask(record); setSelected(undefined); setView('workbench')
+    setTask(record)
+    setSelected(record.attempts.at(-1)?.sessionIds.at(-1))
+    setView('workbench')
   }
   const selectSession = (id: SessionId, owner?: TaskRecord): void => {
     if (owner !== undefined) setTask(owner)
@@ -254,9 +262,24 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           <button type="button" style={{ margin: '6px 12px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: 'pointer' }} onClick={() => openCreate('project')}>＋ {t('side.newProject')}</button>
         </section>
         <section style={{ marginBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>{t('side.tasks')}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>{t('side.tasks')}<span style={{ marginLeft: 'auto', fontWeight: 400 }}>{t('side.recent')}</span></div>
           {looseSessions.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.empty')}</p>}
-          {looseSessions.map(id => <TreeRow key={id} depth={2} icon="💬" label={sessions.byId[id]?.displayTitle || t('untitledSession')} active={selected === id && detailTask === undefined} color={COLORS.purple} onClick={() => { setSelected(id); setTask(undefined); setView('workbench') }} />)}
+          {looseSessions.map(row => {
+            const workspace = workspaceName(row.cwd)
+            const active = selected === row.id
+            return <button key={row.id} type="button" title={row.cwd} onClick={() => { setSelected(row.id as SessionId); setDismissed(undefined); setTask(undefined); setView('workbench') }}
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 7, width: '100%', textAlign: 'left', background: active ? COLORS.panel3 : 'transparent', border: 'none', borderLeft: `2px solid ${active ? COLORS.accent : 'transparent'}`, padding: '5px 12px 5px 27px', color: active ? COLORS.text : COLORS.dim, cursor: 'pointer', font: 'inherit' }}>
+              <span style={{ fontSize: 12 }}>💬</span>
+              <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.title || t('untitledSession')}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: COLORS.faint }}>
+                  {workspace !== undefined && <span style={{ color: COLORS.cyan, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📁 {workspace}</span>}
+                  {row.running && <span style={{ color: COLORS.green }}>●</span>}
+                  {active && <span style={{ color: COLORS.accent }}>{t('session.current')}</span>}
+                </span>
+              </span>
+            </button>
+          })}
           <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...select, cursor: 'text', width: 'calc(100% - 24px)', margin: '2px 12px 6px', boxSizing: 'border-box' }} />
           <button type="button" style={{ margin: '2px 12px 8px', display: 'block', width: 'calc(100% - 24px)', textAlign: 'center', padding: 5, border: `1px dashed ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.faint, fontSize: 12, cursor: createDisabledTask ? 'not-allowed' : 'pointer', opacity: createDisabledTask ? 0.5 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>＋ {t('side.newTask')}</button>
         </section>

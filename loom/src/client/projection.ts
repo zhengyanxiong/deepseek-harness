@@ -27,6 +27,24 @@ export interface BoardMetrics {
   readonly activeSessions: number
 }
 
+/** One recent native Session row shown in the sidebar. */
+export interface RecentSession {
+  readonly id: string
+  readonly title: string
+  readonly cwd?: string
+  readonly updatedAt: number
+  readonly running: boolean
+}
+
+/** Minimal native Session list row consumed by the recent list. */
+export interface RecentSessionInput {
+  readonly id: string
+  readonly displayTitle: string
+  readonly cwd?: string
+  readonly updatedAt: number
+  readonly running: boolean
+}
+
 /** One running or attached Session with its owning task context. */
 export interface ActiveSession {
   readonly task: TaskRecord
@@ -111,6 +129,35 @@ export function boundSessions(snapshot: CatalogSnapshot): ActiveSession[] {
     for (const attempt of task.attempts) for (const sessionId of attempt.sessionIds) rows.push({ task, projectId: version.projectId, versionId: version.id, sessionId })
   }
   return rows
+}
+
+/** Last path segment of a workspace path; empty for a missing path.
+ * @param cwd - absolute workspace path from the native Session list.
+ * @returns the basename used as the workspace label.
+ */
+export function workspaceName(cwd: string | undefined): string | undefined {
+  if (cwd === undefined) return undefined
+  const trimmed = cwd.replace(/[\\/]+$/u, '')
+  if (trimmed === '') return undefined
+  const name = trimmed.split(/[\\/]/u).at(-1)
+  return name === undefined || name === '' ? undefined : name
+}
+
+/** Most recent loose Sessions, bound Sessions excluded.
+ * @param rows - native Session list rows in host order.
+ * @param bound - Session ids attached to a Loom task attempt.
+ * @param search - case-insensitive title filter.
+ * @param limit - maximum rows returned, newest first.
+ * @returns at most `limit` rows sorted by descending update time.
+ */
+export function recentSessions(rows: readonly RecentSessionInput[], bound: ReadonlySet<string>, search: string, limit = 5): RecentSession[] {
+  const query = search.trim().toLowerCase()
+  return rows
+    .filter(row => !bound.has(row.id) && (query === '' || row.displayTitle.toLowerCase().includes(query)))
+    .slice()
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .slice(0, limit)
+    .map(row => ({ id: row.id, title: row.displayTitle, ...(row.cwd === undefined ? {} : { cwd: row.cwd }), updatedAt: row.updatedAt, running: row.running }))
 }
 
 /** Count distinct workspaces used by a running task.
