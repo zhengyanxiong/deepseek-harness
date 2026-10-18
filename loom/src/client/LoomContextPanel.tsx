@@ -18,6 +18,7 @@ export interface LoomContextPanelProps {
   readonly project: ProjectRecord | undefined
   readonly version: VersionRecord | undefined
   readonly task: TaskRecord | undefined
+  readonly presetName?: string | undefined
   readonly usage: TokenUsageView | undefined
   readonly generateLock: (request: GenerateLockRequest) => Promise<RemoteResult<Lock>>
   readonly onLockChanged: () => void
@@ -38,10 +39,10 @@ function SectionHeading({ title, action }: { title: string; action?: ReactNode }
   </div>
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+function Row({ k, v, mono = true }: { k: string; v: string; mono?: boolean }) {
   return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '3px 0', fontSize: 12 }}>
     <span style={{ color: COLORS.dim }}>{k}</span>
-    <span style={{ color: COLORS.text, fontFamily: 'ui-monospace, monospace', fontSize: 11.5, overflowWrap: 'anywhere', textAlign: 'right' }}>{v}</span>
+    <span style={{ color: COLORS.text, fontFamily: mono ? 'ui-monospace, monospace' : 'inherit', fontSize: mono ? 11.5 : 12, overflowWrap: 'anywhere', textAlign: 'right' }}>{v}</span>
   </div>
 }
 
@@ -50,7 +51,7 @@ function Row({ k, v }: { k: string; v: string }) {
  * @param props - catalog records, current selection and owner actions.
  * @returns the aside content for the workbench view.
  */
-export function LoomContextPanel({ t, snapshot, project, version, task, usage, generateLock, onLockChanged, onEditProject, onEditVersion, onEditTask, onDeleteProject, onDeleteVersion, onDeleteTask }: LoomContextPanelProps) {
+export function LoomContextPanel({ t, snapshot, project, version, task, presetName, usage, generateLock, onLockChanged, onEditProject, onEditVersion, onEditTask, onDeleteProject, onDeleteVersion, onDeleteTask }: LoomContextPanelProps) {
   const [pendingDelete, setPendingDelete] = useState<DeleteKind>()
   const [deleting, setDeleting] = useState(false)
   const [deleteFailure, setDeleteFailure] = useState<FailureReport>()
@@ -88,7 +89,7 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
           {task !== undefined && onDeleteTask !== undefined && <Button size="sm" variant="outline" icon={<IconTrashOutlineRegular />} style={dangerAction} disabled={deleting} onClick={() => beginDelete('task')}>{t('task.delete')}</Button>}
         </div>
         <Row k={t('top.project')} v={project.config.name} />
-        {project.config.agentPreset !== undefined && <Row k={t('project.agentPreset')} v={project.config.agentPreset} />}
+        {project.config.agentPreset !== undefined && <Row k={t('project.agentPreset')} v={presetName ?? project.config.agentPreset} mono={false} />}
         <Row k={t('top.version')} v={version === undefined ? '—' : refs === '' ? version.name : `${version.name} · ${refs}`} />
         <Row k={t('ctx.lock')} v={shortCommit(displayLock) ?? '—'} />
         <Row k={t('ctx.workspace')} v={workspace?.path ?? '—'} />

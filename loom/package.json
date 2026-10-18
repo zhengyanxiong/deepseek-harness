@@ -83,6 +83,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/schemastery": "*",
+    "@deepseek-ai/dsh-agent-preset-registry": "*",
     "@deepseek-ai/dsh-typert-protocol": "*",
     "@deepseek-ai/dsh-brand": "*",
     "@deepseek-ai/dsh-api-remote-access": "*",

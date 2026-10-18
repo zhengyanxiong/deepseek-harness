@@ -1,7 +1,8 @@
 /** Inline creation and edit forms for Loom projects, versions and tasks. */
 import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import {
-  Button, IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconDownloadOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular,
+  Button, IconAgentPresetOutlineRegular, IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular, IconDownloadOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular, Menu,
+  type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
@@ -203,6 +204,13 @@ export interface AgentPresetOption {
   readonly broken?: string
 }
 
+function PresetOptionLabel({ name, description }: { readonly name: string; readonly description: string }) {
+  return <span style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 280 }}>
+    <span style={{ fontSize: 13, lineHeight: '20px', color: COLORS.text }}>{name}</span>
+    <span style={{ fontSize: 12, lineHeight: '16px', color: COLORS.faint, whiteSpace: 'normal' }}>{description}</span>
+  </span>
+}
+
 interface ProjectFormProps {
   t: Translate
   create(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
@@ -234,12 +242,25 @@ export function ProjectForm({ t, create, update, project, agentPresets = [], onC
   const [sources, setSources] = useState<SourceDraft[]>(project === undefined ? [emptySourceRow()] : project.config.sources.map(source => ({ id: source.id, repo: source.repo, path: source.path })))
   const [modules, setModules] = useState<ModuleDraft[]>(project === undefined ? [] : project.config.modules.map(module => ({ id: module.id, source: module.sourceId, path: module.path })))
   const [agentPreset, setAgentPreset] = useState(project?.config.agentPreset ?? '')
+  const [presetOpen, setPresetOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string>()
   if (!open) return editing ? null : <Button variant="outline" icon={<IconPlusOutlineRegular />} onClick={() => setOpen(true)}>{t('project.new')}</Button>
   const ids = sourceIds(sources)
   const request = projectRequest(name, sources, modules, agentPreset)
-  const presetName = agentPresets.find(candidate => candidate.id === agentPreset)?.name ?? agentPreset
+  const selectedPreset = agentPresets.find(candidate => candidate.id === agentPreset)
+  const presetLabel = agentPreset === '' ? t('project.agentPresetDefault') : selectedPreset?.name ?? agentPreset
+  const presetItems: MenuEntry[] = [
+    { id: '', label: <PresetOptionLabel name={t('project.agentPresetDefault')} description={t('project.agentPresetDefaultHint')} /> },
+    ...(agentPreset !== '' && selectedPreset === undefined
+      ? [{ id: agentPreset, label: <PresetOptionLabel name={agentPreset} description={t('project.agentPresetUnavailable')} /> }]
+      : []),
+    ...agentPresets.map(candidate => ({
+      id: candidate.id,
+      disabled: candidate.broken !== undefined,
+      label: <PresetOptionLabel name={candidate.name ?? candidate.id} description={candidate.broken === undefined ? candidate.description ?? t('preset.noDescription') : t('project.agentPresetBroken')} />,
+    })),
+  ]
   const nameReady = name.trim() !== ''
   const sourcesReady = projectRequest(name, sources, []) !== undefined
   const stepIndex = PROJECT_STEPS.findIndex(candidate => candidate.key === step)
@@ -250,7 +271,7 @@ export function ProjectForm({ t, create, update, project, agentPresets = [], onC
     return request !== undefined
   }
   function goTo(candidate: ProjectStep): void {
-    if (canVisit(candidate)) { setStep(candidate); setFailure(undefined) }
+    if (canVisit(candidate)) { setStep(candidate); setFailure(undefined); setPresetOpen(false) }
   }
   function advance(): boolean {
     const candidate = PROJECT_STEPS[stepIndex + 1]
@@ -263,8 +284,8 @@ export function ProjectForm({ t, create, update, project, agentPresets = [], onC
     if (candidate !== undefined) setStep(candidate.key)
   }
   function reset(): void {
-    if (editing) { setOpen(false); setFailure(undefined); return }
-    setName(''); setSources([emptySourceRow()]); setModules([]); setAgentPreset(''); setStep('name'); setOpen(false); setFailure(undefined)
+    if (editing) { setOpen(false); setFailure(undefined); setPresetOpen(false); return }
+    setName(''); setSources([emptySourceRow()]); setModules([]); setAgentPreset(''); setPresetOpen(false); setStep('name'); setOpen(false); setFailure(undefined)
   }
   function updateSource(index: number, patch: Partial<SourceDraft>): void {
     setSources(current => current.map((source, at) => at === index ? { ...source, ...patch } : source))
@@ -318,13 +339,14 @@ export function ProjectForm({ t, create, update, project, agentPresets = [], onC
       </label>
       <p style={hint}>{t('project.nameHint')}</p>
       <label style={field}><span style={fieldLabel}>{t('project.agentPreset')}</span>
-        <select aria-label={t('project.agentPreset')} value={agentPreset} onChange={event => setAgentPreset(event.target.value)} style={input}>
-          <option value="">{t('project.agentPresetDefault')}</option>
-          {agentPreset !== '' && !agentPresets.some(candidate => candidate.id === agentPreset) && <option value={agentPreset}>{agentPreset}</option>}
-          {agentPresets.map(candidate => <option key={candidate.id} value={candidate.id} disabled={candidate.broken !== undefined}>
-            {candidate.name ?? candidate.id}{candidate.broken === undefined ? '' : ` · ${t('project.agentPresetBroken')}`}
-          </option>)}
-        </select>
+        <Menu open={presetOpen} onClose={() => setPresetOpen(false)} items={presetItems} selectedId={agentPreset} portal
+          onSelect={id => { setAgentPreset(id); setPresetOpen(false) }}
+          anchor={<button type="button" title={presetLabel} aria-label={t('project.agentPreset')} aria-haspopup="menu" aria-expanded={presetOpen} onClick={() => setPresetOpen(value => !value)}
+            style={{ ...input, display: 'flex', alignItems: 'center', gap: 7, padding: '0 10px', textAlign: 'left', cursor: 'pointer' }}>
+            <IconAgentPresetOutlineRegular size={14} />
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{presetLabel}</span>
+            <IconChevronDownOutlineRegular size={12} />
+          </button>} />
       </label>
       <p style={hint}>{t('project.agentPresetHint')}</p>
     </section>}
@@ -367,7 +389,7 @@ export function ProjectForm({ t, create, update, project, agentPresets = [], onC
       <p style={hint}>{t('project.previewHint')}</p>
       {request === undefined ? <p role="alert" style={alert}>{t('form.required')}</p> : <div style={card}>
         <div style={field}><span style={fieldLabel}>{t('project.name')}</span><span>{request.name}</span></div>
-        <div style={field}><span style={fieldLabel}>{t('project.agentPreset')}</span><span>{presetName === '' ? t('project.agentPresetDefault') : presetName}</span></div>
+        <div style={field}><span style={fieldLabel}>{t('project.agentPreset')}</span><span>{presetLabel}</span></div>
         <div style={field}><span style={fieldLabel}>{t('source.title')}</span>
           {request.sources.map(source => <div key={source.id} style={previewRow}>
             <span style={{ color: COLORS.dim, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{source.id}</span>

@@ -81,3 +81,46 @@ it('walks an edited project through every step and saves only from the preview',
   expect(updates).toBe(1)
   expect(savedName).toBe('Shop')
 })
+
+it('picks a localized Agent preset with its description and saves the id', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  const project: ProjectRecord = {
+    id: brandString<ProjectRecord['id']>('p1'),
+    config: { name: 'Shop', sources: [{ id: brandString<'loom.source'>('web'), repo: '/repo/shop', path: 'shop' }], modules: [] },
+  }
+  let savedPreset = ''
+  container = document.createElement('div')
+  document.body.append(container)
+  root = createRoot(container)
+  await act(async () => {
+    root?.render(createElement(ProjectForm, {
+      t, open: true, project,
+      agentPresets: [
+        { id: 'standard', isDefault: true, name: en['preset.standardName'], description: en['preset.standardDescription'] },
+        { id: 'ptc', isDefault: false, name: en['preset.ptcName'], description: en['preset.ptcDescription'] },
+      ],
+      create: async () => ({ ok: false, error: { code: 'unused', message: 'unused' } }),
+      update: async request => { savedPreset = request.config.agentPreset ?? ''; return { ok: true, value: project } },
+      onCreated: () => undefined,
+    }))
+  })
+  const click = async (target: Element | null | undefined) => {
+    expect(target).toBeDefined()
+    expect(target).not.toBeNull()
+    await act(async () => { target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  }
+  const trigger = container.querySelector('button[aria-label="Agent preset"]')
+  expect(trigger?.textContent).toContain(en['project.agentPresetDefault'])
+  await click(trigger)
+  expect(document.body.textContent).toContain(en['preset.ptcDescription'])
+  const option = [...document.querySelectorAll('button')].find(button => button.textContent?.includes(en['preset.ptcName']))
+  await click(option)
+  expect(trigger?.textContent).toContain(en['preset.ptcName'])
+  const next = () => [...(container?.querySelectorAll('button') ?? [])].find(button => button.textContent === en['form.next'])
+  await click(next())
+  await click(next())
+  await click(next())
+  const save = [...(container?.querySelectorAll('button') ?? [])].find(button => button.textContent === en['form.save'])
+  await click(save)
+  expect(savedPreset).toBe('ptc')
+})
