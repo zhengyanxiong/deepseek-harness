@@ -5,7 +5,7 @@ import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, Sessi
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord, WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord } from 'dsh-loom/types'
+import type { AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord, WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord } from 'dsh-loom/types'
 import { TaskBoard } from './TaskBoard.tsx'
 import { LockButton, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
@@ -27,6 +27,7 @@ export interface LoomInjected {
   transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
   createSessionInWorkspace(path: string): Promise<SessionId>
   workspaceChanges(request: WorkspaceChangesRequest): Promise<RemoteResult<{ repositories: WorkspaceRepositoryChangesRecord[] }>>
+  cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
 }
 interface LoomSeat {
   SessionProvider: SessionProviderComponent
@@ -52,7 +53,7 @@ const bottomKeys = ['diff', 'terminal', 'tests', 'audit', 'costs'] as const
  * @param props - Locale, native catalog, session acquisition, catalog reads, and renderer seats.
  * @returns Loom's workbench; unconnected capabilities stay labeled instead of showing mock data.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, cleanupWorkspace, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [selected, setSelected] = useState<SessionId>()
   const [held, setHeld] = useState<{ id: SessionId; reference: SessionReference }>()
@@ -90,7 +91,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const currentVersion = catalog.status === 'ready' ? catalog.snapshot.versions.find(candidate => candidate.id === version) : undefined
   const detailTask = task === undefined ? undefined : (catalog.status === 'ready' ? catalog.snapshot.tasks.find(candidate => candidate.id === task.id) ?? task : task)
   const refresh = () => setAttempt(current => current + 1)
-  const execution: ExecutionActions = { prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, onChanged: refresh }
+  const execution: ExecutionActions = { prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, cleanupWorkspace, onChanged: refresh }
   const detailWorkspaceId = detailTask?.attempts.at(-1)?.workspaceId
   return <div style={frame}>
     <header style={line}>

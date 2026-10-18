@@ -2,7 +2,7 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  AttachSessionRequest, CatalogSnapshot, Lock, PrepareWorkspaceRequest, StartAttemptRequest,
+  AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, Lock, PrepareWorkspaceRequest, StartAttemptRequest,
   TaskRecord, TransitionTaskRequest, WorkspaceRecord,
 } from 'dsh-loom/types'
 import type { LoomKey } from './locales.ts'
@@ -22,6 +22,7 @@ export interface ExecutionActions {
   attachSession(request: AttachSessionRequest): Promise<RemoteResult<TaskRecord>>
   transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
   createSessionInWorkspace(path: string): Promise<SessionId>
+  cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
   onChanged(): void
 }
 
@@ -41,6 +42,7 @@ interface ExecutionPanelProps {
 export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: ExecutionPanelProps) {
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [cleaning, setCleaning] = useState(false)
   const current = task.attempts.at(-1)
   const version = snapshot.versions.find(candidate => candidate.id === task.versionId)
   const workspace = current === undefined ? undefined : snapshot.workspaces.find(candidate => candidate.id === current.workspaceId)
@@ -58,6 +60,16 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
     try {
       const result = await actions.attachSession({ taskId: task.id, sessionId: selectedSession })
       if (!result.ok) { setFailed(true); return }
+      actions.onChanged()
+    } catch { setFailed(true) } finally { setBusy(false) }
+  }
+  async function clean(): Promise<void> {
+    if (workspace === undefined) return
+    setBusy(true); setFailed(false)
+    try {
+      const result = await actions.cleanupWorkspace({ workspaceId: workspace.id, discardChanges: true })
+      if (!result.ok) { setFailed(true); return }
+      setCleaning(false)
       actions.onChanged()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
@@ -91,6 +103,15 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
         {selectedSession !== undefined && current !== undefined && !current.sessionIds.includes(selectedSession) && <button style={button} disabled={busy} onClick={() => { void attach() }}>{t('session.open')}</button>}
       </>}
     </div>
+    {workspace !== undefined && workspace.cleaned !== true && <div style={{ marginTop: 8 }}>
+      {cleaning ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <p style={alert}>{t('workspace.cleanupWarning')}</p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={button} disabled={busy} onClick={() => { void clean() }}>{t('workspace.cleanupConfirm')}</button>
+          <button style={button} disabled={busy} onClick={() => setCleaning(false)}>{t('form.cancel')}</button>
+        </div>
+      </div> : <button style={button} disabled={busy} onClick={() => setCleaning(true)}>{t('workspace.cleanup')}</button>}
+    </div>}
     {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
   </div>
 }

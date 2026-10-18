@@ -27,6 +27,16 @@ export interface GenerateLockRequest {
 export interface WorkspaceChangesRequest {
   readonly workspaceId: string
 }
+/** Workspace ownership and uncommitted-change state. */
+export interface WorkspaceStatusResult {
+  readonly running: boolean
+  readonly repositories: readonly WorkspaceRepositoryChangesRecord[]
+}
+/** Explicit cleanup of one retained workspace. */
+export interface CleanupWorkspaceRequest {
+  readonly workspaceId: string
+  readonly discardChanges?: boolean
+}
 /** One changed file with unified hunks; binary files carry no hunks. */
 export interface WorkspaceFileChangeRecord {
   readonly path: string

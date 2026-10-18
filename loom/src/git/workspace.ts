@@ -260,3 +260,33 @@ export async function workingTreeChanges(worktrees: readonly { repo: string; dir
   }
   return results
 }
+
+/**
+ * Remove a prepared workspace's worktrees and then its root directory.
+ * @param root - Workspace root created by {@link prepareWorkspace}.
+ * @param repositories - owning repository and each worktree directory.
+ * @returns directories this call failed to remove; empty when cleanup completed.
+ */
+export async function removeWorkspace(root: string, repositories: readonly { repo: string; directory: string }[]): Promise<string[]> {
+  const errors: string[] = []
+  for (const { repo, directory } of repositories) {
+    try { await execFile('git', ['-C', repo, 'worktree', 'remove', '--force', '--', directory], { windowsHide: true }) } catch { errors.push(directory) }
+  }
+  try { await rmdir(root, { recursive: true }) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push(root)
+  }
+  return errors
+}
+
+/**
+ * Count commits made in a worktree since its Lock baseline.
+ * @param directory - prepared worktree.
+ * @param baseline - the Lock commit the workspace was created at.
+ * @returns the number of commits not present in the Lock.
+ */
+export async function commitsSince(directory: string, baseline: string): Promise<number> {
+  try {
+    const result = await execFile('git', ['-C', directory, 'rev-list', '--count', `${baseline}..HEAD`], { windowsHide: true })
+    return Number.parseInt(result.stdout.trim(), 10) || 0
+  } catch (error) { throw new WorkspacePreparationError('diff_failed', [], error) }
+}

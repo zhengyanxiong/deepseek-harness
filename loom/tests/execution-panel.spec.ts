@@ -40,6 +40,7 @@ const actions: ExecutionActions = {
   attachSession: () => Promise.reject(new Error('unused')),
   transitionTask: () => Promise.reject(new Error('unused')),
   createSessionInWorkspace: () => Promise.reject(new Error('unused')),
+  cleanupWorkspace: () => Promise.reject(new Error('unused')),
   onChanged: () => {},
 }
 it('offers the start form only for a startable task with a Lock', () => {
@@ -58,6 +59,7 @@ it('shows the running round and its agent transition', () => {
   expect(html).toContain(workspace.path)
   expect(html).toContain(en['task.review'])
   expect(html).toContain(en['task.fail'])
+  expect(html).toContain(en['workspace.cleanup'])
   expect(html).not.toContain(en['task.start'])
 })
 it('requires human confirmation from review', () => {

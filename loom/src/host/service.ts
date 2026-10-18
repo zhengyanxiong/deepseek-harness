@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { createCatalog, type Catalog } from './catalog.ts'
 import type {
   AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest,
-  PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceChangesRequest, WorkspaceRepositoryChangesRecord,
+  CleanupWorkspaceRequest, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceChangesRequest, WorkspaceRepositoryChangesRecord, WorkspaceStatusResult,
   VersionRecord, WorkspaceRecord,
 } from '../types.ts'
 import type { Lock } from '../domain/task.ts'
@@ -31,6 +31,7 @@ const attemptRequest = z.strictObject({ taskId: nonempty, workspaceId: nonempty 
 const sessionRequest = z.strictObject({ taskId: nonempty, sessionId: nonempty })
 const transitionRequest = z.strictObject({ taskId: nonempty, target: z.enum(['pending', 'running', 'review', 'completed', 'failed']), actor: z.enum(['human', 'agent']) })
 const workspaceChangesRequest = z.strictObject({ workspaceId: nonempty })
+const cleanupWorkspaceRequest = z.strictObject({ workspaceId: nonempty, discardChanges: z.boolean().optional() })
 
 declare module '@deepseek-ai/cordis' { interface Context { loom: LoomService } }
 
@@ -118,6 +119,21 @@ export default class LoomService extends TypertRemoteService {
   @Remote
   workspaceChanges(request: WorkspaceChangesRequest): Promise<{ repositories: WorkspaceRepositoryChangesRecord[] }> {
     return this.run(catalog => catalog.workspaceChanges(brandString<WorkspaceRecord['id']>(workspaceChangesRequest.parse(request).workspaceId)))
+  }
+
+  /** Read whether a workspace is owned by a running task and what it has changed. @param request - prepared workspace identity. @returns ownership and changes. */
+  @Remote
+  workspaceStatus(request: WorkspaceChangesRequest): Promise<WorkspaceStatusResult> {
+    return this.run(catalog => catalog.workspaceStatus(brandString<WorkspaceRecord['id']>(workspaceChangesRequest.parse(request).workspaceId)))
+  }
+
+  /** Remove a retained workspace after explicit confirmation. @param request - workspace and whether uncommitted changes may be discarded. @returns nothing after worktrees and the record are gone. */
+  @Remote
+  cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<void> {
+    return this.run(async catalog => {
+      const parsed = cleanupWorkspaceRequest.parse(request)
+      await catalog.cleanupWorkspace(brandString<WorkspaceRecord['id']>(parsed.workspaceId), parsed.discardChanges === true)
+    })
   }
 
   /** Record a prepared workspace whose files already exist. @param request - absolute path and owning baseline. @returns persisted workspace. */

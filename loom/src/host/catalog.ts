@@ -7,7 +7,7 @@ import { resolveLock } from '../domain/version.ts'
 import { isAbsolute, normalize, resolve } from 'node:path'
 import { createTask as pendingTask, startAttempt, attachSession, transitionTask, type Task, type Lock, type Workspace, type TaskStatus } from '../domain/task.ts'
 import { createJsonStore, JsonStoreError } from '../storage/json-store.ts'
-import { prepareWorkspace as materializeWorkspace, workingTreeChanges } from '../git/workspace.ts'
+import { commitsSince, prepareWorkspace as materializeWorkspace, removeWorkspace, workingTreeChanges, type WorkspaceRepositoryChanges } from '../git/workspace.ts'
 
 /** Project identity and admitted repository configuration. */
 export interface ProjectRecord { id: Branded<'loom.project'>; config: ProjectConfig }
@@ -15,13 +15,13 @@ export interface ProjectRecord { id: Branded<'loom.project'>; config: ProjectCon
 export interface VersionRecord { id: Branded<'loom.version'>; projectId: ProjectRecord['id']; name: string; sources: { sourceId: Branded<'loom.source'>; ref: string }[] }
 /** Named task with its fixed version and execution history. */
 export interface TaskRecord extends Task { title: string }
-/** Already-prepared workspace metadata; the orchestrator verifies actual files before admission. */
-export interface WorkspaceRecord extends Workspace { path: string }
+/** Already-prepared workspace metadata; a cleaned record keeps its history but no longer owns files. */
+export interface WorkspaceRecord extends Workspace { path: string; cleaned?: boolean | undefined }
 /** Detached durable catalog snapshot. */
 export interface CatalogSnapshot { projects: ProjectRecord[]; versions: VersionRecord[]; locks: Lock[]; tasks: TaskRecord[]; workspaces: WorkspaceRecord[] }
 /** Catalog operation rejection, suitable for caller-owned localization. */
 export class CatalogError extends Error {
-  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path') { super(code); this.name = 'CatalogError' }
+  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed') { super(code); this.name = 'CatalogError' }
 }
 const text = z.string().trim().min(1)
 const id = <B extends string>() => text.transform(value => brandString<Branded<B>>(value))
@@ -30,7 +30,7 @@ const versionSchema = z.strictObject({ id: id<'loom.version'>(), projectId: id<'
 const lockSchema = z.strictObject({ id: id<'loom.lock'>(), versionId: id<'loom.version'>(), repositories: z.array(z.strictObject({ sourceId: id<'loom.source'>(), commit: z.string().regex(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u) })).min(1) })
 const status = z.enum(['running', 'review', 'completed', 'failed'])
 const taskSchema = z.strictObject({ id: id<'loom.task'>(), versionId: id<'loom.version'>(), title: text, status: z.enum(['pending', 'running', 'review', 'completed', 'failed']), attempts: z.array(z.strictObject({ id: id<'loom.attempt'>(), lock: lockSchema, workspaceId: id<'loom.workspace'>(), sessionIds: z.array(id<'SessionId'>()), status })) })
-const workspaceSchema = z.strictObject({ id: id<'loom.workspace'>(), path: z.string().refine(value => isAbsolute(value) && normalize(value) === value), versionId: id<'loom.version'>(), lockId: id<'loom.lock'>() })
+const workspaceSchema = z.strictObject({ id: id<'loom.workspace'>(), path: z.string().refine(value => isAbsolute(value) && normalize(value) === value), versionId: id<'loom.version'>(), lockId: id<'loom.lock'>(), cleaned: z.boolean().optional() })
 const schema = z.strictObject({
   projects: z.array(z.strictObject({ id: id<'loom.project'>(), config: z.unknown().transform(parseProject) })),
   versions: z.array(versionSchema), locks: z.array(lockSchema), tasks: z.array(taskSchema), workspaces: z.array(workspaceSchema),
@@ -80,7 +80,9 @@ export interface Catalog {
   generateLock(versionId: VersionRecord['id']): Promise<Lock>
   createTask(versionId: VersionRecord['id'], title: string): Promise<TaskRecord>
   prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
-  workspaceChanges(workspaceId: WorkspaceRecord['id']): Promise<{ repositories: Awaited<ReturnType<typeof workingTreeChanges>> }>
+  workspaceChanges(workspaceId: WorkspaceRecord['id']): Promise<{ repositories: WorkspaceRepositoryChanges[] }>
+  workspaceStatus(workspaceId: WorkspaceRecord['id']): Promise<{ running: boolean; repositories: WorkspaceRepositoryChanges[] }>
+  cleanupWorkspace(workspaceId: WorkspaceRecord['id'], discardChanges: boolean): Promise<void>
   registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   startAttempt(taskId: TaskRecord['id'], workspaceId: WorkspaceRecord['id']): Promise<TaskRecord>
   attachSession(taskId: TaskRecord['id'], sessionId: Branded<'SessionId'>): Promise<TaskRecord>
@@ -121,6 +123,19 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
     if (!task) throw new CatalogError('missing_task')
     return task
   }
+  function workspaceWorktrees(draft: CatalogSnapshot, workspaceId: WorkspaceRecord['id']): { repo: string; directory: string; commit: string }[] {
+    const workspace = workspaceIn(draft, workspaceId)
+    const version = versionIn(draft, workspace.versionId)
+    const project = draft.projects.find(item => item.id === version.projectId)
+    if (!project) throw new CatalogError('missing_project')
+    const lock = draft.locks.find(item => item.id === workspace.lockId)
+    if (!lock) throw new CatalogError('missing_lock')
+    return project.config.sources.map(source => {
+      const pinned = lock.repositories.find(repository => repository.sourceId === source.id)
+      if (pinned === undefined) throw new CatalogError('workspace_mismatch')
+      return { repo: source.repo, directory: resolve(workspace.path, source.path), commit: pinned.commit }
+    })
+  }
   function workspaceIn(draft: CatalogSnapshot, workspaceId: WorkspaceRecord['id']): WorkspaceRecord {
     const workspace = draft.workspaces.find(item => item.id === workspaceId)
     if (!workspace) throw new CatalogError('missing_workspace')
@@ -147,21 +162,28 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       draft.workspaces.push(record)
       return record
     }),
-    workspaceChanges: async workspaceId => {
-      const workspaceRecord = state.workspaces.find(item => item.id === workspaceId)
-      if (!workspaceRecord) throw new CatalogError('missing_workspace')
-      const version = state.versions.find(item => item.id === workspaceRecord.versionId)
-      if (!version) throw new CatalogError('missing_version')
-      const project = state.projects.find(item => item.id === version.projectId)
-      if (!project) throw new CatalogError('missing_project')
-      const lock = state.locks.find(item => item.id === workspaceRecord.lockId)
-      if (!lock) throw new CatalogError('missing_lock')
-      const worktrees = project.config.sources.map(source => {
-        const pinned = lock.repositories.find(repository => repository.sourceId === source.id)
-        if (pinned === undefined) throw new CatalogError('workspace_mismatch')
-        return { repo: source.repo, directory: resolve(workspaceRecord.path, source.path), commit: pinned.commit }
+    workspaceChanges: async workspaceId => ({ repositories: await workingTreeChanges(workspaceWorktrees(state, workspaceId)) }),
+    workspaceStatus: async workspaceId => {
+      const running = state.tasks.some(task => task.status === 'running' && task.attempts.some(attempt => attempt.workspaceId === workspaceId))
+      return { running, repositories: await workingTreeChanges(workspaceWorktrees(state, workspaceId)) }
+    },
+    cleanupWorkspace: async (workspaceId, discardChanges) => {
+      const worktrees = workspaceWorktrees(state, workspaceId)
+      if (state.tasks.some(task => task.status === 'running' && task.attempts.some(attempt => attempt.workspaceId === workspaceId))) throw new CatalogError('workspace_busy')
+      if (!discardChanges) {
+        for (const worktree of worktrees) if (await commitsSince(worktree.directory, worktree.commit) > 0) throw new CatalogError('workspace_unpushed')
+        const changes = await workingTreeChanges(worktrees)
+        if (changes.some(repository => repository.files.length > 0)) throw new CatalogError('workspace_changes')
+      }
+      const record = state.workspaces.find(item => item.id === workspaceId)!
+      const failures = await removeWorkspace(record.path, worktrees.map(({ repo, directory }) => ({ repo, directory })))
+      if (failures.length > 0) throw new CatalogError('workspace_cleanup_failed')
+      const referenced = state.tasks.some(task => task.attempts.some(attempt => attempt.workspaceId === workspaceId))
+      await transaction(draft => {
+        const index = draft.workspaces.findIndex(item => item.id === workspaceId)
+        if (referenced) draft.workspaces[index] = { ...draft.workspaces[index]!, cleaned: true }
+        else draft.workspaces.splice(index, 1)
       })
-      return { repositories: await workingTreeChanges(worktrees) }
     },
     registerPreparedWorkspace: async input => {
       const record = workspaceSchema.parse({ ...input, id: randomUUID() })
@@ -178,6 +200,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
     startAttempt: (taskId, workspaceId) => transaction(draft => {
       const task = taskIn(draft, taskId)
       const workspace = workspaceIn(draft, workspaceId)
+      if (workspace.cleaned === true) throw new CatalogError('workspace_cleaned')
       const lock = draft.locks.find(item => item.id === workspace.lockId)
       if (!lock) throw new CatalogError('missing_lock')
       const updated = { ...task, ...startAttempt(task, brandString<Branded<'loom.attempt'>>(randomUUID()), lock, workspace) }

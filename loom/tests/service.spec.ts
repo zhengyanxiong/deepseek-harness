@@ -83,6 +83,23 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   expect(changed.deleted).toBe(1)
   expect(changed.hunks.flatMap(hunk => hunk.lines)).toContain('-content')
   expect(files.find(file => file.path === 'new.txt')!.hunks[0]!.lines).toEqual(['+added'])
+  const status = await call('workspaceStatus', { request: { workspaceId: workspace.id } }) as { running: boolean; repositories: { files: unknown[] }[] }
+  expect(status.running).toBe(false)
+  expect(status.repositories[0]!.files).toHaveLength(2)
+  const task = await call('createTask', { request: { versionId: version.id, title: 'Clean' } }) as { id: string }
+  await call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } })
+  await expect(call('cleanupWorkspace', { request: { workspaceId: workspace.id } })).rejects.toThrow('workspace_busy')
+  await call('transitionTask', { request: { taskId: task.id, target: 'failed', actor: 'human' } })
+  await expect(call('cleanupWorkspace', { request: { workspaceId: workspace.id } })).rejects.toThrow('workspace_changes')
+  await rm(join(root, 'web', 'new.txt'))
+  await writeFile(join(root, 'web', 'file'), 'unpushed\n')
+  await exec('git', ['-C', join(root, 'web'), 'add', 'file'])
+  await exec('git', ['-C', join(root, 'web'), '-c', 'user.name=Loom Test', '-c', 'user.email=loom@example.invalid', 'commit', '-qm', 'unpushed'])
+  await expect(call('cleanupWorkspace', { request: { workspaceId: workspace.id } })).rejects.toThrow('workspace_unpushed')
+  await call('cleanupWorkspace', { request: { workspaceId: workspace.id, discardChanges: true } })
+  expect(await call('snapshot')).toMatchObject({ workspaces: [{ id: workspace.id, cleaned: true }] })
+  await expect(call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } })).rejects.toThrow('workspace_cleaned')
+  await expect(readFile(join(root, 'web', 'file'), 'utf8')).rejects.toThrow()
   await expect(call('prepareWorkspace', { request: { path: root, versionId: version.id, lockId: lock.id } })).rejects.toThrow('workspace_path_registered')
 })
 it('refuses stale direct service references after disposal', async () => {
