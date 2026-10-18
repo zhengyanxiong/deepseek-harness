@@ -12,6 +12,8 @@ type Translate = (key: LoomKey) => string
 const button: CSSProperties = { color: 'inherit', background: 'transparent', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', font: 'inherit' }
 const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, padding: 12, borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)' }
 const input: CSSProperties = { ...button, cursor: 'text', width: '100%', boxSizing: 'border-box' }
+const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
+const fieldLabel: CSSProperties = { color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }
 const alert: CSSProperties = { margin: 0, color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }
 
 /** One repository row of the project form. */
@@ -19,6 +21,14 @@ export interface SourceDraft {
   readonly id: string
   readonly repo: string
   readonly path: string
+}
+
+/**
+ * Start a repository row empty so the form never silently submits placeholder ids or directories.
+ * @returns a blank repository row.
+ */
+export function emptySourceRow(): SourceDraft {
+  return { id: '', repo: '', path: '' }
 }
 
 /**
@@ -75,7 +85,7 @@ interface ProjectFormProps {
 export function ProjectForm({ t, create, onCreated }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
-  const [sources, setSources] = useState<SourceDraft[]>([{ id: 'main', repo: '', path: 'main' }])
+  const [sources, setSources] = useState<SourceDraft[]>([emptySourceRow()])
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   if (!open) return <button style={button} onClick={() => setOpen(true)}>{t('project.new')}</button>
@@ -90,19 +100,25 @@ export function ProjectForm({ t, create, onCreated }: ProjectFormProps) {
     try {
       const result = await create(request)
       if (!result.ok) { setFailed(true); return }
-      setName(''); setSources([{ id: 'main', repo: '', path: 'main' }]); setOpen(false); onCreated()
+      setName(''); setSources([emptySourceRow()]); setOpen(false); onCreated()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>
     <input aria-label={t('project.name')} placeholder={t('project.name')} value={name} onChange={event => setName(event.target.value)} style={input} />
     {sources.map((source, index) => <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <input aria-label={t('source.id')} placeholder={t('source.id')} value={source.id} onChange={event => update(index, { id: event.target.value })} style={input} />
-      <input aria-label={t('source.repo')} placeholder={t('source.repo')} value={source.repo} onChange={event => update(index, { repo: event.target.value })} style={input} />
-      <input aria-label={t('source.path')} placeholder={t('source.path')} value={source.path} onChange={event => update(index, { path: event.target.value })} style={input} />
+      <label style={field}><span style={fieldLabel}>{t('source.id')}</span>
+        <input aria-label={t('source.id')} placeholder={t('source.id')} value={source.id} onChange={event => update(index, { id: event.target.value })} style={input} />
+      </label>
+      <label style={field}><span style={fieldLabel}>{t('source.repo')}</span>
+        <input aria-label={t('source.repo')} placeholder={t('source.repo')} value={source.repo} onChange={event => update(index, { repo: event.target.value })} style={input} />
+      </label>
+      <label style={field}><span style={fieldLabel}>{t('source.path')}</span>
+        <input aria-label={t('source.path')} placeholder={t('source.path')} value={source.path} onChange={event => update(index, { path: event.target.value })} style={input} />
+      </label>
       {sources.length > 1 && <button type="button" style={button} onClick={() => setSources(current => current.filter((_source, at) => at !== index))}>{t('source.remove')}</button>}
     </div>)}
     <div style={{ display: 'flex', gap: 8 }}>
-      <button type="button" style={button} onClick={() => setSources(current => [...current, { id: `source${current.length + 1}`, repo: '', path: `source${current.length + 1}` }])}>{t('source.add')}</button>
+      <button type="button" style={button} onClick={() => setSources(current => [...current, emptySourceRow()])}>{t('source.add')}</button>
     </div>
     {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
     <div style={{ display: 'flex', gap: 8 }}>

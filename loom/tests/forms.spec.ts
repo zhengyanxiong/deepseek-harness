@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { LockButton, ProjectForm, TaskForm, projectRequest, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
+import { LockButton, ProjectForm, TaskForm, emptySourceRow, projectRequest, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
 import { en, zh, type LoomKey } from '../src/client/locales.ts'
 import type { ProjectRecord, VersionRecord } from 'dsh-loom/types'
 const t = (key: LoomKey) => en[key]
@@ -20,6 +20,9 @@ const version: VersionRecord = {
   name: 'v1',
   sources: [{ sourceId: brandString<'loom.source'>('web'), ref: 'main' }],
 }
+it('starts a repository row empty instead of pre-filling placeholder values', () => {
+  expect(emptySourceRow()).toEqual({ id: '', repo: '', path: '' })
+})
 it('trims project fields and detaches an empty module list', () => {
   expect(projectRequest('  Shop  ', [{ id: ' main ', repo: ' /repo/shop ', path: ' shop ' }]))
     .toEqual({ name: 'Shop', sources: [{ id: 'main', repo: '/repo/shop', path: 'shop' }], modules: [] })
