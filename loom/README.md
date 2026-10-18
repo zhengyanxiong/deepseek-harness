@@ -11,6 +11,8 @@ This directory contains the in-progress Loom bundle, domain model, storage, loca
 - Project configuration JSON is admitted through the same parser as manual creation, previewed with repositories and modules, and saved only after explicit confirmation; importing never fetches repositories or runs scripts.
 - The context panel shows the version's repositories and Lock baselines; the task detail shows the append-only attempt history.
 - The settings overlay persists the default view, board layout, context visibility and pinned-project list in the browser only.
+- The workbench narrows the side panels below 1180px, moves the project tree into a drawer below 940px, and hides the context aside below 760px.
+- New temporary sessions run in the newest active Loom workspace without belonging to a version or task.
 - A new task may explicitly reuse another task's idle workspace from the same version and Lock; the Host refuses while any other task is running on it or an Agent still owns its execution.
 - Each repository worktree is attached to a deterministic version-owned branch (`loom/<version>/<source>-<workspace>`) created at the Lock commit, so code lives on a real branch rather than a detached HEAD. Existing registered workspaces are attached to a branch at startup or before their next start without changing their files; branches Loom created are removed with the workspace.
 - Workspace execution ownership uses generation tokens, FIFO waiting and confirmed-stop takeover.
