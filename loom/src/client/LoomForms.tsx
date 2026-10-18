@@ -1,4 +1,4 @@
-/** Inline creation forms for Loom projects, versions and tasks. */
+/** Inline creation and edit forms for Loom projects, versions and tasks. */
 import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
