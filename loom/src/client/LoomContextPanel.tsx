@@ -33,6 +33,8 @@ function Row({ k, v }: { k: string; v: string }) {
  */
 export function LoomContextPanel({ t, snapshot, project, version, task, generateLock, onLockChanged }: LoomContextPanelProps) {
   const lock = currentLock(snapshot, task)
+  const versionLocks = version === undefined ? [] : snapshot.locks.filter(candidate => candidate.versionId === version.id)
+  const displayLock = lock ?? versionLocks.at(-1)
   const workspace = currentWorkspace(snapshot, task)
   const sessions = boundSessions(snapshot).filter(row => row.task.id === task?.id)
   const refs = version?.sources.map(source => `${source.sourceId}@${source.ref}`).join(' · ') ?? ''
@@ -44,17 +46,27 @@ export function LoomContextPanel({ t, snapshot, project, version, task, generate
       {project === undefined ? <p style={metaLine}>{t('ctx.none')}</p> : <>
         <Row k={t('top.project')} v={project.config.name} />
         <Row k={t('top.version')} v={version === undefined ? '—' : refs === '' ? version.name : `${version.name} · ${refs}`} />
-        <Row k={t('ctx.lock')} v={shortCommit(lock) ?? '—'} />
+        <Row k={t('ctx.lock')} v={shortCommit(displayLock) ?? '—'} />
         <Row k={t('ctx.workspace')} v={workspace?.path ?? '—'} />
         <Row k={t('ctx.branch')} v={Object.values(workspace?.branches ?? {}).join(' · ') || '—'} />
         <Row k={t('ctx.status')} v={task === undefined ? '—' : t(STATUS_META[task.status].key)} />
-        <Row k={t('task.priority')} v={t(PRIORITY_META[priority].key)} />
-        <Row k={t('task.modules')} v={taskModules.length === 0 ? '—' : taskModules.join(' · ')} />
+        {task !== undefined && <>
+          <Row k={t('task.priority')} v={t(PRIORITY_META[priority].key)} />
+          <Row k={t('task.modules')} v={taskModules.length === 0 ? '—' : taskModules.join(' · ')} />
+        </>}
         <Row k={t('sessions')} v={String(sessions.length)} />
         {task?.description !== undefined && task.description !== '' && <p style={{ margin: '8px 0 0', padding: '7px 9px', borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, fontSize: 11.5, lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{task.description}</p>}
         {version !== undefined && <LockButton t={t} version={version} generate={generateLock} onCreated={onLockChanged} />}
       </>}
     </section>
+    {version !== undefined && <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>
+      <h4 style={sectionTitle}>{t('version.title')}</h4>
+      <Row k={t('version.name')} v={version.name} />
+      <Row k={t('version.repositories')} v={String(version.sources.length)} />
+      {version.sources.map(source => <Row key={source.sourceId} k={source.sourceId} v={source.ref} />)}
+      <Row k={t('lock.title')} v={String(versionLocks.length)} />
+      {displayLock?.repositories.map(repository => <Row key={repository.sourceId} k={repository.sourceId} v={repository.commit.slice(0, 8)} />)}
+    </section>}
     {project !== undefined && <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>
       <h4 style={sectionTitle}>{t('ctx.modules')}</h4>
       {project.config.modules.length === 0 && <p style={metaLine}>{t('side.empty')}</p>}

@@ -8,7 +8,7 @@ import type {
 import type { LoomKey } from './locales.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { currentExecution } from './projection.ts'
-import { failureKey, shortCommit } from './shell.ts'
+import { failureKey, shortCommit, STATUS_META } from './shell.ts'
 
 type Translate = (key: LoomKey) => string
 
@@ -124,10 +124,25 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
       actions.onChanged()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
+  const history = [...task.attempts].reverse()
   return <div>
     <p style={{ margin: '0 0 4px' }}>{t('attempt.current')}: {task.attempts.length}</p>
     {workspace !== undefined && <p style={{ margin: 0, overflowWrap: 'anywhere' }}>{t('workspace.path')}: {workspace.path}</p>}
     {current !== undefined && current.sessionIds.length > 0 && <p style={{ margin: 0, overflowWrap: 'anywhere' }}>{t('session.title')}: {current.sessionIds.length}</p>}
+    {history.length > 0 && <div style={box}>
+      <p style={{ ...alert, margin: 0, fontWeight: 600, color: 'var(--dsw-alias-label-secondary)' }}>{t('task.history')}</p>
+      {history.map((attempt) => {
+        const number = task.attempts.indexOf(attempt) + 1
+        const attemptWorkspace = snapshot.workspaces.find(candidate => candidate.id === attempt.workspaceId)
+        return <div key={attempt.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 11.5, color: attempt.id === current?.id ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)' }}>
+          <span style={{ fontFamily: 'ui-monospace, monospace' }}>#{number}</span>
+          <span style={{ color: STATUS_META[attempt.status].color }}>{t(STATUS_META[attempt.status].key)}</span>
+          <span style={{ fontFamily: 'ui-monospace, monospace' }}>{shortCommit(attempt.lock) ?? '—'}</span>
+          <span style={{ overflowWrap: 'anywhere' }}>{attemptWorkspace?.path ?? '—'}</span>
+          <span>{t('sessions')}: {attempt.sessionIds.length}</span>
+        </div>
+      })}
+    </div>}
     {(task.status === 'pending' || task.status === 'failed') && version !== undefined && <StartForm t={t} task={task} snapshot={snapshot} versionId={version.id} actions={actions} />}
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
       {task.status === 'running' && <>

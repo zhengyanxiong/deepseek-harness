@@ -11,7 +11,7 @@ import type {
   PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskPriority, TaskRecord, TransitionTaskRequest, VersionRecord,
   WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
 } from 'dsh-loom/types'
-import { ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
+import { ImportProjectForm, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
@@ -51,7 +51,7 @@ type CatalogState =
   | { readonly status: 'error' }
   | { readonly status: 'ready'; readonly snapshot: CatalogSnapshot }
 type View = 'workbench' | 'kanban'
-type CreateKind = 'project' | 'version' | 'task'
+type CreateKind = 'project' | 'import' | 'version' | 'task'
 
 const frame: CSSProperties = { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: COLORS.text, background: COLORS.bg, fontSize: 13, overflow: 'hidden' }
 const topbar: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, height: 44, padding: '0 12px', background: COLORS.panel, borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none', position: 'relative', zIndex: 20 }
@@ -261,6 +261,12 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       if (result.ok) setAttempt(current => current + 1)
     } catch { /* the next snapshot keeps the authoritative status */ }
   }
+  async function moveTask(record: TaskRecord, target: TaskRecord['status']): Promise<void> {
+    try {
+      const result = await transitionTask({ taskId: record.id, target, actor: 'human' })
+      if (result.ok) setAttempt(current => current + 1)
+    } catch { /* the next snapshot keeps the authoritative status */ }
+  }
   function openCreate(kind: CreateKind): void { setCreate(kind); setMenuOpen(false) }
   const selectedSessionTitle = selected === undefined ? undefined : sessions.byId[selected]?.displayTitle
   const headerTitle = detailTask?.title ?? selectedSessionTitle ?? t('conv.titleFallback')
@@ -311,8 +317,9 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       <span style={{ flex: 1 }} />
       <div style={{ position: 'relative' }}>
         <button type="button" aria-label={t('top.new')} aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: COLORS.accent, color: '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700 }}>＋</button>
-        {menuOpen && <div style={{ position: 'absolute', top: 32, right: 0, width: 160, background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, padding: 4, display: 'flex', flexDirection: 'column', zIndex: 40, boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
+        {menuOpen && <div style={{ position: 'absolute', top: 32, right: 0, width: 210, background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, padding: 4, display: 'flex', flexDirection: 'column', zIndex: 40, boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
           <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px' }} onClick={() => openCreate('project')}>{t('top.newProject')}</button>
+          <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px' }} onClick={() => openCreate('import')}>{t('project.import')}</button>
           <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px', opacity: createDisabledVersion ? 0.45 : 1 }} disabled={createDisabledVersion} onClick={() => openCreate('version')}>{t('top.newVersion')}</button>
           <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px', opacity: createDisabledTask ? 0.45 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>{t('top.newTask')}</button>
         </div>}
@@ -404,6 +411,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             onModule={setFilterModule}
             onSearch={setKbSearch}
             onSelect={selectTask}
+            onMove={(record, target) => { void moveTask(record, target) }}
             onNewCard={(projectRecord) => {
               const latest = createVersionFor(projectRecord)
               setProject(projectRecord.id)
@@ -478,10 +486,11 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     {create !== undefined && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 60 }} onClick={() => setCreate(undefined)}>
       <div style={{ width: 380, maxWidth: '92%', height: '100%', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}`, padding: 16, overflowY: 'auto' }} onClick={event => event.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-          <strong style={{ fontSize: 14 }}>{create === 'project' ? t('top.newProject') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
+          <strong style={{ fontSize: 14 }}>{create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
           <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => setCreate(undefined)}>{t('form.close')}</button>
         </div>
         {create === 'project' && <ProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'import' && <ImportProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'version' && currentProject !== undefined && <VersionForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} project={currentProject} create={createVersion} onCreated={created => { setVersion(created.id); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'task' && currentVersion !== undefined && currentVersionProject !== undefined && <TaskForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} version={currentVersion} project={currentVersionProject} create={createTask} onCreated={created => { setTask(created); setView('workbench'); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'version' && currentProject === undefined && <p style={note}>{t('project.select')}</p>}

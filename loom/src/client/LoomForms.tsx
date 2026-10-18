@@ -1,10 +1,12 @@
 /** Inline creation forms for Loom projects, versions and tasks. */
-import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ModuleConfig,
   ProjectConfig, ProjectRecord, SourceConfig, TaskRecord, TaskPriority, VersionRecord,
 } from 'dsh-loom/types'
+import { parseProject, ProjectError } from '../domain/project.ts'
+import { COLORS } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
@@ -353,6 +355,89 @@ export function TaskForm({ t, version, project, create, onCreated, open: control
     <div style={{ display: 'flex', gap: 8 }}>
       <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('form.create')}</button>
       <button type="button" style={button} onClick={() => { setOpen(false); setFailed(false) }}>{t('form.cancel')}</button>
+    </div>
+  </form>
+}
+
+/** One imported project file's admitted configuration or a structured rejection. */
+export type ImportProjectResult =
+  | { readonly ok: true; readonly config: ProjectConfig }
+  | { readonly ok: false; readonly reason: 'json' | 'invalid'; readonly field?: string }
+
+/**
+ * Parse an imported JSON document through the same admission rules as manual creation.
+ * @param text - File contents; no repository is fetched and no script runs.
+ * @returns normalized project configuration or a JSON/field rejection.
+ */
+export function parseImport(text: string): ImportProjectResult {
+  let value: unknown
+  try { value = JSON.parse(text) } catch { return { ok: false, reason: 'json' } }
+  try { return { ok: true, config: parseProject(value) } }
+  catch (error) {
+    if (error instanceof ProjectError) return { ok: false, reason: 'invalid', field: error.field }
+    throw error
+  }
+}
+
+interface ImportProjectFormProps {
+  t: Translate
+  create(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
+  onCreated(project: ProjectRecord): void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}
+
+/** Validate a JSON project file, preview repositories and modules, then save it explicitly. */
+export function ImportProjectForm({ t, create, onCreated, open: controlledOpen, onOpenChange }: ImportProjectFormProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
+  const [fileName, setFileName] = useState('')
+  const [result, setResult] = useState<ImportProjectResult>()
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  if (!open) return <button style={button} onClick={() => setOpen(true)}>{t('project.import')}</button>
+  async function choose(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0]
+    if (file === undefined) return
+    setFileName(file.name); setFailed(false)
+    setResult(parseImport(await file.text()))
+  }
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault()
+    if (result?.ok !== true) { setFailed(true); return }
+    setBusy(true); setFailed(false)
+    try {
+      const created = await create(result.config)
+      if (!created.ok) { setFailed(true); return }
+      setBusy(false); setResult(undefined); setFileName(''); setOpen(false); onCreated(created.value)
+    } catch { setFailed(true); setBusy(false) }
+  }
+  return <form style={box} onSubmit={event => { void submit(event) }}>
+    <label style={field}><span style={fieldLabel}>{t('project.importFile')}</span>
+      <input aria-label={t('project.importFile')} type="file" accept=".json,application/json" onChange={event => { void choose(event) }} style={input} />
+    </label>
+    {fileName !== '' && <p style={alert}>{fileName}</p>}
+    {result?.ok === false && <p role="alert" style={alert}>{result.reason === 'json' ? t('project.importJsonInvalid') : `${t('project.importInvalid')}${result.field === undefined ? '' : ` (${result.field})`}`}</p>}
+    {result?.ok === true && <>
+      <p style={fieldLabel}>{t('project.importHint')}</p>
+      <div style={field}><span style={fieldLabel}>{t('project.name')}</span><span>{result.config.name}</span></div>
+      <div style={field}><span style={fieldLabel}>{t('project.importSources')}</span>
+        {result.config.sources.map(source => <div key={source.id} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 12 }}>
+          <span style={{ color: COLORS.cyan }}>{source.id}</span><span>{source.repo}</span><span style={{ color: COLORS.dim }}>→ {source.path}</span>
+        </div>)}
+      </div>
+      <div style={field}><span style={fieldLabel}>{t('project.importModules')}</span>
+        {result.config.modules.length === 0 && <span style={alert}>{t('module.optional')}</span>}
+        {result.config.modules.map(module => <div key={module.id} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 12 }}>
+          <span style={{ color: COLORS.cyan }}>{module.id}</span><span>{module.sourceId} / {module.path}</span>
+        </div>)}
+      </div>
+    </>}
+    {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
+    <div style={{ display: 'flex', gap: 8 }}>
+      <button type="submit" style={button} disabled={busy || result?.ok !== true}>{busy ? t('form.submitPending') : t('project.importConfirm')}</button>
+      <button type="button" style={button} onClick={() => { setOpen(false); setResult(undefined); setFileName(''); setFailed(false) }}>{t('form.cancel')}</button>
     </div>
   </form>
 }

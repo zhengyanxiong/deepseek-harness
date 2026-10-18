@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { LockButton, ProjectForm, TaskForm, emptySourceRow, projectRequest, sourceIds, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
+import { ImportProjectForm, LockButton, ProjectForm, TaskForm, emptySourceRow, parseImport, projectRequest, sourceIds, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
 import { en, zh, type LoomKey } from '../src/client/locales.ts'
 import type { ProjectRecord, VersionRecord } from 'dsh-loom/types'
 const t = (key: LoomKey) => en[key]
@@ -59,12 +59,20 @@ it('submits task metadata only when it differs from the defaults', () => {
   expect(taskRequest(version, 'Checkout', { description: ' ', priority: 'normal', moduleIds: [] }))
     .toEqual({ versionId: version.id, title: 'Checkout' })
 })
+it('imports a project through the same admission rules without side effects', () => {
+  const text = JSON.stringify({ name: ' Shop ', sources: [{ id: 'web', repo: '/repos/web', path: 'web' }], modules: [{ id: 'api', sourceId: 'web', path: 'src/api' }] })
+  expect(parseImport(text)).toEqual({ ok: true, config: { name: ' Shop ', sources: [{ id: 'web', repo: '/repos/web', path: 'web' }], modules: [{ id: 'api', sourceId: 'web', path: 'src/api' }] } })
+  expect(parseImport('{')).toEqual({ ok: false, reason: 'json' })
+  expect(parseImport(JSON.stringify({ name: 'Shop', sources: [], modules: [], extra: true }))).toEqual({ ok: false, reason: 'invalid', field: 'project' })
+  expect(parseImport(JSON.stringify({ name: 'Shop', sources: [{ id: 'web', repo: '/repos/web', path: 'web' }], modules: [{ id: 'api', sourceId: 'missing', path: 'src' }] }))).toEqual({ ok: false, reason: 'invalid', field: 'modules.0.sourceId' })
+})
 it('renders creation entry points with locale-owned labels', () => {
   const html = renderToStaticMarkup(createElement('div', null,
     createElement(ProjectForm, { t, create: () => Promise.reject(new Error('unused')), onCreated: () => {} }),
     createElement(TaskForm, { t, version, project, create: () => Promise.reject(new Error('unused')), onCreated: () => {} }),
+    createElement(ImportProjectForm, { t, open: true, create: () => Promise.reject(new Error('unused')), onCreated: () => {} }),
     createElement(LockButton, { t, version, generate: () => Promise.reject(new Error('unused')), onCreated: () => {} })))
-  for (const label of [en['project.new'], en['task.new'], en['lock.new']]) expect(html).toContain(label)
+  for (const label of [en['project.new'], en['task.new'], en['lock.new'], en['project.importFile']]) expect(html).toContain(label)
   const chinese = renderToStaticMarkup(createElement(ProjectForm, { t: key => zh[key], create: () => Promise.reject(new Error('unused')), onCreated: () => {} }))
   expect(chinese).toContain(zh['project.new'])
 })

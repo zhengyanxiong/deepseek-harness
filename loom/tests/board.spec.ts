@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { TaskRecord } from '../src/host/catalog.ts'
 import { projectBoard } from '../src/client/board.ts'
+import { canMoveTask } from '../src/client/shell.ts'
 const task = (id: string, title: string, status: TaskRecord['status'], version = 'v1'): TaskRecord => ({ id: brandString<TaskRecord['id']>(id), versionId: brandString<TaskRecord['versionId']>(version), title, status, attempts: [] })
 it('keeps all five business-state columns including empty ones', () => {
   const board = projectBoard([task('t1', 'Checkout', 'running')], {})
@@ -16,4 +17,13 @@ it('filters by fixed version and case-insensitive task title', () => {
 })
 it('does not infer task status from session or execution state', () => {
   expect(projectBoard([task('t', 'Review', 'review')], {})[2]?.tasks[0]?.status).toBe('review')
+})
+
+it('allows only review-flow drag transitions that do not allocate a new round', () => {
+  expect(canMoveTask('running', 'review')).toBe(true)
+  expect(canMoveTask('running', 'failed')).toBe(true)
+  expect(canMoveTask('review', 'running')).toBe(true)
+  expect(canMoveTask('review', 'completed')).toBe(true)
+  expect(canMoveTask('review', 'failed')).toBe(true)
+  for (const [from, to] of [['pending', 'running'], ['running', 'completed'], ['completed', 'review'], ['failed', 'running'], ['running', 'running']] as const) expect(canMoveTask(from, to)).toBe(false)
 })

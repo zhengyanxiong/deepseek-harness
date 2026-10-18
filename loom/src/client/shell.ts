@@ -35,6 +35,12 @@ export const STATUS_META: Readonly<Record<TaskStatus, { readonly key: LoomKey; r
 /** Status order shown by the board and tree. */
 export const STATUS_ORDER: readonly TaskStatus[] = ['pending', 'running', 'review', 'completed', 'failed']
 
+/** Whether a human may move a card between business states without starting a new round. */
+export function canMoveTask(from: TaskStatus, to: TaskStatus): boolean {
+  return (from === 'running' && (to === 'review' || to === 'failed'))
+    || (from === 'review' && (to === 'running' || to === 'completed' || to === 'failed'))
+}
+
 /** Task priority presentation; priority never changes execution rights. */
 export const PRIORITY_META: Readonly<Record<TaskPriority, { readonly key: LoomKey; readonly color: string }>> = {
   low: { key: 'task.priority.low', color: COLORS.faint },
