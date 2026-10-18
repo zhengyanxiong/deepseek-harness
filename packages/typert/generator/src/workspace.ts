@@ -33,6 +33,16 @@ export interface WorkspaceTypertGeneratorOptions {
    * `WorkspaceAnalyzerOptions.rejectBuildOutputs`.
    */
   readonly rejectBuildOutputs?: boolean
+  /**
+   * Additional workspace-relative directories admitted as package roots; see
+   * `WorkspaceAnalyzerOptions.packageRoots`. Discovery and generation passes of
+   * one generator use the same admission set.
+   */
+  readonly packageRoots?: readonly string[]
+  /** Host aggregate path relative to the workspace root; defaults to `tsconfig.host.json`. */
+  readonly hostConfig?: string
+  /** Client aggregate path relative to the workspace root; defaults to `tsconfig.client.json`. */
+  readonly clientConfig?: string
 }
 
 /** Discover, analyze, and emit package reflection from independent faces. */
@@ -50,6 +60,14 @@ export class WorkspaceTypertGenerator {
     private readonly options: WorkspaceTypertGeneratorOptions = {},
   ) {}
 
+  /** Configured aggregate paths shared by discovery and generation passes. */
+  private faceConfigs(): { hostConfig?: string; clientConfig?: string } {
+    return {
+      ...(this.options.hostConfig === undefined ? {} : { hostConfig: this.options.hostConfig }),
+      ...(this.options.clientConfig === undefined ? {} : { clientConfig: this.options.clientConfig }),
+    }
+  }
+
   /**
    * Find public package faces that contribute Cordis services/events or
    * explicitly tagged Typert roots.
@@ -65,6 +83,8 @@ export class WorkspaceTypertGenerator {
       root: this.root,
       caches: this.caches,
       ...(faces === undefined ? {} : { faces }),
+      ...this.faceConfigs(),
+      ...(this.options.packageRoots === undefined ? {} : { packageRoots: this.options.packageRoots }),
     }).discoverPackages(includeManifest)
   }
 
@@ -82,8 +102,10 @@ export class WorkspaceTypertGenerator {
       packages: contributors,
       caches: this.caches,
       ...(faces === undefined ? {} : { faces }),
+      ...this.faceConfigs(),
       ...(this.options.checkDiagnostics === undefined ? {} : { checkDiagnostics: this.options.checkDiagnostics }),
       ...(this.options.rejectBuildOutputs === undefined ? {} : { rejectBuildOutputs: this.options.rejectBuildOutputs }),
+      ...(this.options.packageRoots === undefined ? {} : { packageRoots: this.options.packageRoots }),
     }).analyze()
     const artifacts: WorkspaceEmitResult[] = []
     for (const face of workspace.faces) {

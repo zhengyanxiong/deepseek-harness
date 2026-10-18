@@ -1007,6 +1007,37 @@ export class DuplicateGoalService extends TypertRemoteService {
   })
 })
 
+describe('additional package roots', () => {
+  it('admits an allowlisted contributor outside packages/ and ignores it by default', () => {
+    const root = copyFixture()
+    cpSync(join(root, 'packages/remote'), join(root, 'external/remote'), { recursive: true })
+    const manifestPath = join(root, 'external/remote/package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name: string }
+    manifest.name = '@fixture/external'
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
+    writeFileSync(join(root, 'external/remote/tsconfig.json'), JSON.stringify({
+      extends: '../../tsconfig.base.json',
+      compilerOptions: { rootDir: 'src', outDir: 'lib/types', noEmit: false, declaration: true, emitDeclarationOnly: true },
+      include: ['src'],
+    }))
+    const aggregatePath = join(root, 'tsconfig.host.json')
+    const aggregate = JSON.parse(readFileSync(aggregatePath, 'utf8')) as { references: { path: string }[] }
+    aggregate.references.push({ path: './external/remote' })
+    writeFileSync(aggregatePath, JSON.stringify(aggregate, null, 2))
+    const discover = (packageRoots?: readonly string[]) => new WorkspaceAnalyzer({
+      root, hostConfig: 'tsconfig.host.json', faces: ['host'], checkDiagnostics: false,
+      ...(packageRoots === undefined ? {} : { packageRoots }),
+    }).discoverPackages().map(candidate => candidate.package)
+    expect(discover()).not.toContain('@fixture/external')
+    expect(discover(['packages', 'external'])).toContain('@fixture/external')
+  })
+  it('rejects an allowlisted root outside the workspace', () => {
+    const root = copyFixture()
+    expect(() => new WorkspaceAnalyzer({ root, faces: ['host'], checkDiagnostics: false, packageRoots: ['../outside'] }))
+      .toThrow('packageRoots')
+  })
+})
+
 function analyzeRemote(root: string, checkDiagnostics = true): ReturnType<WorkspaceAnalyzer['analyze']> {
   return new WorkspaceAnalyzer({ root, checkDiagnostics }).analyze()
 }
