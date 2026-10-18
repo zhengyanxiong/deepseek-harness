@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import type { AuditEntry } from 'dsh-loom/types'
 import { LoomDiff, type LoadWorkspaceChanges, type RenderFileDiffSlot } from './LoomDiff.tsx'
-import { AUDIT_LABEL, COLORS, metaLine } from './shell.ts'
+import { ACTOR_LABEL, AUDIT_LABEL, COLORS, metaLine } from './shell.ts'
 import type { TokenUsageView } from './projection.ts'
 import type { LoomKey } from './locales.ts'
 
@@ -53,7 +53,7 @@ export function LoomBottomPanel(props: LoomBottomPanelProps): ReactNode {
             <span style={{ color: COLORS.faint, whiteSpace: 'nowrap' }}>{new Date(entry.at).toLocaleTimeString([], { hour12: false })}</span>
             <span style={{ color: COLORS.cyan, whiteSpace: 'nowrap' }}>{t(AUDIT_LABEL[entry.event])}</span>
             <span style={{ color: COLORS.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.detail ?? entry.sessionId ?? entry.taskId ?? entry.workspaceId ?? '—'}</span>
-            <span style={{ marginLeft: 'auto', color: COLORS.faint, whiteSpace: 'nowrap' }}>{entry.actor}</span>
+            <span style={{ marginLeft: 'auto', color: COLORS.faint, whiteSpace: 'nowrap' }}>{t(ACTOR_LABEL[entry.actor])}</span>
           </div>))}
       {pane === 'costs' && (usage === undefined
         ? <p style={{ ...metaLine, margin: 0 }}>{t('ctx.notTracked')}</p>

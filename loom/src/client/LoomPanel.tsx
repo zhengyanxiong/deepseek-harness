@@ -135,6 +135,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [preferences, setPreferences] = useState<LoomPreferences>(readPreferences)
   const [view, setView] = useState<View>(preferences.view)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 940)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [project, setProject] = useState<ProjectRecord['id']>()
   const [version, setVersion] = useState<VersionRecord['id']>()
   const [task, setTask] = useState<TaskRecord>()
@@ -162,6 +164,12 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [create, setCreate] = useState<CreateKind>()
   const [menuOpen, setMenuOpen] = useState(false)
   useEffect(() => { writePreferences(preferences) }, [preferences])
+  useEffect(() => {
+    const resize = (): void => setNarrow(window.innerWidth <= 940)
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [])
+  useEffect(() => { setSidebarOpen(false) }, [project, version, task])
   useEffect(() => {
     if (typeof localStorage === 'undefined') return
     try { localStorage.setItem('loom.pinnedProjects', JSON.stringify(pinnedProjects)) } catch { /* Storage can be unavailable in private browsing; pins remain in memory. */ }
@@ -303,10 +311,11 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   return <div style={frame}>
     <style>{`
       @media (max-width: 1180px) { .loom-sidebar { width: 196px !important; } .loom-aside { width: 224px !important; } }
-      @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-aside { width: 210px !important; } }
+      @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-sidebar.loom-sidebar-open { display: block !important; position: absolute; top: 44px; bottom: 0; left: 0; z-index: 70; width: 240px !important; box-shadow: 12px 0 28px rgba(0,0,0,.35); } .loom-aside { width: 210px !important; } }
       @media (max-width: 760px) { .loom-aside { display: none !important; } }
     `}</style>
     <header style={topbar}>
+      {narrow && <button type="button" aria-label={t('side.projects')} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer' }}><IconFolderOpenRegular size={14} /></button>}
       <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 14 }}>
         <span style={{ width: 20, height: 20, borderRadius: 5, background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.purple})`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff' }}>织</span>
         {t('brand')}
@@ -353,7 +362,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       <button type="button" aria-label={t('top.settings')} onClick={() => setSettingsOpen(true)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer', fontSize: 14 }}>⚙</button>
     </header>
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-      <aside className="loom-sidebar" style={sidebar}>
+      {narrow && sidebarOpen && <div aria-hidden style={{ position: 'absolute', inset: 0, top: 44, background: 'rgba(0,0,0,.35)', zIndex: 65 }} onClick={() => setSidebarOpen(false)} />}
+      <aside className={sidebarOpen && narrow ? 'loom-sidebar loom-sidebar-open' : 'loom-sidebar'} style={sidebar}>
         <section style={{ marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}><IconPinFillRegular size={13} /> {t('side.pinned')}</div>
           {(snapshot?.projects ?? []).filter(candidate => pinnedProjects.includes(candidate.id)).length === 0 && <p style={{ ...metaLine, padding: '2px 14px 6px' }}>{t('side.pinHint')}</p>}

@@ -67,6 +67,9 @@ export const AUDIT_LABEL: Readonly<Record<AuditEvent, LoomKey>> = {
   'execution.takeover-blocked': 'audit.execution.takeover-blocked',
 }
 
+/** Locale keys for durable audit actors. */
+export const ACTOR_LABEL = { human: 'actor.human', agent: 'actor.agent', system: 'actor.system' } as const
+
 /** Locale keys for workspace and catalog failures surfaced in execution forms. */
 export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   existing_root: 'error.existingRoot',
