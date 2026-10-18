@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { CatalogSnapshot, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
+import type { CatalogSnapshot, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-workloom/types'
 import { activeWorkspaceCount, aggregateTokenUsage, boardMetrics, boundSessions, currentLock, projectLanes, recentSessions, workspaceName } from '../src/client/projection.ts'
 const projectId = brandString<ProjectRecord['id']>('p1')
 const versionId = brandString<VersionRecord['id']>('v1')

@@ -14,7 +14,7 @@ import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock,
   PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskPriority, TaskRecord, TransitionTaskRequest, VersionRecord,
   WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
-} from 'dsh-loom/types'
+} from 'dsh-workloom/types'
 import { ImportProjectForm, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { LoomSettings, readPreferences, writePreferences, type LoomPreferences } from './LoomSettings.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'

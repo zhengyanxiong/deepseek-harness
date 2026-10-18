@@ -1,7 +1,7 @@
 /** Modal cleanup confirmation with native workspace Diff. */
 import { useEffect, useState, type CSSProperties } from 'react'
 import { IconFullscreenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { WorkspaceRecord } from 'dsh-loom/types'
+import type { WorkspaceRecord } from 'dsh-workloom/types'
 import { LoomDiff, type LoadWorkspaceChanges, type RenderFileDiffSlot } from './LoomDiff.tsx'
 import { failureKey } from './shell.ts'
 import type { LoomKey } from './locales.ts'

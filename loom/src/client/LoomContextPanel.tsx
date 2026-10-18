@@ -1,6 +1,6 @@
 /** Workbench context panel over the selected project, version, task and workspace. */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { CatalogSnapshot, GenerateLockRequest, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
+import type { CatalogSnapshot, GenerateLockRequest, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-workloom/types'
 import { boundSessions, currentLock, currentWorkspace, type TokenUsageView } from './projection.ts'
 import { LockButton } from './LoomForms.tsx'
 import { COLORS, metaLine, sectionTitle, shortCommit, PRIORITY_META, STATUS_META } from './shell.ts'

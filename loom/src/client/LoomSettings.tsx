@@ -1,6 +1,6 @@
 /** Loom-local preferences; no Host business state is stored here. */
 import type { CSSProperties } from 'react'
-import type { ProjectRecord } from 'dsh-loom/types'
+import type { ProjectRecord } from 'dsh-workloom/types'
 import { COLORS, metaLine } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 

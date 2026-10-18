@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
-import type { WorkspaceRepositoryChangesRecord } from 'dsh-loom/types'
+import type { WorkspaceRepositoryChangesRecord } from 'dsh-workloom/types'
 import { buildDiffTrees, diffTreeFiles, LoomDiff } from '../src/client/LoomDiff.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
 const t = (key: LoomKey) => en[key]

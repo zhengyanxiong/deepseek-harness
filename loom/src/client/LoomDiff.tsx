@@ -6,7 +6,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   WorkspaceChangesRequest, WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord,
-} from 'dsh-loom/types'
+} from 'dsh-workloom/types'
 import { LoomFileRow } from './LoomFileRow.tsx'
 import type { LoomKey } from './locales.ts'
 

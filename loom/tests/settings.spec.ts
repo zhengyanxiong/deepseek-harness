@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, expect, it, vi } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { ProjectRecord } from 'dsh-loom/types'
+import type { ProjectRecord } from 'dsh-workloom/types'
 import { DEFAULT_PREFERENCES, LoomSettings, readPreferences, writePreferences } from '../src/client/LoomSettings.tsx'
 import { en } from '../src/client/locales.ts'
 const storage = new Map<string, string>()

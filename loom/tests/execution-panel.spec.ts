@@ -5,7 +5,7 @@ import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
 import { ExecutionPanel, type ExecutionActions } from '../src/client/LoomExecution.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
 import { failureKey } from '../src/client/shell.ts'
-import type { CatalogSnapshot, Lock, TaskRecord, VersionRecord, WorkspaceRecord } from 'dsh-loom/types'
+import type { CatalogSnapshot, Lock, TaskRecord, VersionRecord, WorkspaceRecord } from 'dsh-workloom/types'
 const t = (key: LoomKey) => en[key]
 const versionId = brandString<VersionRecord['id']>('v1')
 const lock: Lock = {

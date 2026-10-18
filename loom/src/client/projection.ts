@@ -1,5 +1,5 @@
 /** Catalog projections for the Loom shell; pure functions with no Host runtime imports. */
-import type { CatalogSnapshot, ExecutionState, Lock, ProjectRecord, TaskPriority, TaskRecord, VersionRecord } from 'dsh-loom/types'
+import type { CatalogSnapshot, ExecutionState, Lock, ProjectRecord, TaskPriority, TaskRecord, VersionRecord } from 'dsh-workloom/types'
 import type { BoardColumn, BoardTask } from './board.ts'
 import { projectBoard } from './board.ts'
 

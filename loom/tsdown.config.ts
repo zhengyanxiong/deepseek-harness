@@ -1,4 +1,4 @@
-/** Independent Host/Client build for the Loom bundle. */
+/** Independent Host/Client build for the Workloom bundle. */
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve as resolvePath } from 'node:path'
 import { transform } from 'lightningcss'
@@ -14,7 +14,7 @@ const PLATFORM_MODULES = [
 const isExternal = (specifier: string): boolean =>
   PLATFORM_MODULES.some(module => specifier === module || specifier.startsWith(`${module}/`))
 
-const CSS_VIRTUAL_PREFIX = '\0dsh-loom-css:'
+const CSS_VIRTUAL_PREFIX = '\0dsh-workloom-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 
 /** Keep CSS inert at import time; the Client owner controls its mounted lifetime. */
@@ -29,7 +29,7 @@ function styleModule(css: string, classMap: Readonly<Record<string, string>>): s
 
 /** Compile plugin-owned CSS Modules without appending global style tags. */
 const cssModulesPlugin = {
-  name: 'dsh-loom-css-modules',
+  name: 'dsh-workloom-css-modules',
   resolveId(source: string, importer: string | undefined) {
     if (!source.endsWith('.module.css')) return null
     const absolute = importer === undefined ? source : resolvePath(dirname(importer), source)
@@ -77,7 +77,7 @@ export default defineConfig([
     plugins: [cssModulesPlugin],
     outputOptions: {
       entryFileNames: 'client.js',
-      banner: () => 'window.__ModuleLoader__.load({ id: "dsh-loom", factory: (require) => {',
+      banner: () => 'window.__ModuleLoader__.load({ id: "dsh-workloom", factory: (require) => {',
       footer: 'return module.exports; } });',
       intro: 'var module = { exports: {} }; var exports = module.exports;',
     },

@@ -4,7 +4,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, ExecutionRequest, ExecutionState, Lock, PrepareWorkspaceRequest,
   ReleaseExecutionRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceRecord,
-} from 'dsh-loom/types'
+} from 'dsh-workloom/types'
 import type { LoomKey } from './locales.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { currentExecution } from './projection.ts'

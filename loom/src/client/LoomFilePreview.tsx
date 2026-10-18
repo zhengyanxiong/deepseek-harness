@@ -4,7 +4,7 @@ import { CodeBlock, languageForPath } from '@deepseek-ai/dsh-client-ui-primitive
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord } from 'dsh-loom/types'
+import type { WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord } from 'dsh-workloom/types'
 import type { LoadWorkspaceChanges, NativeFileDiffInput, RenderFileDiffSlot } from './LoomDiff.tsx'
 import type { LoomKey } from './locales.ts'
 

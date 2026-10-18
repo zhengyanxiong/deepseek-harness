@@ -1,7 +1,7 @@
 /** Collapsible bottom panel: native Diff, attempt activity and unwired integrations. */
 import { useState, type ReactNode } from 'react'
 import { IconFullscreenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { AuditEntry } from 'dsh-loom/types'
+import type { AuditEntry } from 'dsh-workloom/types'
 import { LoomDiff, type LoadWorkspaceChanges, type RenderFileDiffSlot } from './LoomDiff.tsx'
 import { ACTOR_LABEL, AUDIT_LABEL, COLORS, metaLine } from './shell.ts'
 import type { TokenUsageView } from './projection.ts'

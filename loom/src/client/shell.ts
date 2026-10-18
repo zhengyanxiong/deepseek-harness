@@ -1,6 +1,6 @@
 /** Shared visual tokens and small projections for the Loom shell. */
 import type { CSSProperties } from 'react'
-import type { AuditEvent, Lock, TaskPriority } from 'dsh-loom/types'
+import type { AuditEvent, Lock, TaskPriority } from 'dsh-workloom/types'
 import type { TaskStatus } from '../domain/task.ts'
 import type { LoomKey } from './locales.ts'
 

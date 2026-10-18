@@ -1,7 +1,7 @@
 {
-  "name": "dsh-loom",
+  "name": "dsh-workloom",
   "version": "0.1.0",
-  "description": "DSH Loom project workbench and task workspace bundle.",
+  "description": "DSH Workloom project workbench and task workspace bundle.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

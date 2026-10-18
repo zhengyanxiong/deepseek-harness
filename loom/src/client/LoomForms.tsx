@@ -4,7 +4,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ModuleConfig,
   ProjectConfig, ProjectRecord, SourceConfig, TaskRecord, TaskPriority, VersionRecord,
-} from 'dsh-loom/types'
+} from 'dsh-workloom/types'
 import { parseProject, ProjectError } from '../domain/project.ts'
 import { COLORS } from './shell.ts'
 import type { LoomKey } from './locales.ts'

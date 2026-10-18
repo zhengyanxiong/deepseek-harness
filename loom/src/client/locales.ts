@@ -1,17 +1,17 @@
-/** Locale-owned copy for Loom project, task and workspace interfaces. */
+/** Locale-owned copy for Workloom project, task and workspace interfaces. */
 
-/** Namespace used by Loom slot registrations and locale dictionaries. */
+/** Namespace used by Workloom slot registrations and locale dictionaries. */
 export const NS = 'loom' as const
 
-/** Chinese Loom interface dictionary; its keys define the translation vocabulary. */
+/** Chinese Workloom interface dictionary; its keys define the translation vocabulary. */
 export const zh = {
   board: '看板', projects: '项目', searchSessions: '搜索会话', sessionUnavailable: '无法打开会话，请重试。',
   workbench: '工作台', projectsUnavailable: '项目服务尚未接入', tasksUnavailable: '任务服务尚未接入',
   sessions: '会话', noSessions: '暂无会话', chooseSession: '选择会话', untitledSession: '未命名会话',
   loading: '运行中', context: '任务上下文', diff: 'Diff', integrationUnavailable: '此功能尚未接入',
-  unboundSession: '此会话尚未绑定 Loom 任务', terminal: '终端', tests: '测试', audit: '活动记录', costs: '用量',
-  panel: '织码', title: 'Loom · 织码', subtitle: '项目、版本与任务工作区',
-  'nav.label': '织码导航', 'nav.overview': '总览', 'nav.projects': '项目', 'nav.versions': '版本',
+  unboundSession: '此会话尚未绑定 Workloom 任务', terminal: '终端', tests: '测试', audit: '活动记录', costs: '用量',
+  panel: 'Workloom', title: 'Workloom · 工作织机', subtitle: '项目、版本与任务工作区',
+  'nav.label': 'Workloom 导航', 'nav.overview': '总览', 'nav.projects': '项目', 'nav.versions': '版本',
   'nav.tasks': '任务', 'nav.workspaces': '工作区', 'nav.settings': '设置',
   'view.kanban': '看板', 'view.list': '列表', 'view.swimlane': '泳道', 'view.groupBy': '分组方式',
   'view.byProject': '按项目', 'view.byVersion': '按版本', 'view.all': '全部', 'view.search': '搜索项目或任务',
@@ -66,7 +66,7 @@ export const zh = {
   'form.submitPending': '正在保存…', 'form.retry': '重试', 'form.back': '返回', 'form.next': '下一步',
   'project.preview': '预览确认', 'project.previewHint': '确认后只保存配置，不拉取仓库或执行脚本。', 'module.optional': '业务模块可留空；模块只聚焦上下文，不裁剪工作区。',
   'state.loading': '正在加载…', 'state.empty': '暂无记录', 'state.error': '操作失败，未确认的结果不会显示为成功。',
-  'error.existingRoot': '目标目录已存在。取消“使用指定目录（高级）”，让 Loom 自动创建新目录，或换一个尚不存在的目录。',
+  'error.existingRoot': '目标目录已存在。取消“使用指定目录（高级）”，让 Workloom 自动创建新目录，或换一个尚不存在的目录。',
   'error.invalidPath': '工作区目录路径无效：必须是绝对的、尚不存在的安全路径。',
   'error.pathRegistered': '该目录已经登记为工作区，请从任务执行面板继续使用它。',
   'error.repositoryRequired': '仓库来源必须是本机存在的 Git 仓库目录。',
@@ -82,10 +82,10 @@ export const zh = {
   'error.workspaceUnpushed': '工作区存在未推送提交，清理前需要先确认处理这些提交。',
   'error.workspaceMismatch': '工作区与所选版本或 Lock 不匹配，不能继续使用。',
   'state.saved': '已保存', 'state.offline': '连接已断开，请检查连接后重试。',
-  'brand': '织码 Loom', 'top.project': '项目', 'top.version': '版本', 'top.allProjects': '全部项目', 'top.allVersions': '全部版本',
+  'brand': 'Workloom', 'top.project': '项目', 'top.version': '版本', 'top.allProjects': '全部项目', 'top.allVersions': '全部版本',
   'top.activeWorkspaces': '活跃工作区', 'top.new': '新建', 'top.settings': '设置',
   'top.newProject': '新建项目', 'top.newVersion': '新建版本', 'top.newTask': '新建任务',
-  'settings.title': 'Loom 设置', 'settings.defaultView': '默认视图', 'settings.kanbanMode': '看板默认布局', 'settings.contextOpen': '默认显示上下文面板', 'settings.pinned': '置顶项目', 'settings.noPins': '暂无置顶项目。', 'settings.unpin': '取消置顶', 'settings.localOnly': '这些偏好只保存在当前浏览器，不写入项目或会话数据。',
+  'settings.title': 'Workloom 设置', 'settings.defaultView': '默认视图', 'settings.kanbanMode': '看板默认布局', 'settings.contextOpen': '默认显示上下文面板', 'settings.pinned': '置顶项目', 'settings.noPins': '暂无置顶项目。', 'settings.unpin': '取消置顶', 'settings.localOnly': '这些偏好只保存在当前浏览器，不写入项目或会话数据。',
   'side.pinned': '置顶项目', 'side.pin': '置顶项目', 'side.unpin': '取消置顶', 'side.pinHint': '点击项目右侧的置顶按钮。', 'side.projects': '项目', 'side.tasks': '任务', 'side.loose': '散会话',
   'side.newProject': '新建项目 / 从模板创建', 'side.newTask': '新建任务会话', 'side.newTemporary': '新建临时会话', 'side.empty': '暂无', 'side.recent': '最近 5 个', 'session.current': '当前会话',
   'ctx.project': '项目上下文', 'ctx.lock': '锁定 commit', 'ctx.workspace': '工作区', 'ctx.branch': '工作区分支', 'ctx.noBranch': '未记录分支', 'ctx.status': '状态',
@@ -99,18 +99,18 @@ export const zh = {
   'workspace.open': '工作区',
 } as const
 
-/** Accepted Loom translation key. */
+/** Accepted Workloom translation key. */
 export type LoomKey = keyof typeof zh
 
-/** English counterpart; compilation requires a translation for every Loom key. */
+/** English counterpart; compilation requires a translation for every Workloom key. */
 export const en: Record<LoomKey, string> = {
   board: 'Board', projects: 'Projects', searchSessions: 'Search sessions', sessionUnavailable: 'Unable to open this session. Please retry.',
   workbench: 'Workbench', projectsUnavailable: 'Project service is not connected', tasksUnavailable: 'Task service is not connected',
   sessions: 'Sessions', noSessions: 'No sessions', chooseSession: 'Select a session', untitledSession: 'Untitled session',
   loading: 'Running', context: 'Task context', diff: 'Diff', integrationUnavailable: 'This capability is not connected',
-  unboundSession: 'This session is not linked to a Loom task', terminal: 'Terminal', tests: 'Tests', audit: 'Activity', costs: 'Usage',
-  panel: 'Loom', title: 'Loom', subtitle: 'Projects, versions and task workspaces',
-  'nav.label': 'Loom navigation', 'nav.overview': 'Overview', 'nav.projects': 'Projects', 'nav.versions': 'Versions',
+  unboundSession: 'This session is not linked to a Workloom task', terminal: 'Terminal', tests: 'Tests', audit: 'Activity', costs: 'Usage',
+  panel: 'Workloom', title: 'Workloom', subtitle: 'Projects, versions and task workspaces',
+  'nav.label': 'Workloom navigation', 'nav.overview': 'Overview', 'nav.projects': 'Projects', 'nav.versions': 'Versions',
   'nav.tasks': 'Tasks', 'nav.workspaces': 'Workspaces', 'nav.settings': 'Settings',
   'view.kanban': 'Kanban', 'view.list': 'List', 'view.swimlane': 'Swimlanes', 'view.groupBy': 'Group by',
   'view.byProject': 'Project', 'view.byVersion': 'Version', 'view.all': 'All', 'view.search': 'Search projects or tasks',
@@ -138,7 +138,7 @@ export const en: Record<LoomKey, string> = {
   'attempt.title': 'Execution attempts', 'attempt.current': 'Current attempt', 'attempt.previous': 'Previous attempts',
   'attempt.restartHint': 'A new attempt preserves history and can only use a Lock from the same version.',
   'workspace.title': 'Workspaces', 'workspace.new': 'Create independent workspace', 'workspace.reuse': 'Reuse workspace',
-  'workspace.select': 'Select workspace', 'workspace.path': 'Workspace root (absolute path)', 'workspace.auto': 'Loom creates an isolated workspace automatically; its path appears in task details.', 'workspace.custom': 'Use a specific directory (advanced)', 'workspace.absoluteRequired': 'The workspace root must be a new absolute path.', 'workspace.empty': 'No workspaces yet.',
+  'workspace.select': 'Select workspace', 'workspace.path': 'Workspace root (absolute path)', 'workspace.auto': 'Workloom creates an isolated workspace automatically; its path appears in task details.', 'workspace.custom': 'Use a specific directory (advanced)', 'workspace.absoluteRequired': 'The workspace root must be a new absolute path.', 'workspace.empty': 'No workspaces yet.',
   'workspace.details': 'Workspace details', 'workspace.repositories': 'Repository directories', 'workspace.changes': 'Code changes',
   'workspace.uncommitted': 'Uncommitted changes', 'workspace.unpushed': 'Unpushed commits', 'workspace.associations': 'Linked tasks and sessions',
   'workspace.retained': 'Workspaces are retained by default', 'workspace.cleanup': 'Clean up workspace', 'workspace.cleanupConfirm': 'Confirm workspace cleanup',
@@ -165,7 +165,7 @@ export const en: Record<LoomKey, string> = {
   'form.submitPending': 'Saving…', 'form.retry': 'Retry', 'form.back': 'Back', 'form.next': 'Next',
   'project.preview': 'Preview', 'project.previewHint': 'Saving keeps the configuration only; no repository is fetched and no script runs.', 'module.optional': 'Modules are optional; they focus context and do not trim the workspace.',
   'state.loading': 'Loading…', 'state.empty': 'No records', 'state.error': 'Operation failed. Unconfirmed outcomes are not shown as successful.',
-  'error.existingRoot': 'The target directory already exists. Turn off “Use a specific directory (advanced)” so Loom creates a new one, or choose a directory that does not exist yet.',
+  'error.existingRoot': 'The target directory already exists. Turn off “Use a specific directory (advanced)” so Workloom creates a new one, or choose a directory that does not exist yet.',
   'error.invalidPath': 'The workspace root is invalid: it must be a new absolute path.',
   'error.pathRegistered': 'That directory is already a registered workspace. Continue it from the task execution panel instead.',
   'error.repositoryRequired': 'A repository source must be an existing local Git repository directory.',
@@ -176,14 +176,14 @@ export const en: Record<LoomKey, string> = {
   'error.invalidTask': 'The task fields are invalid: check that modules belong to this project and that priority and description are within limits.',
   'error.workspaceBusy': 'The workspace is still used by a running task. Stop or wait for that task first.',
   'error.workspaceTaskRunning': 'Another task is already running or executing in this workspace. Wait for it to finish, or choose another workspace.',
-  'error.workspaceBranchFailed': 'Loom could not create or record a Git branch for this workspace. Check that its repositories are available, the branch name is free, and its directories exist.',
+  'error.workspaceBranchFailed': 'Workloom could not create or record a Git branch for this workspace. Check that its repositories are available, the branch name is free, and its directories exist.',
   'error.workspaceChanges': 'The workspace has uncommitted changes. Confirm their handling before cleaning up.',
   'error.workspaceUnpushed': 'The workspace has unpushed commits. Confirm their handling before cleaning up.',
   'error.workspaceMismatch': 'The workspace does not match the selected version or Lock.',
-  'state.saved': 'Saved', 'state.offline': 'Disconnected. Check the connection and retry.',  'brand': 'Loom', 'top.project': 'Project', 'top.version': 'Version', 'top.allProjects': 'All projects', 'top.allVersions': 'All versions',
+  'state.saved': 'Saved', 'state.offline': 'Disconnected. Check the connection and retry.',  'brand': 'Workloom', 'top.project': 'Project', 'top.version': 'Version', 'top.allProjects': 'All projects', 'top.allVersions': 'All versions',
   'top.activeWorkspaces': 'active workspaces', 'top.new': 'New', 'top.settings': 'Settings',
   'top.newProject': 'New project', 'top.newVersion': 'New version', 'top.newTask': 'New task',
-  'settings.title': 'Loom settings', 'settings.defaultView': 'Default view', 'settings.kanbanMode': 'Default board layout', 'settings.contextOpen': 'Show the context panel by default', 'settings.pinned': 'Pinned projects', 'settings.noPins': 'No pinned projects.', 'settings.unpin': 'Unpin', 'settings.localOnly': 'These preferences stay in this browser and are not written into project or Session data.',
+  'settings.title': 'Workloom settings', 'settings.defaultView': 'Default view', 'settings.kanbanMode': 'Default board layout', 'settings.contextOpen': 'Show the context panel by default', 'settings.pinned': 'Pinned projects', 'settings.noPins': 'No pinned projects.', 'settings.unpin': 'Unpin', 'settings.localOnly': 'These preferences stay in this browser and are not written into project or Session data.',
   'side.pinned': 'Pinned projects', 'side.pin': 'Pin project', 'side.unpin': 'Unpin project', 'side.pinHint': 'Click the pin button next to a project to pin it.', 'side.projects': 'Projects', 'side.tasks': 'Tasks', 'side.loose': 'Loose sessions',
   'side.newProject': 'New project / from template', 'side.newTask': 'New task session', 'side.newTemporary': 'New temporary session', 'side.empty': 'None', 'side.recent': 'Latest 5', 'session.current': 'Current session',
   'ctx.project': 'Project context', 'ctx.lock': 'Locked commit', 'ctx.workspace': 'Workspace', 'ctx.branch': 'Workspace branches', 'ctx.noBranch': 'No branch recorded', 'ctx.status': 'Status',

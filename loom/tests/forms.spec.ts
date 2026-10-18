@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ImportProjectForm, LockButton, ProjectForm, TaskForm, emptySourceRow, parseImport, projectRequest, sourceIds, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
 import { en, zh, type LoomKey } from '../src/client/locales.ts'
-import type { ProjectRecord, VersionRecord } from 'dsh-loom/types'
+import type { ProjectRecord, VersionRecord } from 'dsh-workloom/types'
 const t = (key: LoomKey) => en[key]
 const project: ProjectRecord = {
   id: brandString<ProjectRecord['id']>('p1'),

@@ -1,7 +1,7 @@
 /** Kanban view with metrics, project swimlanes and the overview panel. */
 import { useRef, type CSSProperties } from 'react'
 import { IconFolderCloseRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { CatalogSnapshot, ProjectRecord, TaskRecord } from 'dsh-loom/types'
+import type { CatalogSnapshot, ProjectRecord, TaskRecord } from 'dsh-workloom/types'
 import type { BoardColumn } from './board.ts'
 import { boardMetrics, boundSessions, flatBoard, projectLanes, type ShellFilter } from './projection.ts'
 import { canMoveTask, cardCount, COLORS, metaLine, pill, sectionTitle, select, shortCommit, PRIORITY_META, STATUS_META, STATUS_ORDER } from './shell.ts'

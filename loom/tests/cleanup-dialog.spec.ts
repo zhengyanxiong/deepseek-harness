@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { WorkspaceRecord } from 'dsh-loom/types'
+import type { WorkspaceRecord } from 'dsh-workloom/types'
 import { LoomCleanupDialog } from '../src/client/LoomCleanupDialog.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
 const t = (key: LoomKey) => en[key]
