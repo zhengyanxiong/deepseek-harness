@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { createCatalog, type Catalog } from './catalog.ts'
 import type {
   AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest,
-  PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest,
+  PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceChangesRequest, WorkspaceRepositoryChangesRecord,
   VersionRecord, WorkspaceRecord,
 } from '../types.ts'
 import type { Lock } from '../domain/task.ts'
@@ -30,6 +30,7 @@ const workspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, l
 const attemptRequest = z.strictObject({ taskId: nonempty, workspaceId: nonempty })
 const sessionRequest = z.strictObject({ taskId: nonempty, sessionId: nonempty })
 const transitionRequest = z.strictObject({ taskId: nonempty, target: z.enum(['pending', 'running', 'review', 'completed', 'failed']), actor: z.enum(['human', 'agent']) })
+const workspaceChangesRequest = z.strictObject({ workspaceId: nonempty })
 
 declare module '@deepseek-ai/cordis' { interface Context { loom: LoomService } }
 
@@ -111,6 +112,12 @@ export default class LoomService extends TypertRemoteService {
         lockId: brandString<Lock['id']>(parsed.lockId),
       })
     })
+  }
+
+  /** Read every repository's changes against a workspace Lock. @param request - prepared workspace identity. @returns changed files and hunks per repository. */
+  @Remote
+  workspaceChanges(request: WorkspaceChangesRequest): Promise<{ repositories: WorkspaceRepositoryChangesRecord[] }> {
+    return this.run(catalog => catalog.workspaceChanges(brandString<WorkspaceRecord['id']>(workspaceChangesRequest.parse(request).workspaceId)))
   }
 
   /** Record a prepared workspace whose files already exist. @param request - absolute path and owning baseline. @returns persisted workspace. */

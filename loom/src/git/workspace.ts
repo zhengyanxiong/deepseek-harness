@@ -165,3 +165,98 @@ export async function prepareWorkspace(root: string, repositories: readonly Work
     throw new WorkspacePreparationError('worktree_add_failed', rollbackErrors, error)
   }
 }
+
+/** One changed file between a Lock commit and the worktree's current state. */
+export interface WorkspaceFileChange {
+  readonly path: string
+  readonly added: number
+  readonly deleted: number
+  readonly binary: boolean
+  readonly hunks: readonly WorkspaceFileHunk[]
+}
+/** One unified hunk with absolute line numbers, matching the native diff view's input. */
+export interface WorkspaceFileHunk {
+  readonly oldStart: number
+  readonly oldLines: number
+  readonly newStart: number
+  readonly newLines: number
+  readonly lines: readonly string[]
+}
+/** One repository's working-tree changes since its Lock commit. */
+export interface WorkspaceRepositoryChanges {
+  readonly repo: string
+  readonly directory: string
+  readonly files: readonly WorkspaceFileChange[]
+}
+const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/u
+
+function parseDiff(text: string): WorkspaceFileChange[] {
+  const files: WorkspaceFileChange[] = []
+  let path: string | undefined
+  let added = 0
+  let deleted = 0
+  let binary = false
+  let hunks: WorkspaceFileHunk[] = []
+  let current: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] } | undefined
+  const flushFile = (): void => {
+    if (path !== undefined) files.push({ path, added, deleted, binary, hunks })
+    path = undefined; added = 0; deleted = 0; binary = false; hunks = []; current = undefined
+  }
+  for (const line of text.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      flushFile()
+      const match = /^diff --git a\/(.*?) b\/(.*)$/u.exec(line)
+      path = match?.[2]
+      continue
+    }
+    if (path === undefined) continue
+    if (line.startsWith('Binary files ')) { binary = true; continue }
+    const hunk = HUNK.exec(line)
+    if (hunk !== null) {
+      current = { oldStart: Number(hunk[1]), oldLines: Number(hunk[2] ?? '1'), newStart: Number(hunk[3]), newLines: Number(hunk[4] ?? '1'), lines: [] }
+      hunks.push(current)
+      continue
+    }
+    if (current === undefined || line === '') continue
+    if (line.startsWith('+')) { if (!line.startsWith('+++')) added += 1 }
+    else if (line.startsWith('-')) { if (!line.startsWith('---')) deleted += 1 }
+    else if (line === '\\ No newline at end of file') continue
+    current.lines.push(line)
+  }
+  flushFile()
+  return files
+}
+
+/**
+ * Read every repository's changes against the Lock baseline.
+ * @param worktrees - prepared repository directories and their pinned commits.
+ * @returns tracked changes plus untracked files as additions.
+ */
+export async function workingTreeChanges(worktrees: readonly { repo: string; directory: string; commit: string }[]): Promise<WorkspaceRepositoryChanges[]> {
+  const results: WorkspaceRepositoryChanges[] = []
+  for (const { repo, directory, commit } of worktrees) {
+    if (!COMMIT.test(commit)) throw new WorkspacePreparationError('invalid_commit')
+    let tracked: string
+    let status: string
+    try {
+      tracked = (await execFile('git', ['-C', directory, 'diff', '--no-color', '--unified=3', commit], { windowsHide: true })).stdout
+      status = (await execFile('git', ['-C', directory, 'status', '--porcelain=v1', '-z', '--untracked-files=all'], { windowsHide: true })).stdout
+    } catch (error) { throw new WorkspacePreparationError('diff_failed', [], error) }
+    const files = parseDiff(tracked)
+    for (const entry of status.split('\u0000')) {
+      if (!entry.startsWith('?? ')) continue
+      const relative = entry.slice(3)
+      let diff = ''
+      try {
+        diff = (await execFile('git', ['-C', directory, 'diff', '--no-index', '--no-color', '--unified=3', '/dev/null', relative], { windowsHide: true })).stdout
+      } catch (error) {
+        const output = (error as { stdout?: string }).stdout
+        if (typeof output !== 'string') throw new WorkspacePreparationError('diff_failed', [], error)
+        diff = output
+      }
+      files.push(...parseDiff(diff).map(file => ({ ...file, path: relative })))
+    }
+    results.push({ repo, directory, files })
+  }
+  return results
+}

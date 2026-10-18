@@ -1,14 +1,15 @@
 /** Loom workbench: catalog-driven projects/tasks beside the native Session surface. */
 import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { InjectFace, PropsLocale, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord, WorkspaceRecord } from 'dsh-loom/types'
+import type { AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord, WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord } from 'dsh-loom/types'
 import { TaskBoard } from './TaskBoard.tsx'
 import { LockButton, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
+import { LoomDiff } from './LoomDiff.tsx'
 import type { BoardFilter, BoardTask } from './board.ts'
 import { NS } from './locales.ts'
 
@@ -25,13 +26,14 @@ export interface LoomInjected {
   attachSession(request: AttachSessionRequest): Promise<RemoteResult<TaskRecord>>
   transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
   createSessionInWorkspace(path: string): Promise<SessionId>
+  workspaceChanges(request: WorkspaceChangesRequest): Promise<RemoteResult<{ repositories: WorkspaceRepositoryChangesRecord[] }>>
 }
 interface LoomSeat {
   SessionProvider: SessionProviderComponent
   renderSlot(key: 'loom.conversation', owner: object): ReactNode
 }
 /** Root kit plus the session-scoped child declared by Loom. */
-export type LoomPanelProps = PropsRuntime<'main'> & InjectFace<LoomInjected> & PropsLocale<typeof NS> & LoomSeat
+export type LoomPanelProps = PropsRuntime<'main'> & InjectFace<LoomInjected> & PropsLocale<typeof NS> & LoomSeat & PropsRenderFactories
 
 type CatalogState =
   | { readonly status: 'loading' }
@@ -50,7 +52,7 @@ const bottomKeys = ['diff', 'terminal', 'tests', 'audit', 'costs'] as const
  * @param props - Locale, native catalog, session acquisition, catalog reads, and renderer seats.
  * @returns Loom's workbench; unconnected capabilities stay labeled instead of showing mock data.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, SessionProvider, renderSlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [selected, setSelected] = useState<SessionId>()
   const [held, setHeld] = useState<{ id: SessionId; reference: SessionReference }>()
@@ -89,6 +91,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const detailTask = task === undefined ? undefined : (catalog.status === 'ready' ? catalog.snapshot.tasks.find(candidate => candidate.id === task.id) ?? task : task)
   const refresh = () => setAttempt(current => current + 1)
   const execution: ExecutionActions = { prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, onChanged: refresh }
+  const detailWorkspaceId = detailTask?.attempts.at(-1)?.workspaceId
   return <div style={frame}>
     <header style={line}>
       <span style={{ fontSize: 18, fontWeight: 500 }}>{t('panel')}</span>
@@ -138,7 +141,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
         {selected !== undefined && <p style={{ overflowWrap: 'anywhere' }}>{sessions.byId[selected]?.displayTitle ?? selected}</p>}
       </aside>
     </div>
-    {bottom !== undefined && <section style={{ ...note, borderRadius: 0 }} aria-label={t(bottom)}>{t('integrationUnavailable')}</section>}
+    {bottom === 'diff' && <section style={{ ...note, borderRadius: 0, padding: 0 }} aria-label={t('diff')}><LoomDiff t={t} workspaceId={detailWorkspaceId} loadChanges={workspaceChanges} renderFactorySlot={renderFactorySlot} /></section>}
+    {bottom !== undefined && bottom !== 'diff' && <section style={{ ...note, borderRadius: 0 }} aria-label={t(bottom)}>{t('integrationUnavailable')}</section>}
     <footer style={{ ...line, borderBottom: 0, borderTop: '0.5px solid var(--dsw-alias-border-l4)' }}>{bottomKeys.map(key => <button key={key} style={button} aria-expanded={bottom === key} onClick={() => setBottom(current => current === key ? undefined : key)}>{t(key)}</button>)}</footer>
   </div>
 }

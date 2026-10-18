@@ -25,6 +25,7 @@ import { PresentedOpenController } from './present-open.ts'
 import { PresentRow } from './PresentRow.tsx'
 import { DeliverablesTail, type DeliverablesInjected } from './Deliverables.tsx'
 import { ReviewTab, type ReviewInjected } from './ReviewTab.tsx'
+import { FileDiffFactory } from './FileDiffFactory.tsx'
 import { CHANGES_REVIEW_ID, changesReviewDefinition } from './review-definition.ts'
 import { createReviewStore } from './review-store.ts'
 import { en, NS, zh, type DeliverablesKey } from './locales.ts'
@@ -58,6 +59,7 @@ export function apply(ctx: ClientContext): void {
   })
   ctx.uiConversation.events.register(deliverablesDefinition)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-deliverables: dictionaries')
+  ctx.slots.registerFactory({ name: 'deliverables.fileDiff', scope: 'root', locale: NS }, FileDiffFactory)
   ctx.slots.inject(
     'conversation.chat.turnTail',
     () => ctx.slots.register({

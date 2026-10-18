@@ -4,10 +4,10 @@ import { z } from 'zod'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { parseProject, type ProjectConfig } from '../domain/project.ts'
 import { resolveLock } from '../domain/version.ts'
-import { isAbsolute, normalize } from 'node:path'
+import { isAbsolute, normalize, resolve } from 'node:path'
 import { createTask as pendingTask, startAttempt, attachSession, transitionTask, type Task, type Lock, type Workspace, type TaskStatus } from '../domain/task.ts'
 import { createJsonStore, JsonStoreError } from '../storage/json-store.ts'
-import { prepareWorkspace as materializeWorkspace } from '../git/workspace.ts'
+import { prepareWorkspace as materializeWorkspace, workingTreeChanges } from '../git/workspace.ts'
 
 /** Project identity and admitted repository configuration. */
 export interface ProjectRecord { id: Branded<'loom.project'>; config: ProjectConfig }
@@ -80,6 +80,7 @@ export interface Catalog {
   generateLock(versionId: VersionRecord['id']): Promise<Lock>
   createTask(versionId: VersionRecord['id'], title: string): Promise<TaskRecord>
   prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
+  workspaceChanges(workspaceId: WorkspaceRecord['id']): Promise<{ repositories: Awaited<ReturnType<typeof workingTreeChanges>> }>
   registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   startAttempt(taskId: TaskRecord['id'], workspaceId: WorkspaceRecord['id']): Promise<TaskRecord>
   attachSession(taskId: TaskRecord['id'], sessionId: Branded<'SessionId'>): Promise<TaskRecord>
@@ -146,6 +147,22 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       draft.workspaces.push(record)
       return record
     }),
+    workspaceChanges: async workspaceId => {
+      const workspaceRecord = state.workspaces.find(item => item.id === workspaceId)
+      if (!workspaceRecord) throw new CatalogError('missing_workspace')
+      const version = state.versions.find(item => item.id === workspaceRecord.versionId)
+      if (!version) throw new CatalogError('missing_version')
+      const project = state.projects.find(item => item.id === version.projectId)
+      if (!project) throw new CatalogError('missing_project')
+      const lock = state.locks.find(item => item.id === workspaceRecord.lockId)
+      if (!lock) throw new CatalogError('missing_lock')
+      const worktrees = project.config.sources.map(source => {
+        const pinned = lock.repositories.find(repository => repository.sourceId === source.id)
+        if (pinned === undefined) throw new CatalogError('workspace_mismatch')
+        return { repo: source.repo, directory: resolve(workspaceRecord.path, source.path), commit: pinned.commit }
+      })
+      return { repositories: await workingTreeChanges(worktrees) }
+    },
     registerPreparedWorkspace: async input => {
       const record = workspaceSchema.parse({ ...input, id: randomUUID() })
       return transaction(draft => {

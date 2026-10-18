@@ -73,6 +73,16 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   expect(workspace.path).toBe(root)
   expect(await readFile(join(root, 'web', 'file'), 'utf8')).toBe('content')
   expect(await call('snapshot')).toMatchObject({ workspaces: [{ id: workspace.id, versionId: version.id, lockId: lock.id }] })
+  await writeFile(join(root, 'web', 'file'), 'changed\nsecond\n')
+  await writeFile(join(root, 'web', 'new.txt'), 'added\n')
+  const changes = await call('workspaceChanges', { request: { workspaceId: workspace.id } }) as { repositories: { files: { path: string; added: number; deleted: number; hunks: { lines: string[] }[] }[] }[] }
+  const files = changes.repositories[0]!.files
+  expect(files.map(file => file.path).sort()).toEqual(['file', 'new.txt'])
+  const changed = files.find(file => file.path === 'file')!
+  expect(changed.added).toBe(2)
+  expect(changed.deleted).toBe(1)
+  expect(changed.hunks.flatMap(hunk => hunk.lines)).toContain('-content')
+  expect(files.find(file => file.path === 'new.txt')!.hunks[0]!.lines).toEqual(['+added'])
   await expect(call('prepareWorkspace', { request: { path: root, versionId: version.id, lockId: lock.id } })).rejects.toThrow('workspace_path_registered')
 })
 it('refuses stale direct service references after disposal', async () => {

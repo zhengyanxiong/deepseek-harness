@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import contribution from 'dsh-loom/remote'
-import type { AttachSessionRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest } from 'dsh-loom/types'
+import type { AttachSessionRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest } from 'dsh-loom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { NS, en, zh, type LoomKey } from './locales.ts'
@@ -19,6 +19,19 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Native conversation hosted by Loom's explicit SessionProvider. */
     'loom.conversation': { kind: 'single'; scope: 'session' }
+  }
+  interface SlotFactoryMap {
+    /** Native file comparison registered by ui-deliverables; Loom supplies computed hunks. */
+    'deliverables.fileDiff': {
+      scope: 'root'
+      props: {
+        state: 'missing' | 'error' | 'loading' | { kind: 'binary' } | { kind: 'oversized' }
+          | { kind: 'text'; path: string; hunks: readonly { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: readonly string[] }[] }
+        split: boolean
+        wrap: boolean
+        retry: () => void
+      }
+    }
   }
 }
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
@@ -54,6 +67,7 @@ export function apply(ctx: ClientContext): void {
         startAttempt: (request: StartAttemptRequest) => ui.remote.loom.startAttempt(request),
         attachSession: (request: AttachSessionRequest) => ui.remote.loom.attachSession(request),
         transitionTask: (request: TransitionTaskRequest) => ui.remote.loom.transitionTask(request),
+        workspaceChanges: (request: WorkspaceChangesRequest) => ui.remote.loom.workspaceChanges(request),
         createSessionInWorkspace: async (path: string) => {
           const workspace = await ui.workspaces.create({ path })
           return ui.sessions.create({ workspaceId: workspace.workspaceId })

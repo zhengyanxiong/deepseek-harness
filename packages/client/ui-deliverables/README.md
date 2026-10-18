@@ -128,3 +128,5 @@ These limits define the current deliverables vocabulary. They are current packag
 None.
 
 </details>
+
+One reusable Factory, `deliverables.fileDiff`, exposes the native comparison to other client surfaces: the caller supplies already-computed `state` (hunks or binary/oversized), `split`, `wrap`, and `retry`, and the Factory keeps the deliverables dictionary and styling. Fetching and turn addressing stay with the review tab.

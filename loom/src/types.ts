@@ -23,6 +23,24 @@ export interface CreateTaskRequest {
 export interface GenerateLockRequest {
   readonly versionId: string
 }
+/** Read changes against a workspace's Lock baseline. */
+export interface WorkspaceChangesRequest {
+  readonly workspaceId: string
+}
+/** One changed file with unified hunks; binary files carry no hunks. */
+export interface WorkspaceFileChangeRecord {
+  readonly path: string
+  readonly added: number
+  readonly deleted: number
+  readonly binary: boolean
+  readonly hunks: readonly { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: readonly string[] }[]
+}
+/** One repository's changes inside a prepared workspace. */
+export interface WorkspaceRepositoryChangesRecord {
+  readonly repo: string
+  readonly directory: string
+  readonly files: readonly WorkspaceFileChangeRecord[]
+}
 /** Materialize one prepared workspace from a version Lock. */
 export interface PrepareWorkspaceRequest {
   readonly path: string
