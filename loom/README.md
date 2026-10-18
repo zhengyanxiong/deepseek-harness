@@ -10,7 +10,7 @@ npm pack
 dsh plugin --profile web add ./dsh-loom-0.1.0.tgz
 ```
 
-Start the profile with `dsh --profile web`. The Web sidebar then lists **Loom**. A bundle installed from a built tarball needs no install-time build permission. Publishing the same package to npm and installing `dsh-loom@0.1.0` works the same way; the package name in `cordis.patch.yml` must match the published name.
+Start the profile with `dsh --profile web`. The Web sidebar then lists **Loom**. A bundle installed from a built tarball needs no install-time build permission. The npm name `dsh-loom` is already occupied (the registry reports `1.3.0`), so publishing this package requires a scoped or otherwise unique name. Change `name` in this `package.json` and the plugin row `name` in `cordis.patch.yml` to the same published name, for example `@your-scope/dsh-loom`, then install `@your-scope/dsh-loom@0.1.0`. The local tarball workflow is unaffected by the npm name collision.
 
 The current repository root is the DSH application, not this bundle, so `dsh plugin add` cannot consume the repository URL directly: a Git install reads the package at the repository root. To distribute through Git without npm, attach the `npm pack` tarball to a GitHub Release and pass its URL to `dsh plugin add`, or move this directory into a standalone bundle repository whose root manifest declares `dsh.bundle` and whose built `lib/` is available (via committed artifacts or a self-contained `prepare` script). A Git `prepare` script requires an explicit build permission in the user's profile.
 
