@@ -37,4 +37,9 @@ it('lists only newest loose Sessions with their workspace labels', () => {
   const labeled = recentSessions([{ id: 'x', displayTitle: 'X', cwd: '/a/b/', updatedAt: 1, running: false }], new Set(), '')
   expect(workspaceName(labeled[0]?.cwd)).toBe('b')
   expect(workspaceName(undefined)).toBeUndefined()
+  expect(recentSessions([
+    { id: 'blank', displayTitle: 'blank', updatedAt: 9, running: false, blank: true },
+    { id: 'child', displayTitle: 'child', updatedAt: 8, running: false, origin: 'subagent' },
+    { id: 'real', displayTitle: 'real', updatedAt: 7, running: false },
+  ], new Set(), '').map(row => row.id)).toEqual(['real'])
 })

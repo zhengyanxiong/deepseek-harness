@@ -43,6 +43,10 @@ export interface RecentSessionInput {
   readonly cwd?: string
   readonly updatedAt: number
   readonly running: boolean
+  /** Empty sessions add noise; the sidebar lists only started conversations. */
+  readonly blank?: boolean
+  /** Subagent Sessions are not user workbench conversations. */
+  readonly origin?: 'subagent'
 }
 
 /** One running or attached Session with its owning task context. */
@@ -153,7 +157,7 @@ export function workspaceName(cwd: string | undefined): string | undefined {
 export function recentSessions(rows: readonly RecentSessionInput[], bound: ReadonlySet<string>, search: string, limit = 5): RecentSession[] {
   const query = search.trim().toLowerCase()
   return rows
-    .filter(row => !bound.has(row.id) && (query === '' || row.displayTitle.toLowerCase().includes(query)))
+    .filter(row => !bound.has(row.id) && row.blank !== true && row.origin !== 'subagent' && (query === '' || row.displayTitle.toLowerCase().includes(query)))
     .slice()
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, limit)
