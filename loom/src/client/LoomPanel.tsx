@@ -5,8 +5,9 @@ import type { InjectFace, PropsLocale, PropsRuntime, SessionProviderComponent } 
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { CatalogSnapshot, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
+import type { CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ProjectConfig, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
 import { TaskBoard } from './TaskBoard.tsx'
+import { LockButton, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import type { BoardFilter, BoardTask } from './board.ts'
 import { NS } from './locales.ts'
 
@@ -14,6 +15,10 @@ import { NS } from './locales.ts'
 export interface LoomInjected {
   retainSession(id: SessionId): SessionReference
   loadSnapshot(): Promise<RemoteResult<CatalogSnapshot>>
+  createProject(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
+  createVersion(request: CreateVersionRequest): Promise<RemoteResult<VersionRecord>>
+  createTask(request: CreateTaskRequest): Promise<RemoteResult<TaskRecord>>
+  generateLock(request: GenerateLockRequest): Promise<RemoteResult<Lock>>
 }
 interface LoomSeat {
   SessionProvider: SessionProviderComponent
@@ -39,7 +44,7 @@ const bottomKeys = ['diff', 'terminal', 'tests', 'audit', 'costs'] as const
  * @param props - Locale, native catalog, session acquisition, catalog reads, and renderer seats.
  * @returns Loom's workbench; unconnected capabilities stay labeled instead of showing mock data.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, SessionProvider, renderSlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, SessionProvider, renderSlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [selected, setSelected] = useState<SessionId>()
   const [held, setHeld] = useState<{ id: SessionId; reference: SessionReference }>()
@@ -49,6 +54,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, Session
   const [bottom, setBottom] = useState<typeof bottomKeys[number]>()
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  const [project, setProject] = useState<ProjectRecord['id']>()
   const [version, setVersion] = useState<VersionRecord['id']>()
   const [task, setTask] = useState<BoardTask>()
   useEffect(() => {
@@ -72,6 +78,9 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, Session
     return () => { active = false; reference.release() }
   }, [selected, retainSession])
   const available = held !== undefined && held.id === selected && failure !== selected
+  const currentProject = catalog.status === 'ready' ? catalog.snapshot.projects.find(candidate => candidate.id === project) : undefined
+  const currentVersion = catalog.status === 'ready' ? catalog.snapshot.versions.find(candidate => candidate.id === version) : undefined
+  const refresh = () => setAttempt(current => current + 1)
   return <div style={frame}>
     <header style={line}>
       <span style={{ fontSize: 18, fontWeight: 500 }}>{t('panel')}</span>
@@ -86,7 +95,16 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, Session
         {catalog.status === 'ready' && catalog.snapshot.projects.length === 0 && <p style={note}>{t('project.empty')}</p>}
         {catalog.status === 'ready' && catalog.snapshot.projects.map(project => <ProjectNode key={project.id} project={project}
           versions={catalog.snapshot.versions.filter(candidate => candidate.projectId === project.id)}
-          locks={catalog.snapshot.locks} selected={version} onSelect={setVersion} t={t} />)}
+          locks={catalog.snapshot.locks} selected={version} onSelect={setVersion}
+          selectedProject={currentProject?.id} onProject={id => { setProject(current => current === id ? undefined : id); setVersion(undefined) }} t={t} />)}
+        {catalog.status === 'ready' && <>
+          <ProjectForm t={t} create={createProject} onCreated={refresh} />
+          {currentProject !== undefined && <VersionForm t={t} project={currentProject} create={createVersion} onCreated={refresh} />}
+          {currentVersion !== undefined && <>
+            <TaskForm t={t} version={currentVersion} create={createTask} onCreated={refresh} />
+            <LockButton t={t} version={currentVersion} generate={generateLock} onCreated={refresh} />
+          </>}
+        </>}
         <h2 style={sectionTitle}>{t('sessions')}</h2>
         <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...button, boxSizing: 'border-box', width: '100%', cursor: 'text' }} />
         {sessions.ids.length === 0 && <p style={note}>{t('noSessions')}</p>}
@@ -115,16 +133,18 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, Session
 }
 
 /** One project row with its versions and Lock availability. */
-function ProjectNode({ project, versions, locks, selected, onSelect, t }: {
+function ProjectNode({ project, versions, locks, selected, onSelect, selectedProject, onProject, t }: {
   project: ProjectRecord
   versions: readonly VersionRecord[]
   locks: CatalogSnapshot['locks']
   selected: VersionRecord['id'] | undefined
   onSelect(versionId: VersionRecord['id'] | undefined): void
+  selectedProject: ProjectRecord['id'] | undefined
+  onProject(projectId: ProjectRecord['id']): void
   t: LoomPanelProps['t']
 }) {
   return <section>
-    <p style={{ margin: '8px 0 4px', fontWeight: 500, overflowWrap: 'anywhere' }}>{project.config.name}</p>
+    <button aria-pressed={selectedProject === project.id} style={{ ...button, border: 0, padding: 0, margin: '8px 0 4px', fontWeight: 500, textAlign: 'left', overflowWrap: 'anywhere', background: 'transparent' }} onClick={() => onProject(project.id)}>{project.config.name}</button>
     {versions.length === 0 && <p style={{ ...note, margin: 0 }}>{t('version.empty')}</p>}
     {versions.map(version => <button key={version.id} aria-pressed={selected === version.id} style={{ ...button, display: 'block', width: '100%', textAlign: 'left', marginTop: 6, overflowWrap: 'anywhere', background: selected === version.id ? 'var(--dsw-alias-bg-layer-1)' : 'transparent' }} onClick={() => onSelect(selected === version.id ? undefined : version.id)}>
       {version.name}{locks.some(lock => lock.versionId === version.id) ? ` · ${t('lock.title')}` : ''}

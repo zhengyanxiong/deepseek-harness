@@ -9,6 +9,7 @@ export default defineConfig({
   resolve: { alias: [
     { find: 'react-dom/server', replacement: webRequire.resolve('react-dom/server') },
     { find: 'react/jsx-runtime', replacement: webRequire.resolve('react/jsx-runtime') },
+    { find: 'react/jsx-dev-runtime', replacement: webRequire.resolve('react/jsx-dev-runtime') },
     { find: /^react$/, replacement: webRequire.resolve('react') },
   ] },
   plugins: [standardDecoratorPlugin(), tsconfigPaths({ projects: ['./tsconfig.base.json'] })],

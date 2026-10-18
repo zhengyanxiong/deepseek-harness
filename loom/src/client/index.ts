@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import contribution from 'dsh-loom/remote'
+import type { CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, ProjectConfig } from 'dsh-loom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { NS, en, zh, type LoomKey } from './locales.ts'
@@ -45,6 +46,10 @@ export function apply(ctx: ClientContext): void {
       inject: (): LoomInjected => ({
         retainSession: id => ui.sessions.retain(id, { source: 'loom' }),
         loadSnapshot: () => ui.remote.loom.snapshot(),
+        createProject: (request: ProjectConfig) => ui.remote.loom.createProject(request),
+        createVersion: (request: CreateVersionRequest) => ui.remote.loom.createVersion(request),
+        createTask: (request: CreateTaskRequest) => ui.remote.loom.createTask(request),
+        generateLock: (request: GenerateLockRequest) => ui.remote.loom.generateLock(request),
       }),
     }, LoomPanel))
     ui.slots.inject('loom.conversation', () => ui.slots.register({ name: 'loom.conversation' }, ConversationEmbed))
