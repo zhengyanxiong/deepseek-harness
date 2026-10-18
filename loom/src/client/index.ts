@@ -24,37 +24,34 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap { loom: unknown }
 }
 
-/** Services needed by the native session browser and panel registration. */
-export const inject = ['slots', 'locale', 'sessions', 'remote']
+/** The generated namespace is mounted here, so only the carrier is required up front. */
+export const inject = ['remote']
 
 /** Register an isolated Loom page without changing the current panel selection.
  * @param ctx - Client registration context.
  */
 export function apply(ctx: ClientContext): void {
-  // Mount the generated namespace so panels can call `ctx.remote.loom` endpoints.
-  let mounted: Promise<void> = Promise.resolve()
+  // Mount the generated namespace so the page fiber below can require `remote.loom`.
   ctx.effect(() => {
     const mounting = ctx.remote.$mount(contribution)
-    mounted = mounting.then(() => undefined)
     return async () => { await (await mounting)() }
   }, 'loom: remote namespace')
-  ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'loom: dictionary')
-  const t = ctx.locale.bind(NS)
-  ctx.slots.inject('main', () => ctx.slots.register({
-    name: 'main', key: PANEL_ID, locale: NS,
-    children: { 'loom.conversation': { kind: 'single', scope: 'session' } },
-    inject: (): LoomInjected => ({
-      retainSession: id => ctx.sessions.retain(id, { source: 'loom' }),
-      loadSnapshot: async () => {
-        await mounted
-        return ctx.remote.loom.snapshot()
-      },
-    }),
-  }, LoomPanel))
-  ctx.slots.inject('loom.conversation', () => ctx.slots.register({ name: 'loom.conversation' }, ConversationEmbed))
-  ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-    name: 'sidebar.panellist', id: PANEL_ID, order: 6, locale: NS, label: () => t('panel'),
-  }, LoomSidebarIcon))
+  ctx.inject(['slots', 'locale', 'sessions', 'remote.loom'], (ui) => {
+    ui.effect(() => ui.locale.register(NS, { en, zh }), 'loom: dictionary')
+    const t = ui.locale.bind(NS)
+    ui.slots.inject('main', () => ui.slots.register({
+      name: 'main', key: PANEL_ID, locale: NS,
+      children: { 'loom.conversation': { kind: 'single', scope: 'session' } },
+      inject: (): LoomInjected => ({
+        retainSession: id => ui.sessions.retain(id, { source: 'loom' }),
+        loadSnapshot: () => ui.remote.loom.snapshot(),
+      }),
+    }, LoomPanel))
+    ui.slots.inject('loom.conversation', () => ui.slots.register({ name: 'loom.conversation' }, ConversationEmbed))
+    ui.slots.inject('sidebar.panellist', () => ui.slots.register({
+      name: 'sidebar.panellist', id: PANEL_ID, order: 6, locale: NS, label: () => t('panel'),
+    }, LoomSidebarIcon))
+  })
 }
 
 /** Text-only sidebar mark until Loom artwork is approved. */

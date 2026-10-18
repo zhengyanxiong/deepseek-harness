@@ -4,7 +4,8 @@ import Schema from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
-import { isAbsolute } from 'node:path'
+import { mkdirSync } from 'node:fs'
+import { dirname, isAbsolute } from 'node:path'
 import { z } from 'zod'
 import { createCatalog, type Catalog } from './catalog.ts'
 import type {
@@ -15,7 +16,7 @@ import type {
 import type { Lock } from '../domain/task.ts'
 import { resolveCommit } from '../git/workspace.ts'
 
-/** Catalog file must have an existing parent directory and one owning process. */
+/** Absolute catalog file with one owning process; the service creates missing parent directories. */
 export interface Config { catalogFile: string }
 const configSchema: Schema<Config> = Schema.object({ catalogFile: Schema.transform(Schema.string().required(), value => {
   if (!isAbsolute(value)) throw new Error('catalogFile must be absolute')
@@ -43,6 +44,7 @@ export default class LoomService extends TypertRemoteService {
   constructor(ctx: Context, config: Config) {
     super(ctx, 'loom')
     const admitted = configSchema(config)
+    mkdirSync(dirname(admitted.catalogFile), { recursive: true })
     this.catalog = createCatalog(admitted.catalogFile, resolveCommit)
     // Observe startup rejection even if disposal wins before Cordis invokes init.
     void this.catalog.catch(() => undefined)

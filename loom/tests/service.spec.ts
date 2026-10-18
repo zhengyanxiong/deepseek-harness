@@ -5,7 +5,7 @@ import Access from '@deepseek-ai/dsh-api-remote-access'
 import Gateway from '@deepseek-ai/dsh-api-gateway'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
@@ -47,6 +47,15 @@ it('resolves exact Git commits through the Lock endpoint', async () => {
   const version = await call('createVersion', { request: { projectId: project.id, name: 'v', sources: [{ sourceId: 'web', ref: 'HEAD' }] } }) as { id: string }
   const lock = await call('generateLock', { request: { versionId: version.id } })
   expect(lock).toMatchObject({ versionId: version.id, repositories: [{ sourceId: 'web', commit: (await exec('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim() }] })
+})
+it('creates a missing catalog parent directory on init', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-service-')); dirs.push(dir)
+  const ctx = new Context(); contexts.push(ctx)
+  await ctx.plugin(Registry); await ctx.plugin(Access); await ctx.plugin(Gateway)
+  const file = join(dir, 'nested', 'deeper', 'catalog.json')
+  await ctx.plugin(Loom, { catalogFile: file })
+  const envelope = JSON.parse(await readFile(file, 'utf8')) as { schema: string; data: { projects: unknown[] } }
+  expect(envelope).toMatchObject({ schema: 'loom-json-store', data: { projects: [] } })
 })
 it('refuses stale direct service references after disposal', async () => {
   const { ctx, fiber } = await setup()

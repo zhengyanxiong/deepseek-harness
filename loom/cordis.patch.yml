@@ -2,3 +2,5 @@
 - insert:
     - id: loom
       name: dsh-loom
+      config:
+        catalogFile: !!js dshHomePath('loom/catalog.json')
