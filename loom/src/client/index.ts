@@ -7,12 +7,41 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import contribution from 'dsh-loom/remote'
+import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest } from 'dsh-loom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
+import { previewTargetFromAddress, workspacePreview } from './preview.ts'
 import { NS, en, zh, type LoomKey } from './locales.ts'
 
 const PANEL_ID = 'loom' as MainPanelId
+
+/** The workspace-files read this bundle calls through the native Remote carrier. */
+interface WorkspaceFilesFace {
+  read(sessionId: SessionId, path: string, range: { readonly offset: number }, signal?: AbortSignal): Promise<RemoteResult<WorkspaceFileText>>
+}
+
+declare module '@deepseek-ai/dsh-api-gateway/client' {
+  interface ClientRemote {
+    /** Native workspace file reads, used by the Loom preview. */
+    readonly workspaceFiles: WorkspaceFilesFace
+  }
+}
+
+/** The right-Sidebar navigation method this bundle decorates while Loom is on screen. */
+interface SidebarRightFace {
+  openResource(address: string, options?: unknown): void
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Right-Sidebar navigation face; only the method Loom forwards is named here. */
+    sidebarRight: SidebarRightFace
+  }
+}
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { loom: LoomKey }
@@ -50,7 +79,24 @@ export function apply(ctx: ClientContext): void {
     const mounting = ctx.remote.$mount(contribution)
     return async () => { await (await mounting)() }
   }, 'loom: remote namespace')
-  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom'], (ui) => {
+  ctx.inject(['sidebarRight', 'layout'], (ui) => {
+    ui.effect(() => {
+      const controller = ui.sidebarRight
+      const original = controller.openResource
+      controller.openResource = function (address, options) {
+        if (ui.layout.panelInfo.getSnapshot().activePanelId === PANEL_ID) {
+          const target = previewTargetFromAddress(address)
+          if (target !== undefined) {
+            workspacePreview.open({ ...target, mode: 'file' })
+            return
+          }
+        }
+        original.call(controller, address, options)
+      }
+      return () => { controller.openResource = original }
+    }, 'loom: route file links to the workbench preview')
+  })
+  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom', 'remote.workspaceFiles'], (ui) => {
     ui.effect(() => ui.locale.register(NS, { en, zh }), 'loom: dictionary')
     const t = ui.locale.bind(NS)
     ui.slots.inject('main', () => ui.slots.register({
@@ -68,6 +114,7 @@ export function apply(ctx: ClientContext): void {
         attachSession: (request: AttachSessionRequest) => ui.remote.loom.attachSession(request),
         transitionTask: (request: TransitionTaskRequest) => ui.remote.loom.transitionTask(request),
         workspaceChanges: (request: WorkspaceChangesRequest) => ui.remote.loom.workspaceChanges(request),
+        readFile: (sessionId, path, offset, signal): Promise<RemoteResult<WorkspaceFileText>> => ui.remote.workspaceFiles.read(sessionId, path, { offset }, signal),
         cleanupWorkspace: (request: CleanupWorkspaceRequest) => ui.remote.loom.cleanupWorkspace(request),
         acquireExecution: (request: ExecutionRequest) => ui.remote.loom.acquireExecution(request),
         releaseExecution: (request: ReleaseExecutionRequest) => ui.remote.loom.releaseExecution(request),

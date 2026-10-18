@@ -100,6 +100,8 @@ interface LoomDiffProps {
   readonly workspaceId: string | undefined
   readonly loadChanges: LoadWorkspaceChanges
   readonly renderFactorySlot: RenderFileDiffSlot
+  /** Open a file outside the inline comparison, such as the workbench aside. */
+  readonly onOpenFile?: (path: string) => void
 }
 
 const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, width: '100%', minWidth: 0, border: 'none', borderRadius: 4, padding: '3px 6px', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', fontSize: 11.5, textAlign: 'left' }
@@ -111,10 +113,10 @@ interface TreeBranchProps {
   readonly collapsed: ReadonlySet<string>
   readonly selectedKey: string | undefined
   readonly onToggle: (path: string) => void
-  readonly onSelect: (key: string) => void
+  readonly onSelectFile: (entry: DiffTreeFile) => void
 }
 
-function TreeBranch({ node, depth, collapsed, selectedKey, onToggle, onSelect }: TreeBranchProps): ReactNode {
+function TreeBranch({ node, depth, collapsed, selectedKey, onToggle, onSelectFile }: TreeBranchProps): ReactNode {
   const open = !collapsed.has(node.path)
   return <>
     <button type="button" aria-expanded={open} style={{ ...row, paddingLeft: 6 + depth * 14 }} onClick={() => onToggle(node.path)}>
@@ -123,10 +125,10 @@ function TreeBranch({ node, depth, collapsed, selectedKey, onToggle, onSelect }:
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
       <span style={count}>{String(fileCount(node))}</span>
     </button>
-    {open && node.directories.map(child => <TreeBranch key={child.path} node={child} depth={depth + 1} collapsed={collapsed} selectedKey={selectedKey} onToggle={onToggle} onSelect={onSelect} />)}
+    {open && node.directories.map(child => <TreeBranch key={child.path} node={child} depth={depth + 1} collapsed={collapsed} selectedKey={selectedKey} onToggle={onToggle} onSelectFile={onSelectFile} />)}
     {open && node.files.map(entry => {
       const selected = entry.key === selectedKey
-      return <button type="button" key={entry.key} aria-pressed={selected} title={entry.file.path} onClick={() => onSelect(entry.key)} style={{ ...row, paddingLeft: 6 + (depth + 1) * 14, background: selected ? 'var(--dsw-alias-bg-layer-3)' : 'transparent' }}>
+      return <button type="button" key={entry.key} aria-pressed={selected} title={entry.file.path} onClick={() => onSelectFile(entry)} style={{ ...row, paddingLeft: 6 + (depth + 1) * 14, background: selected ? 'var(--dsw-alias-bg-layer-3)' : 'transparent' }}>
         <IconDeliverDocRegular size={13} />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.file.path.split('/').at(-1) ?? entry.file.path}</span>
         <span style={{ ...count, color: 'var(--dsw-alias-label-tertiary)' }}>+{String(entry.file.added)} −{String(entry.file.deleted)}</span>
@@ -140,7 +142,7 @@ function TreeBranch({ node, depth, collapsed, selectedKey, onToggle, onSelect }:
  * @param props - selected workspace, its changes read, and the native factory renderer.
  * @returns the tree and comparison, or the state that stands in for them.
  */
-export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot }: LoomDiffProps): ReactNode {
+export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, onOpenFile }: LoomDiffProps): ReactNode {
   const [changes, setChanges] = useState<readonly WorkspaceRepositoryChangesRecord[] | 'loading' | 'error'>('loading')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [selectedKey, setSelectedKey] = useState<string | undefined>(undefined)
@@ -178,7 +180,7 @@ export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot }: Loo
           const next = new Set(current)
           if (next.has(path)) next.delete(path); else next.add(path)
           return next
-        })} onSelect={setSelectedKey} />)}
+        })} onSelectFile={(entry) => { setSelectedKey(entry.key); onOpenFile?.(entry.file.path) }} />)}
       </div>
     </div>
     <div style={{ minWidth: 0, minHeight: 0, overflow: 'auto' }}>
