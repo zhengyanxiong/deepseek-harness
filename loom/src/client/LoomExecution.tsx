@@ -8,7 +8,7 @@ import type {
 import type { LoomKey } from './locales.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { currentExecution } from './projection.ts'
-import { failureKey } from './shell.ts'
+import { failureKey, shortCommit } from './shell.ts'
 
 type Translate = (key: LoomKey) => string
 
@@ -197,16 +197,16 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const [path, setPath] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
-  const [reuse, setReuse] = useState(false)
-  const lastAttempt = task.attempts.at(-1)
-  const previousWorkspace = lastAttempt === undefined ? undefined : snapshot.workspaces.find(candidate => candidate.id === lastAttempt.workspaceId && candidate.cleaned !== true)
-  const canReuse = task.status === 'failed' && previousWorkspace !== undefined && previousWorkspace.lockId === lockId
+  const [workspaceId, setWorkspaceId] = useState<WorkspaceRecord['id'] | 'new'>('new')
   useEffect(() => {
     if (lockId === undefined && locks.length > 0) setLockId(locks.at(-1)?.id)
   }, [lockId, locks])
-  useEffect(() => {
-    if (!canReuse) setReuse(false)
-  }, [canReuse])
+  const available = snapshot.workspaces.filter(workspace => workspace.versionId === versionId && workspace.cleaned !== true)
+  const selected = workspaceId === 'new' ? undefined : available.find(workspace => workspace.id === workspaceId)
+  const sharingTasks = selected === undefined ? [] : snapshot.tasks.filter(candidate => candidate.id !== task.id && candidate.attempts.at(-1)?.workspaceId === selected.id)
+  const workspaceBusy = (workspace: WorkspaceRecord): boolean => snapshot.tasks.some(candidate => candidate.id !== task.id && candidate.status === 'running' && candidate.attempts.at(-1)?.workspaceId === workspace.id)
+    || snapshot.executions.some(execution => execution.workspaceId === workspace.id && execution.owner !== null)
+  const workspaceBaseline = (workspace: WorkspaceRecord): string => shortCommit(snapshot.locks.find(candidate => candidate.id === workspace.lockId)) ?? workspace.lockId
   if (locks.length === 0) return <p style={{ ...alert, marginTop: 8 }}>{t('lock.empty')}</p>
   const absolute = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(path.trim())
   async function start(event: FormEvent): Promise<void> {
@@ -215,10 +215,9 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
     if (custom && !absolute) { setFailure('invalid_path'); return }
     setBusy(true); setFailure(undefined)
     try {
-      const reused = reuse && canReuse ? previousWorkspace : undefined
-      const prepared = reused === undefined ? await actions.prepareWorkspace({ versionId, lockId, ...(custom ? { path: path.trim() } : {}) }) : undefined
+      const prepared = selected === undefined ? await actions.prepareWorkspace({ versionId, lockId, ...(custom ? { path: path.trim() } : {}) }) : undefined
       if (prepared !== undefined && !prepared.ok) { setFailure(prepared.error.message); return }
-      const target = reused ?? (prepared !== undefined && prepared.ok ? prepared.value : undefined)
+      const target = selected ?? (prepared !== undefined && prepared.ok ? prepared.value : undefined)
       if (target === undefined) { setFailure(t('state.error')); return }
       const started = await actions.startAttempt({ taskId: task.id, workspaceId: target.id })
       if (!started.ok) { setFailure(started.error.message); return }
@@ -232,18 +231,28 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   }
   return <form style={box} onSubmit={event => { void start(event) }}>
     <label style={{ ...alert }}>{t('lock.select')}
-      <select aria-label={t('lock.select')} value={lockId ?? ''} onChange={event => setLockId(event.target.value === '' ? undefined : event.target.value as Lock['id'])} style={input}>
+      <select aria-label={t('lock.select')} value={lockId ?? ''} disabled={selected !== undefined} onChange={event => setLockId(event.target.value === '' ? undefined : event.target.value as Lock['id'])} style={input}>
         {locks.map(lock => <option key={lock.id} value={lock.id}>{lock.repositories.map(repository => repository.commit.slice(0, 7)).join(' + ')}</option>)}
       </select>
     </label>
-    {canReuse && <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <button type="button" style={button} aria-pressed={reuse} onClick={() => { setReuse(value => !value); setFailure(undefined) }}>{t('workspace.reuse')}</button>
-      {reuse && <p style={{ ...alert, margin: 0 }}>{t('workspace.reuseWarning')}</p>}
-    </div>}
-    {!reuse && <p style={{ ...alert, margin: 0 }}>{t('workspace.auto')}</p>}
-    {!reuse && <button type="button" style={button} aria-pressed={custom} onClick={() => { setCustom(value => !value); setFailure(undefined) }}>{t('workspace.custom')}</button>}
-    {!reuse && custom && <input aria-label={t('workspace.path')} placeholder={t('workspace.path')} value={path} onChange={event => setPath(event.target.value)} style={input} />}
-    {!reuse && custom && <p style={{ ...alert, margin: 0 }}>{t('workspace.absoluteRequired')}</p>}
+    <label style={{ ...alert }}>{t('workspace.select')}
+      <select aria-label={t('workspace.select')} value={workspaceId} onChange={event => {
+        const next = event.target.value as WorkspaceRecord['id'] | 'new'
+        setWorkspaceId(next); setFailure(undefined)
+        if (next !== 'new') { const workspace = available.find(candidate => candidate.id === next); if (workspace !== undefined) setLockId(workspace.lockId) }
+      }} style={input}>
+        <option value="new">{t('workspace.auto')}</option>
+        {available.map(workspace => <option key={workspace.id} value={workspace.id} disabled={workspaceBusy(workspace)}>{workspace.path} · {workspaceBaseline(workspace)}{workspaceBusy(workspace) ? ` · ${t('workspace.busy')}` : ''}</option>)}
+      </select>
+    </label>
+    {selected !== undefined && <>
+      <p style={{ ...alert, margin: 0 }}>{t('lock.workspaceBaseline')}</p>
+      <p style={{ ...alert, margin: 0 }}>{t('workspace.shareWarning')}</p>
+      {sharingTasks.length > 0 && <p style={{ ...alert, margin: 0 }}>{t('workspace.associations')}: {sharingTasks.map(candidate => candidate.title).join(', ')}</p>}
+    </>}
+    {selected === undefined && <button type="button" style={button} aria-pressed={custom} onClick={() => { setCustom(value => !value); setFailure(undefined) }}>{t('workspace.custom')}</button>}
+    {selected === undefined && custom && <input aria-label={t('workspace.path')} placeholder={t('workspace.path')} value={path} onChange={event => setPath(event.target.value)} style={input} />}
+    {selected === undefined && custom && <p style={{ ...alert, margin: 0 }}>{t('workspace.absoluteRequired')}</p>}
     {failure !== undefined && <Failure t={t} failure={failure} />}
     <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('task.start')}</button>
   </form>

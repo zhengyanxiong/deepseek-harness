@@ -26,7 +26,7 @@ export interface WorkspaceRecord extends Workspace { path: string; cleaned?: boo
 export interface CatalogSnapshot { projects: ProjectRecord[]; versions: VersionRecord[]; locks: Lock[]; tasks: TaskRecord[]; workspaces: WorkspaceRecord[]; audit: AuditEntry[]; executions: ExecutionState[] }
 /** Catalog operation rejection, suitable for caller-owned localization. */
 export class CatalogError extends Error {
-  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed') { super(code); this.name = 'CatalogError' }
+  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path' | 'workspace_busy' | 'workspace_task_running' | 'workspace_changes' | 'workspace_cleanup_failed' | 'workspace_cleaned' | 'workspace_unpushed') { super(code); this.name = 'CatalogError' }
 }
 const text = z.string().trim().min(1)
 const id = <B extends string>() => text.transform(value => brandString<Branded<B>>(value))
@@ -258,6 +258,9 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       const task = taskIn(draft, taskId)
       const workspace = workspaceIn(draft, workspaceId)
       if (workspace.cleaned === true) throw new CatalogError('workspace_cleaned')
+      const otherRunning = draft.tasks.some(other => other.id !== taskId && other.status === 'running' && other.attempts.at(-1)?.workspaceId === workspaceId)
+      const otherExecuting = draft.executions.some(execution => execution.workspaceId === workspaceId && execution.owner !== null)
+      if (otherRunning || otherExecuting) throw new CatalogError('workspace_task_running')
       const lock = draft.locks.find(item => item.id === workspace.lockId)
       if (!lock) throw new CatalogError('missing_lock')
       const updated = { ...task, ...startAttempt(task, brandString<Branded<'loom.attempt'>>(randomUUID()), lock, workspace) }

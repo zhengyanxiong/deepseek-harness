@@ -107,10 +107,12 @@ it('offers a failed task its retained matching workspace for a new attempt', () 
     attempts: [{ id: brandString<'loom.attempt'>('a1'), lock, workspaceId: workspace.id, sessionIds: [], status: 'failed' }],
   }
   const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: failed, snapshot, selectedSession: undefined, actions }))
-  expect(html).toContain(en['workspace.reuse'])
+  expect(html).toContain(en['workspace.select'])
+  expect(html).toContain(workspace.path)
+  expect(html).not.toContain(en['workspace.reuse'])
   expect(html).toContain(en['task.start'])
 })
-it('does not offer reuse after the previous workspace was cleaned', () => {
+it('does not offer a cleaned workspace', () => {
   const failed: TaskRecord = {
     ...pending,
     status: 'failed',
@@ -120,7 +122,39 @@ it('does not offer reuse after the previous workspace was cleaned', () => {
     t, task: failed, selectedSession: undefined, actions,
     snapshot: { ...snapshot, workspaces: [{ ...workspace, cleaned: true }] },
   }))
-  expect(html).not.toContain(en['workspace.reuse'])
+  expect(html).not.toContain(`<option value="${workspace.id}"`)
+  expect(html).not.toContain(en['workspace.shareWarning'])
+})
+it('offers an idle workspace owned by another task in the same version', () => {
+  const other: TaskRecord = {
+    ...pending,
+    id: brandString<TaskRecord['id']>('t2'),
+    status: 'completed',
+    title: 'Other',
+    attempts: [{ id: brandString<'loom.attempt'>('a2'), lock, workspaceId: workspace.id, sessionIds: [], status: 'completed' }],
+  }
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, {
+    t, task: pending, selectedSession: undefined, actions,
+    snapshot: { ...snapshot, tasks: [pending, other] },
+  }))
+  expect(html).toContain(workspace.path)
+  expect(html).not.toContain('disabled')
+})
+it('disables a workspace while another task in the same version runs on it', () => {
+  const other: TaskRecord = {
+    ...pending,
+    id: brandString<TaskRecord['id']>('t2'),
+    status: 'running',
+    title: 'Other',
+    attempts: [{ id: brandString<'loom.attempt'>('a2'), lock, workspaceId: workspace.id, sessionIds: [], status: 'running' }],
+  }
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, {
+    t, task: pending, selectedSession: undefined, actions,
+    snapshot: { ...snapshot, tasks: [pending, other] },
+  }))
+  expect(html).toContain(workspace.path)
+  expect(html).toContain(en['workspace.busy'])
+  expect(html).toContain('disabled')
 })
 
 it('acts for the selected Session rather than the task’s last attached Session', () => {

@@ -7,13 +7,14 @@ This directory contains the in-progress Loom bundle, domain model, storage, loca
 - Project configuration admission without filesystem or network effects.
 - Version repository references resolved to immutable commit snapshots.
 - Task execution rounds retain one workspace across successive Sessions.
+- A new task may explicitly reuse another task's idle workspace from the same version and Lock; the Host refuses while any other task is running on it or an Agent still owns its execution.
 - Workspace execution ownership uses generation tokens, FIFO waiting and confirmed-stop takeover.
 - Loom-attached Agent tool calls acquire execution access before running; a non-owner is denied until the current owner yields or a confirmed handoff completes.
 - Durable audit records cover project, version, Lock, task, workspace, attempt, Session and execution mutations.
 
 ## Execution handoff and limits
 
-The Client offers waiting, confirmed takeover and explicit release controls for the current workspace. The Host records the takeover request, cancels the owning Agent with `keepInbox`, and treats the handoff as confirmed only after the Agent reports non-running status within ten seconds; otherwise the original owner remains and the UI reports the blocked outcome. Ownership is released automatically when the owning Agent becomes idle or its Session is disposed, promoting the FIFO head.
+The start form lists every retained workspace prepared under the selected version, shows each workspace's recorded Lock baseline, and marks one busy while another task is running or a Session owns its execution. The Client offers waiting, confirmed takeover and explicit release controls for the current workspace. The Host records the takeover request, cancels the owning Agent with `keepInbox`, and treats the handoff as confirmed only after the Agent reports non-running status within ten seconds; otherwise the original owner remains and the UI reports the blocked outcome. Ownership is released automatically when the owning Agent becomes idle or its Session is disposed, promoting the FIFO head.
 
 The tool gate checks every `tools/pre-execute` call from an Agent attached to a Loom attempt. It acquires ownership for a free workspace and denies calls while another Session owns it. This constrains the DSH-managed execution path, not the filesystem: external editors and terminals can still modify workspace files. Stop confirmation observes the owning Agent's status; it does not separately prove that every child Agent or external process has stopped.
 
