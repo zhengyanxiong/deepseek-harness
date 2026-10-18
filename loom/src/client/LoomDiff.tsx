@@ -7,7 +7,7 @@ import {
 import type {
   WorkspaceChangesRequest, WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord,
 } from 'dsh-workloom/types'
-import { LoomFileRow } from './LoomFileRow.tsx'
+import { LoomFileCounts, LoomFileRow } from './LoomFileRow.tsx'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
@@ -168,7 +168,7 @@ export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, onOpe
     <div aria-label={t('diff.files')} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', borderRight: '0.5px solid var(--dsw-alias-border-l4)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '7px 8px 6px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11 }}>
         <span>{t('diff.files')} {String(files.length)}</span>
-        <span style={{ marginLeft: 'auto', color: 'var(--dsw-alias-label-tertiary)' }}>+{String(added)} −{String(deleted)}</span>
+        <span style={{ marginLeft: 'auto' }}><LoomFileCounts file={{ display: '', added, deleted }} t={t} /></span>
       </div>
       <div role="group" aria-label={t('diff.files')} style={{ minHeight: 0, overflow: 'auto', padding: '0 4px 6px' }}>
         {trees.map(tree => <TreeBranch key={tree.path} t={t} node={tree} depth={0} collapsed={collapsed} selectedKey={selected.key} onToggle={(path) => setCollapsed(current => {

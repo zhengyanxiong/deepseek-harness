@@ -28,12 +28,15 @@ export interface LoomFileCountsProps {
 /**
  * Draw one file's added/deleted counts or its non-text label.
  * @param props - the file metadata and localized copy.
- * @returns the count labels in the row's secondary line.
+ * @returns Git-style added/deleted labels for the row end.
  */
 export function LoomFileCounts({ file, t }: LoomFileCountsProps): ReactNode {
   if (file.binary === true) return <span style={{ color: 'var(--dsw-alias-label-tertiary)' }}>{t('review.binary')}</span>
   if (file.oversized === true) return <span style={{ color: 'var(--dsw-alias-label-tertiary)' }}>{t('review.oversized')}</span>
-  return <span style={{ color: 'var(--dsw-alias-label-tertiary)' }}><span style={{ color: 'var(--dsw-alias-label-success)' }}>+{String(file.added)}</span> −{String(file.deleted)}</span>
+  return <span style={{ display: 'inline-flex', gap: 4, whiteSpace: 'nowrap' }}>
+    <span style={{ color: 'var(--dsw-alias-state-success-primary)' }}>+{String(file.added)}</span>
+    <span style={{ color: 'var(--dsw-alias-state-error-primary)' }}>−{String(file.deleted)}</span>
+  </span>
 }
 
 /** Inputs for one shared changed-file row. */
@@ -51,21 +54,19 @@ export interface LoomFileRowProps extends LoomFileMeta {
 }
 
 /**
- * Draw one selectable file with an icon, a path, and its counts.
+ * Draw one selectable file with an icon, a path, and its counts at the row end.
  * @param props - file metadata, selection state, indentation, and the select callback.
- * @returns a two-line file button shared by both file lists.
+ * @returns a single-line file button shared by both file lists.
  */
 export function LoomFileRow({ display, added, deleted, binary, oversized, t, selected, depth = 0, title, onClick }: LoomFileRowProps): ReactNode {
   return <button type="button" aria-pressed={selected} title={title ?? display} onClick={onClick} style={{
-    display: 'flex', flexDirection: 'column', gap: 1, width: '100%', minWidth: 0, padding: `5px 6px 5px ${String(6 + depth * 14)}px`,
+    display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, padding: `5px 6px 5px ${String(6 + depth * 14)}px`,
     border: 'none', borderLeft: `2px solid ${selected ? 'var(--dsw-alias-label-accent, #2f81f7)' : 'transparent'}`, borderRadius: 4,
     background: selected ? 'var(--dsw-alias-bg-layer-3)' : 'transparent', color: selected ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)',
     cursor: 'pointer', font: 'inherit', fontSize: 11.5, textAlign: 'left',
   }}>
-    <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, width: '100%' }}>
-      <IconDeliverDocRegular size={13} />
-      <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{display}</span>
-    </span>
-    <span style={{ display: 'flex', gap: 4, paddingLeft: 19, fontSize: 10.5 }}><LoomFileCounts file={{ display, added, deleted, ...binary === true ? { binary: true } : {}, ...oversized === true ? { oversized: true } : {} }} t={t} /></span>
+    <span style={{ display: 'flex', flex: 'none' }}><IconDeliverDocRegular size={13} /></span>
+    <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{display}</span>
+    <span style={{ flex: 'none', fontSize: 10.5 }}><LoomFileCounts file={{ display, added, deleted, ...binary === true ? { binary: true } : {}, ...oversized === true ? { oversized: true } : {} }} t={t} /></span>
   </button>
 }

@@ -149,7 +149,7 @@ export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderF
     <div role="group" aria-label={t('review.fileList')} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, borderRight: '0.5px solid var(--dsw-alias-border-l4)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '7px 8px 6px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11, flex: 'none' }}>
         <span>{t('review.fileList')} {summaryState.kind === 'ready' ? String(summaryState.summary.files.length) : ''}</span>
-        {summaryState.kind === 'ready' && <span style={{ marginLeft: 'auto', color: 'var(--dsw-alias-label-tertiary)' }}>+{String(summaryState.summary.added)} −{String(summaryState.summary.deleted)}</span>}
+        {summaryState.kind === 'ready' && <span style={{ marginLeft: 'auto' }}><LoomFileCounts file={{ display: '', added: summaryState.summary.added, deleted: summaryState.summary.deleted }} t={t} /></span>}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 6px' }}>
         {files.map((entry, position) => {
