@@ -25,7 +25,7 @@ const input: CSSProperties = {
 const textarea: CSSProperties = { ...input, height: 'auto', minHeight: 88, padding: '8px 10px', resize: 'vertical' }
 const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 5 }
 const fieldLabel: CSSProperties = { color: COLORS.dim, fontSize: 12, fontWeight: 500 }
-const hint: CSSProperties = { margin: 0, color: COLORS.faint, fontSize: 11.5, lineHeight: 1.55 }
+const hint: CSSProperties = { margin: 0, color: COLORS.dim, fontSize: 11.5, lineHeight: 1.55 }
 const alert: CSSProperties = { margin: 0, color: COLORS.dim, fontSize: 12 }
 const failureCode: CSSProperties = { display: 'block', marginTop: 4, color: COLORS.error, fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
 const footer: CSSProperties = { position: 'sticky', bottom: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4, paddingTop: 12, paddingBottom: 4, borderTop: `0.5px solid ${COLORS.border}`, background: COLORS.panel }
@@ -287,9 +287,9 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
               ...stepCircle,
               borderColor: active || complete ? COLORS.accent : COLORS.border,
               background: active ? COLORS.accent : COLORS.panel2,
-              color: active ? 'var(--dsw-alias-label-primary-foreground)' : complete ? COLORS.accent : COLORS.faint,
+              color: active ? 'var(--dsw-alias-label-primary-foreground)' : complete ? COLORS.accent : COLORS.dim,
             }}>{complete ? <IconCheckOutlineRegular size={12} /> : String(index + 1)}</span>
-            <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: active ? COLORS.text : complete ? COLORS.dim : COLORS.faint, fontSize: 11, fontWeight: active ? 500 : 400 }}>{t(candidate.label)}</span>
+            <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: active ? COLORS.text : COLORS.dim, fontSize: 11, fontWeight: active ? 500 : 400 }}>{t(candidate.label)}</span>
           </button>
         </li>
       })}
