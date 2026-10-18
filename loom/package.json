@@ -58,7 +58,8 @@
   "scripts": {
     "generate": "node --import tsx/esm scripts/generate-typert.ts",
     "build": "pnpm run generate && tsdown",
-    "watch": "tsdown --watch"
+    "watch": "tsdown --watch",
+    "install-local": "pnpm run build && node scripts/stage.mjs"
   },
   "dependencies": {
     "zod": "^4.0.0"
