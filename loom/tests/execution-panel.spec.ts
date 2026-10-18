@@ -4,6 +4,7 @@ import { expect, it } from 'vitest'
 import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
 import { ExecutionPanel, type ExecutionActions } from '../src/client/LoomExecution.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
+import { failureKey } from '../src/client/shell.ts'
 import type { CatalogSnapshot, Lock, TaskRecord, VersionRecord, WorkspaceRecord } from 'dsh-loom/types'
 const t = (key: LoomKey) => en[key]
 const versionId = brandString<VersionRecord['id']>('v1')
@@ -133,4 +134,11 @@ it('acts for the selected Session rather than the task’s last attached Session
   }))
   expect(html).toContain(en['execution.takeover'])
   expect(html).not.toContain(en['execution.release'])
+})
+
+it('explains known workspace failures instead of only showing a code', () => {
+  expect(failureKey('existing_root')).toBe('error.existingRoot')
+  expect(failureKey('workspace_path_registered')).toBe('error.pathRegistered')
+  expect(failureKey('existing_root; rollback: failed')).toBe('error.existingRoot')
+  expect(failureKey('unmapped_failure')).toBeUndefined()
 })

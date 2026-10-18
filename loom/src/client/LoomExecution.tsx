@@ -1,5 +1,5 @@
 /** Execution controls for the selected task: workspaces, sessions and business status. */
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, ExecutionRequest, ExecutionState, Lock, PrepareWorkspaceRequest,
@@ -8,6 +8,7 @@ import type {
 import type { LoomKey } from './locales.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { currentExecution } from './projection.ts'
+import { failureKey } from './shell.ts'
 
 type Translate = (key: LoomKey) => string
 
@@ -181,6 +182,13 @@ interface StartFormProps {
   actions: ExecutionActions
 }
 
+function Failure({ t, failure }: { t: Translate; failure: string }): ReactNode {
+  const key = failureKey(failure)
+  return <p role="alert" style={alert}>{key === undefined ? t('state.error') : t(key)}
+    {key === undefined && <span style={{ display: 'block', opacity: 0.7, marginTop: 4, overflowWrap: 'anywhere' }}>{failure}</span>}
+  </p>
+}
+
 /** Prepare an isolated workspace from one Lock, start the round, then open its native Session. */
 function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const locks = snapshot.locks.filter(lock => lock.versionId === versionId)
@@ -203,8 +211,8 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const absolute = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(path.trim())
   async function start(event: FormEvent): Promise<void> {
     event.preventDefault()
-    if (lockId === undefined) { setFailure(t('lock.select')); return }
-    if (custom && !absolute) { setFailure(t('workspace.absoluteRequired')); return }
+    if (lockId === undefined) { setFailure('missing_lock'); return }
+    if (custom && !absolute) { setFailure('invalid_path'); return }
     setBusy(true); setFailure(undefined)
     try {
       const reused = reuse && canReuse ? previousWorkspace : undefined
@@ -235,7 +243,8 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
     {!reuse && <p style={{ ...alert, margin: 0 }}>{t('workspace.auto')}</p>}
     {!reuse && <button type="button" style={button} aria-pressed={custom} onClick={() => { setCustom(value => !value); setFailure(undefined) }}>{t('workspace.custom')}</button>}
     {!reuse && custom && <input aria-label={t('workspace.path')} placeholder={t('workspace.path')} value={path} onChange={event => setPath(event.target.value)} style={input} />}
-    {failure !== undefined && <p role="alert" style={alert}>{t('state.error')}<span style={{ display: 'block', opacity: 0.7, marginTop: 4, overflowWrap: 'anywhere' }}>{failure}</span></p>}
+    {!reuse && custom && <p style={{ ...alert, margin: 0 }}>{t('workspace.absoluteRequired')}</p>}
+    {failure !== undefined && <Failure t={t} failure={failure} />}
     <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('task.start')}</button>
   </form>
 }

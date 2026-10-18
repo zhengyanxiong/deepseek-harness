@@ -54,6 +54,31 @@ export const AUDIT_LABEL: Readonly<Record<AuditEvent, LoomKey>> = {
   'execution.takeover-blocked': 'audit.execution.takeover-blocked',
 }
 
+/** Locale keys for workspace and catalog failures surfaced in execution forms. */
+export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
+  existing_root: 'error.existingRoot',
+  invalid_path: 'error.invalidPath',
+  workspace_path_registered: 'error.pathRegistered',
+  local_repository_required: 'error.repositoryRequired',
+  invalid_repository: 'error.invalidRepository',
+  invalid_commit: 'error.invalidCommit',
+  invalid_ref: 'error.invalidRef',
+  missing_lock: 'error.lockMissing',
+  workspace_busy: 'error.workspaceBusy',
+  workspace_changes: 'error.workspaceChanges',
+  workspace_unpushed: 'error.workspaceUnpushed',
+  workspace_mismatch: 'error.workspaceMismatch',
+}
+
+/**
+ * Resolve a remote failure message to its localized explanation.
+ * @param failure - Host error code, possibly suffixed with rollback detail.
+ * @returns the locale key, or undefined for an unmapped failure.
+ */
+export function failureKey(failure: string): LoomKey | undefined {
+  return ERROR_LABEL[failure.split(';')[0]!.trim()]
+}
+
 export const pill: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, border: `0.5px solid ${COLORS.border}`, borderRadius: 999, padding: '1px 8px', fontSize: 11, color: COLORS.dim, whiteSpace: 'nowrap' }
 export const button: CSSProperties = { color: 'inherit', background: 'transparent', border: `0.5px solid ${COLORS.border}`, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', font: 'inherit' }
 export const select: CSSProperties = { ...button, background: COLORS.panel2, cursor: 'pointer' }
