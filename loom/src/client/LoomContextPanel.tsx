@@ -1,5 +1,6 @@
 /** Workbench context panel over the selected project, version, task and workspace. */
 import type { ReactNode } from 'react'
+import { Button, IconEditOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { CatalogSnapshot, GenerateLockRequest, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-workloom/types'
 import { boundSessions, currentLock, currentWorkspace, type TokenUsageView } from './projection.ts'
@@ -23,8 +24,6 @@ export interface LoomContextPanelProps {
   readonly onEditVersion?: () => void
   readonly onEditTask?: () => void
 }
-
-const editLink = { border: 'none', background: 'transparent', color: COLORS.accent, cursor: 'pointer', font: 'inherit', fontSize: 11, padding: 0 } as const
 
 function SectionHeading({ title, action }: { title: string; action?: ReactNode }) {
   return <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -56,8 +55,12 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
   const taskModules = (task?.moduleIds ?? []).map(moduleId => project?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   return <div style={{ overflow: 'auto', flex: 1 }}>
     <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>
-      <SectionHeading title={t('ctx.project')} action={project !== undefined && onEditProject !== undefined ? <button type="button" style={editLink} onClick={onEditProject}>{t('form.edit')} · {t('project.title')}</button> : undefined} />
+      <SectionHeading title={t('ctx.project')} />
       {project === undefined ? <p style={metaLine}>{t('ctx.none')}</p> : <>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {onEditProject !== undefined && <Button size="sm" variant="outline" icon={<IconEditOutlineRegular />} onClick={onEditProject}>{t('project.edit')}</Button>}
+          {task !== undefined && onEditTask !== undefined && <Button size="sm" variant="outline" icon={<IconEditOutlineRegular />} onClick={onEditTask}>{t('task.edit')}</Button>}
+        </div>
         <Row k={t('top.project')} v={project.config.name} />
         <Row k={t('top.version')} v={version === undefined ? '—' : refs === '' ? version.name : `${version.name} · ${refs}`} />
         <Row k={t('ctx.lock')} v={shortCommit(displayLock) ?? '—'} />
@@ -71,11 +74,10 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
         <Row k={t('sessions')} v={String(sessions.length)} />
         {task?.description !== undefined && task.description !== '' && <p style={{ margin: '8px 0 0', padding: '7px 9px', borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, fontSize: 11.5, lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{task.description}</p>}
         {version !== undefined && <LockButton t={t} version={version} generate={generateLock} onCreated={onLockChanged} />}
-        {task !== undefined && onEditTask !== undefined && <button type="button" style={{ ...editLink, marginTop: 6 }} onClick={onEditTask}>{t('form.edit')} · {t('task.title')}</button>}
       </>}
     </section>
     {version !== undefined && <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>
-      <SectionHeading title={t('version.detail')} action={onEditVersion === undefined ? undefined : <button type="button" style={editLink} onClick={onEditVersion}>{t('form.edit')}</button>} />
+      <SectionHeading title={t('version.detail')} action={onEditVersion === undefined ? undefined : <Button size="sm" variant="outline" icon={<IconEditOutlineRegular />} onClick={onEditVersion}>{t('form.edit')}</Button>} />
       <Row k={t('version.name')} v={version.name} />
       <Row k={t('version.repositories')} v={String(version.sources.length)} />
       {version.sources.map(source => <Row key={source.sourceId} k={source.sourceId} v={source.ref} />)}

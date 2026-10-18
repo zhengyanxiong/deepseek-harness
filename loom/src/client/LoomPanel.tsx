@@ -1,8 +1,8 @@
 /** Loom workbench shell: project tree, native conversation, context and kanban. */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
-  IconFolderCloseRegular, IconFolderOpenRegular, IconPanelLeftOutlineRegular, IconPinFillRegular, IconPinOutlineRegular,
-  IconPlusOutlineRegular, IconSettingsOutlineRegular, Tooltip,
+  IconCloseOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconPanelLeftOutlineRegular, IconPinFillRegular, IconPinOutlineRegular,
+  IconPlusOutlineRegular, IconSettingsOutlineRegular, Button, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CSSProperties, ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, SessionProviderComponent } from '@deepseek-ai/dsh-client-ui-slots'
@@ -103,6 +103,9 @@ const topMenu: CSSProperties = { position: 'absolute', top: 36, right: 0, width:
 const sidebar: CSSProperties = { width: 230, flex: 'none', background: COLORS.panel, borderRight: `0.5px solid ${COLORS.border}`, overflowY: 'auto', padding: '8px 0' }
 const center: CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: COLORS.bg }
 const aside: CSSProperties = { width: 272, flex: 'none', display: 'flex', flexDirection: 'column', borderLeft: `0.5px solid ${COLORS.border}`, background: COLORS.panel }
+const drawer: CSSProperties = { width: 380, maxWidth: '92%', height: '100%', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}`, borderRadius: 'var(--dsw-radius-lg) 0 0 var(--dsw-radius-lg)', boxShadow: '-16px 0 48px rgba(0,0,0,.18)', padding: '16px 16px 20px', overflowY: 'auto' }
+const drawerHeader: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, minHeight: 28, marginBottom: 14 }
+const drawerTitle: CSSProperties = { fontSize: 14, fontWeight: 500 }
 const convHeader: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '9px 16px', borderBottom: `0.5px solid ${COLORS.border}`, minHeight: 40, flex: 'none' }
 const note: CSSProperties = { padding: 12, borderRadius: 8, color: COLORS.dim, background: COLORS.panel2, lineHeight: 1.6, margin: 0 }
 
@@ -643,10 +646,10 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       onClose={() => setSettingsOpen(false)}
     />
     {create !== undefined && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 60 }} onClick={() => setCreate(undefined)}>
-      <div style={{ width: 380, maxWidth: '92%', height: '100%', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}`, padding: 16, overflowY: 'auto' }} onClick={event => event.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-          <strong style={{ fontSize: 14 }}>{create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
-          <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => setCreate(undefined)}>{t('form.close')}</button>
+      <div role="dialog" aria-modal="true" aria-label={create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')} style={drawer} onClick={event => event.stopPropagation()}>
+        <div style={drawerHeader}>
+          <strong style={drawerTitle}>{create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
+          <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setCreate(undefined)} style={{ marginLeft: 'auto' }} />
         </div>
         {create === 'project' && <ProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'import' && <ImportProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
@@ -657,10 +660,10 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       </div>
     </div>}
     {edit !== undefined && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 60 }} onClick={() => setEdit(undefined)}>
-      <div style={{ width: 380, maxWidth: '92%', height: '100%', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}`, padding: 16, overflowY: 'auto' }} onClick={event => event.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-          <strong style={{ fontSize: 14 }}>{edit === 'project' ? t('project.edit') : edit === 'version' ? `${t('form.edit')} · ${t('version.title')}` : `${t('form.edit')} · ${t('task.title')}`}</strong>
-          <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => setEdit(undefined)}>{t('form.close')}</button>
+      <div role="dialog" aria-modal="true" aria-label={edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')} style={drawer} onClick={event => event.stopPropagation()}>
+        <div style={drawerHeader}>
+          <strong style={drawerTitle}>{edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')}</strong>
+          <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setEdit(undefined)} style={{ marginLeft: 'auto' }} />
         </div>
         {edit === 'project' && displayProject !== undefined && <ProjectForm t={t} open project={displayProject} create={createProject} update={updateProject} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setProject(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
         {edit === 'version' && displayVersion !== undefined && displayVersionProject !== undefined && <VersionForm t={t} open version={displayVersion} project={displayVersionProject} create={createVersion} update={updateVersion} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setVersion(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}

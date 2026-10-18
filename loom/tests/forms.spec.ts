@@ -32,9 +32,10 @@ it('renders an existing project in the edit form instead of a creation trigger',
     t, open: true, project, create: async () => ({ ok: true, value: project }), update: async () => ({ ok: true, value: project }), onCreated: () => undefined,
   }))
   expect(markup).toContain('value="Shop"')
-  expect(markup).toContain('value="/repo/shop"')
-  expect(markup).toContain('>Next<')
-  expect(markup).not.toContain('＋ New project')
+  expect(markup).toContain('>Save<')
+  expect(markup).toContain(en['project.step.sources'])
+  expect(markup).toContain(en['project.step.preview'])
+  expect(markup).not.toContain(en['project.new'])
 })
 
 it('starts a repository row empty instead of pre-filling placeholder values', () => {

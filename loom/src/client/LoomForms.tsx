@@ -1,7 +1,7 @@
 /** Inline creation and edit forms for Loom projects, versions and tasks. */
 import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import {
-  Button, IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular,
+  Button, IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconDownloadOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
@@ -17,7 +17,7 @@ type Translate = (key: LoomKey) => string
 
 const formStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 16, marginTop: 12 }
 const stack: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10 }
-const card: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10, padding: 12, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, background: COLORS.panel2 }
+const card: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10, padding: 12, border: `0.5px solid ${COLORS.border}`, borderRadius: 'var(--dsw-radius-md)', background: COLORS.panel2 }
 const input: CSSProperties = {
   width: '100%', height: 36, boxSizing: 'border-box', padding: '0 10px', border: `0.5px solid ${COLORS.borderStrong}`,
   borderRadius: 'var(--dsw-radius-sm)', background: COLORS.panel, color: COLORS.text, font: 'inherit', fontSize: 13, lineHeight: '20px',
@@ -28,14 +28,14 @@ const fieldLabel: CSSProperties = { color: COLORS.dim, fontSize: 12, fontWeight:
 const hint: CSSProperties = { margin: 0, color: COLORS.faint, fontSize: 11.5, lineHeight: 1.55 }
 const alert: CSSProperties = { margin: 0, color: COLORS.dim, fontSize: 12 }
 const failureCode: CSSProperties = { display: 'block', marginTop: 4, color: COLORS.error, fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
-const footer: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }
+const footer: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4, paddingTop: 12, borderTop: `0.5px solid ${COLORS.border}` }
 const footerSpacer: CSSProperties = { flex: 1, minWidth: 8 }
-const stepRail: CSSProperties = { display: 'grid', listStyle: 'none', padding: 0, margin: '2px 0 4px' }
+const stepRail: CSSProperties = { display: 'grid', listStyle: 'none', padding: '10px 6px', margin: 0, border: `0.5px solid ${COLORS.border}`, borderRadius: 'var(--dsw-radius-md)', background: COLORS.panel2 }
 const stepItem: CSSProperties = { position: 'relative', display: 'flex', minWidth: 0, justifyContent: 'center' }
 const stepLine: CSSProperties = { position: 'absolute', top: 10, right: '50%', width: '100%', height: 1, zIndex: 0 }
 const stepButton: CSSProperties = { position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, padding: 0, border: 'none', background: 'transparent', font: 'inherit', color: 'inherit' }
 const stepCircle: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 21, height: 21, boxSizing: 'border-box', borderRadius: 999, border: '1px solid', fontSize: 10.5, fontWeight: 500 }
-const previewRow: CSSProperties = { display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', padding: '7px 8px', borderRadius: 7, background: COLORS.panel, border: `0.5px solid ${COLORS.border}` }
+const previewRow: CSSProperties = { display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', padding: '7px 8px', borderRadius: 'var(--dsw-radius-sm)', background: COLORS.panel, border: `0.5px solid ${COLORS.border}` }
 
 function FailureNotice({ failure, t }: { failure: string; t: Translate }) {
   const key = failureKey(failure)
@@ -218,7 +218,7 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = (value: boolean): void => { setInternalOpen(value); onOpenChange?.(value) }
-  const [step, setStep] = useState<ProjectStep>(project === undefined ? 'name' : 'sources')
+  const [step, setStep] = useState<ProjectStep>('name')
   const [name, setName] = useState(project?.config.name ?? '')
   const [sources, setSources] = useState<SourceDraft[]>(project === undefined ? [emptySourceRow()] : project.config.sources.map(source => ({ id: source.id, repo: source.repo, path: source.path })))
   const [modules, setModules] = useState<ModuleDraft[]>(project === undefined ? [] : project.config.modules.map(module => ({ id: module.id, source: module.sourceId, path: module.path })))
@@ -280,13 +280,13 @@ export function ProjectForm({ t, create, update, project, onCreated, open: contr
         const complete = index < stepIndex
         const blocked = !canVisit(candidate.key)
         return <li key={candidate.key} style={stepItem}>
-          {index > 0 && <span aria-hidden style={{ ...stepLine, background: index <= stepIndex ? COLORS.accent : COLORS.border }} />}
+          {index > 0 && <span aria-hidden style={{ ...stepLine, background: index <= stepIndex ? `color-mix(in srgb, ${COLORS.accent} 55%, transparent)` : COLORS.border }} />}
           <button type="button" aria-current={active ? 'step' : undefined} aria-disabled={blocked} disabled={blocked} onClick={() => goTo(candidate.key)}
             style={{ ...stepButton, cursor: blocked ? 'default' : 'pointer', opacity: blocked ? 0.5 : 1 }}>
             <span style={{
               ...stepCircle,
               borderColor: active || complete ? COLORS.accent : COLORS.border,
-              background: active ? COLORS.accent : COLORS.panel,
+              background: active ? COLORS.accent : COLORS.panel2,
               color: active ? 'var(--dsw-alias-label-primary-foreground)' : complete ? COLORS.accent : COLORS.faint,
             }}>{complete ? <IconCheckOutlineRegular size={12} /> : String(index + 1)}</span>
             <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: active ? COLORS.text : complete ? COLORS.dim : COLORS.faint, fontSize: 11, fontWeight: active ? 500 : 400 }}>{t(candidate.label)}</span>
@@ -494,7 +494,7 @@ export function TaskForm({ t, version, project, create, update, task, onCreated,
     <div style={field}>
       <span style={fieldLabel}>{t('task.modules')}</span>
       {project.config.modules.length === 0 && <p style={hint}>{t('task.noModules')}</p>}
-      {project.config.modules.map(module => <label key={module.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, fontSize: 12 }}>
+      {project.config.modules.map(module => <label key={module.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 'var(--dsw-radius-sm)', border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, fontSize: 12 }}>
         <input type="checkbox" checked={moduleIds.includes(module.id)} onChange={event => setModuleIds(current => event.target.checked ? [...current, module.id] : current.filter(id => id !== module.id))} />
         <span style={{ color: COLORS.text }}>{module.path}</span>
         <span style={{ marginLeft: 'auto', color: COLORS.faint, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{module.id}</span>
@@ -546,7 +546,7 @@ export function ImportProjectForm({ t, create, onCreated, open: controlledOpen, 
   const [result, setResult] = useState<ImportProjectResult>()
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
-  if (!open) return <Button variant="outline" icon={<IconPlusOutlineRegular />} onClick={() => setOpen(true)}>{t('project.import')}</Button>
+  if (!open) return <Button variant="outline" icon={<IconDownloadOutlineRegular />} onClick={() => setOpen(true)}>{t('project.import')}</Button>
   async function choose(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0]
     if (file === undefined) return
