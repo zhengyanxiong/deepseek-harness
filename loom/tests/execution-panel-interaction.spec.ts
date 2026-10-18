@@ -22,6 +22,7 @@ const snapshot: CatalogSnapshot = {
   locks: [lock],
   tasks: [task],
   workspaces: [workspace],
+  temporarySessions: [],
   audit: [],
   executions: [{ workspaceId: workspace.id, generation: owner.generation, owner, waiting: [brandString<'SessionId'>('s1')], takeover: null }],
 }

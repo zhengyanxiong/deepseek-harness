@@ -24,7 +24,7 @@ const task: TaskRecord = {
   status: 'pending',
   attempts: [],
 }
-const snapshot: CatalogSnapshot = { projects: [project], versions: [version], locks: [], tasks: [task], workspaces: [], audit: [], executions: [] }
+const snapshot: CatalogSnapshot = { projects: [project], versions: [version], locks: [], tasks: [task], workspaces: [], temporarySessions: [], audit: [], executions: [] }
 
 it('renders project, version and task actions as labeled outline actions', () => {
   const html = renderToStaticMarkup(createElement(LoomContextPanel, {

@@ -25,6 +25,7 @@ const snapshot: CatalogSnapshot = {
   locks: [lock],
   tasks: [],
   workspaces: [workspace],
+  temporarySessions: [],
   audit: [],
   executions: [],
 }

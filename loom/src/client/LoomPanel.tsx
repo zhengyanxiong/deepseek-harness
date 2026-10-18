@@ -413,7 +413,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     try {
       const id = await createSessionInWorkspace(temporaryWorkspace.path, agentPreset)
       const registered = await registerTemporarySession({ sessionId: id, workspacePath: temporaryWorkspace.path })
-      if (!registered.ok) setTemporaryFailure(registered.error.message)
+      if (registered.ok) setAttempt(current => current + 1)
+      else setTemporaryFailure(registered.error.message)
       setDismissed(undefined); setTask(undefined); setSelected(id); setView('workbench')
     } catch (error) { setTemporaryFailure(error instanceof Error ? error.message : t('state.error')) }
   }

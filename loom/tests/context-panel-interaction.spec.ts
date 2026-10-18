@@ -36,7 +36,7 @@ const task: TaskRecord = {
   status: 'pending',
   attempts: [],
 }
-const snapshot: CatalogSnapshot = { projects: [project], versions: [version], locks: [], tasks: [task], workspaces: [], audit: [], executions: [] }
+const snapshot: CatalogSnapshot = { projects: [project], versions: [version], locks: [], tasks: [task], workspaces: [], temporarySessions: [], audit: [], executions: [] }
 
 async function render(remove: () => Promise<RemoteResult<void>>): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true

@@ -8,7 +8,7 @@ const lock: Lock = { id: brandString<Lock['id']>('l1'), versionId, repositories:
 const project: ProjectRecord = { id: projectId, config: { name: 'Shop', sources: [{ id: brandString<'loom.source'>('web'), repo: '/repo', path: 'web' }], modules: [] } }
 const version: VersionRecord = { id: versionId, projectId, name: 'v1', sources: [{ sourceId: brandString<'loom.source'>('web'), ref: 'main' }] }
 const task = (id: string, status: TaskRecord['status'], sessionIds: string[] = []): TaskRecord => ({ id: brandString<TaskRecord['id']>(id), versionId, title: id, status, attempts: status === 'pending' ? [] : [{ id: brandString<'loom.attempt'>('a1'), lock, workspaceId: brandString<'loom.workspace'>('w1'), sessionIds: sessionIds.map(value => brandString<'SessionId'>(value)), status: status === 'review' ? 'review' : 'running' }] })
-const snapshot: CatalogSnapshot = { projects: [project], versions: [version], locks: [lock], workspaces: [{ id: brandString<'loom.workspace'>('w1'), path: '/tmp/w1', versionId, lockId: lock.id }], tasks: [task('one', 'running', ['s1']), task('two', 'review'), task('three', 'pending')] }
+const snapshot: CatalogSnapshot = { projects: [project], versions: [version], locks: [lock], workspaces: [{ id: brandString<'loom.workspace'>('w1'), path: '/tmp/w1', versionId, lockId: lock.id }], tasks: [task('one', 'running', ['s1']), task('two', 'review'), task('three', 'pending')], temporarySessions: [], audit: [], executions: [] }
 it('groups cards by project and keeps empty status columns', () => {
   const lanes = projectLanes(snapshot, {})
   expect(lanes).toHaveLength(1)
