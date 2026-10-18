@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "incremental": false
+  },
+  "include": ["src/domain/**/*.ts", "tests/project.spec.ts", "tests/task.spec.ts", "tests/version.spec.ts", "tests/execution.spec.ts"]
+}

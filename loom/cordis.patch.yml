@@ -1,0 +1,4 @@
+# Loom bundle patch: add the project workbench without replacing native conversation.
+- insert:
+    - id: loom
+      name: dsh-loom
