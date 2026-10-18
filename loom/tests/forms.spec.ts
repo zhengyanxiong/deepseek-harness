@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { LockButton, ProjectForm, TaskForm, emptySourceRow, projectRequest, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
+import { LockButton, ProjectForm, TaskForm, emptySourceRow, projectRequest, sourceIds, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
 import { en, zh, type LoomKey } from '../src/client/locales.ts'
 import type { ProjectRecord, VersionRecord } from 'dsh-loom/types'
 const t = (key: LoomKey) => en[key]
@@ -21,18 +21,27 @@ const version: VersionRecord = {
   sources: [{ sourceId: brandString<'loom.source'>('web'), ref: 'main' }],
 }
 it('starts a repository row empty instead of pre-filling placeholder values', () => {
-  expect(emptySourceRow()).toEqual({ id: '', repo: '', path: '' })
+  expect(emptySourceRow()).toEqual({ repo: '', path: '' })
 })
-it('trims project fields and detaches an empty module list', () => {
-  expect(projectRequest('  Shop  ', [{ id: ' main ', repo: ' /repo/shop ', path: ' shop ' }]))
-    .toEqual({ name: 'Shop', sources: [{ id: 'main', repo: '/repo/shop', path: 'shop' }], modules: [] })
+it('derives repository ids from workspace directories and keeps them unique', () => {
+  expect(sourceIds([{ repo: '/repo/shop', path: 'apps/web' }, { repo: '/repo/other', path: 'web' }])).toEqual(['web', 'web-2'])
+  expect(sourceIds([{ repo: 'https://example.invalid/team/api.git', path: '' }])).toEqual(['api.git'])
+})
+it('derives module ids from their paths and requires a chosen repository', () => {
+  expect(projectRequest('Shop', [{ repo: '/repo', path: 'web' }], [{ source: 'web', path: 'src/api' }]))
+    .toEqual({ name: 'Shop', sources: [{ id: 'web', repo: '/repo', path: 'web' }], modules: [{ id: 'api', sourceId: 'web', path: 'src/api' }] })
+  expect(projectRequest('Shop', [{ repo: '/repo', path: 'web' }], [{ source: '', path: 'src/api' }])).toBeUndefined()
+})
+it('trims project fields and derives the repository id from the directory', () => {
+  expect(projectRequest('  Shop  ', [{ repo: ' /repo/shop ', path: ' shop ' }], []))
+    .toEqual({ name: 'Shop', sources: [{ id: 'shop', repo: '/repo/shop', path: 'shop' }], modules: [] })
 })
 it('rejects incomplete project rows instead of posting them', () => {
-  expect(projectRequest('', [{ id: 'main', repo: '/repo', path: 'web' }])).toBeUndefined()
-  expect(projectRequest('Shop', [])).toBeUndefined()
-  expect(projectRequest('Shop', [{ id: ' ', repo: '/repo', path: 'web' }])).toBeUndefined()
-  expect(projectRequest('Shop', [{ id: 'main', repo: ' ', path: 'web' }])).toBeUndefined()
-  expect(projectRequest('Shop', [{ id: 'main', repo: '/repo', path: '  ' }])).toBeUndefined()
+  expect(projectRequest('', [{ repo: '/repo', path: 'web' }], [])).toBeUndefined()
+  expect(projectRequest('Shop', [], [])).toBeUndefined()
+  expect(projectRequest('Shop', [{ repo: ' ', path: 'web' }], [])).toBeUndefined()
+  expect(projectRequest('Shop', [{ repo: '/repo', path: '  ' }], [])).toBeUndefined()
+  expect(projectRequest('Shop', [{ repo: '/repo', path: 'web' }], [])).not.toBeUndefined()
 })
 it('builds one version source per project repository', () => {
   expect(versionRequest(project, ' v2 ', { web: ' release ' }))

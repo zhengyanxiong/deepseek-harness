@@ -2,7 +2,7 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock,
+  CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ModuleConfig,
   ProjectConfig, ProjectRecord, SourceConfig, TaskRecord, VersionRecord,
 } from 'dsh-loom/types'
 import type { LoomKey } from './locales.ts'
@@ -18,8 +18,13 @@ const alert: CSSProperties = { margin: 0, color: 'var(--dsw-alias-label-secondar
 
 /** One repository row of the project form. */
 export interface SourceDraft {
-  readonly id: string
   readonly repo: string
+  readonly path: string
+}
+
+/** One business module row; the repository choice names a derived source id. */
+export interface ModuleDraft {
+  readonly source: string
   readonly path: string
 }
 
@@ -28,25 +33,85 @@ export interface SourceDraft {
  * @returns a blank repository row.
  */
 export function emptySourceRow(): SourceDraft {
-  return { id: '', repo: '', path: '' }
+  return { repo: '', path: '' }
 }
 
 /**
- * Validate the project form.
+ * Start a module row empty.
+ * @returns a blank module row.
+ */
+export function emptyModuleRow(): ModuleDraft {
+  return { source: '', path: '' }
+}
+
+function segment(value: string): string {
+  return value.split('/').map(part => part.trim()).filter(part => part !== '' && part !== '.').at(-1) ?? ''
+}
+
+function slug(value: string): string {
+  return segment(value).replace(/[^A-Za-z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '').toLowerCase()
+}
+
+function uniqueId(base: string, used: Set<string>): string {
+  let candidate = base
+  let index = 2
+  while (used.has(candidate)) { candidate = `${base}-${index}`; index += 1 }
+  used.add(candidate)
+  return candidate
+}
+
+/**
+ * Derive one stable repository id per row from its workspace directory.
+ * Users never type these ids; versions and Locks reference them internally.
+ * @param sources - Repository rows in submission order.
+ * @returns ids in the same order, disambiguated by a numeric suffix.
+ */
+export function sourceIds(sources: readonly SourceDraft[]): string[] {
+  const used = new Set<string>()
+  return sources.map(source => uniqueId(slug(source.path) || slug(source.repo) || 'repo', used))
+}
+
+function moduleIds(modules: readonly ModuleDraft[], ids: readonly string[]): string[] {
+  const used = new Set<string>()
+  return modules.map((module) => {
+    const sourceId = ids[ids.indexOf(module.source)] ?? 'module'
+    return uniqueId(slug(module.path) === '' ? `${sourceId}-root` : slug(module.path), used)
+  })
+}
+
+/**
+ * Validate the project form and derive repository and module ids.
  * @param name - Admitted project name.
  * @param sources - Repository rows in submission order.
+ * @param modules - Optional business module rows.
  * @returns detached request, or undefined while a required field is blank.
  */
-export function projectRequest(name: string, sources: readonly SourceDraft[]): ProjectConfig | undefined {
+export function projectRequest(name: string, sources: readonly SourceDraft[], modules: readonly ModuleDraft[]): ProjectConfig | undefined {
   const admittedName = name.trim()
   if (admittedName === '' || sources.length === 0) return undefined
-  const admitted = sources.map(source => ({ id: source.id.trim(), repo: source.repo.trim(), path: source.path.trim() }))
-  if (admitted.some(source => source.id === '' || source.repo === '' || source.path === '')) return undefined
-  return {
-    name: admittedName,
-    sources: admitted.map(source => ({ id: source.id as SourceConfig['id'], repo: source.repo, path: source.path })),
-    modules: [],
+  const rows = sources.map(source => ({ repo: source.repo.trim(), path: source.path.trim() }))
+  if (rows.some(source => source.repo === '' || source.path === '')) return undefined
+  const ids = sourceIds(rows)
+  const admittedSources = rows.map((source, index) => ({
+    id: ids[index] as SourceConfig['id'],
+    repo: source.repo,
+    path: source.path,
+  }))
+  const paths = new Set<string>()
+  for (const source of admittedSources) {
+    const path = source.path.toLowerCase()
+    if ([...paths].some(other => path === other || path.startsWith(`${other}/`) || other.startsWith(`${path}/`))) return undefined
+    paths.add(path)
   }
+  const draftedModules = modules.filter(module => module.source !== '' || module.path.trim() !== '')
+  if (draftedModules.some(module => module.source === '' || !ids.includes(module.source) || module.path.trim() === '')) return undefined
+  const moduleIdList = moduleIds(draftedModules, ids)
+  const admittedModules = draftedModules.map((module, index) => ({
+    id: moduleIdList[index] as ModuleConfig['id'],
+    sourceId: module.source as SourceConfig['id'],
+    path: module.path.trim(),
+  }))
+  return { name: admittedName, sources: admittedSources, modules: admittedModules }
 }
 
 /**
@@ -81,49 +146,86 @@ interface ProjectFormProps {
   onCreated(): void
 }
 
-/** Create one project with its repository rows; the Host admits the configuration. */
+type ProjectStep = 'basics' | 'modules' | 'preview'
+
+/** Create one project with its repositories, optional modules and a preview before saving. */
 export function ProjectForm({ t, create, onCreated }: ProjectFormProps) {
   const [open, setOpen] = useState(false)
+  const [step, setStep] = useState<ProjectStep>('basics')
   const [name, setName] = useState('')
   const [sources, setSources] = useState<SourceDraft[]>([emptySourceRow()])
+  const [modules, setModules] = useState<ModuleDraft[]>([])
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   if (!open) return <button style={button} onClick={() => setOpen(true)}>{t('project.new')}</button>
+  const ids = sourceIds(sources)
+  const request = projectRequest(name, sources, modules)
+  function reset(): void {
+    setName(''); setSources([emptySourceRow()]); setModules([]); setStep('basics'); setOpen(false); setFailed(false)
+  }
   function update(index: number, patch: Partial<SourceDraft>): void {
     setSources(current => current.map((source, at) => at === index ? { ...source, ...patch } : source))
   }
+  function updateModule(index: number, patch: Partial<ModuleDraft>): void {
+    setModules(current => current.map((module, at) => at === index ? { ...module, ...patch } : module))
+  }
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
-    const request = projectRequest(name, sources)
+    if (step !== 'preview') { setStep(step === 'basics' ? 'modules' : 'preview'); return }
     if (request === undefined) { setFailed(true); return }
     setBusy(true); setFailed(false)
     try {
       const result = await create(request)
       if (!result.ok) { setFailed(true); return }
-      setName(''); setSources([emptySourceRow()]); setOpen(false); onCreated()
+      reset(); onCreated()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>
-    <input aria-label={t('project.name')} placeholder={t('project.name')} value={name} onChange={event => setName(event.target.value)} style={input} />
-    {sources.map((source, index) => <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label style={field}><span style={fieldLabel}>{t('source.id')}</span>
-        <input aria-label={t('source.id')} placeholder={t('source.id')} value={source.id} onChange={event => update(index, { id: event.target.value })} style={input} />
-      </label>
-      <label style={field}><span style={fieldLabel}>{t('source.repo')}</span>
-        <input aria-label={t('source.repo')} placeholder={t('source.repo')} value={source.repo} onChange={event => update(index, { repo: event.target.value })} style={input} />
-      </label>
-      <label style={field}><span style={fieldLabel}>{t('source.path')}</span>
-        <input aria-label={t('source.path')} placeholder={t('source.path')} value={source.path} onChange={event => update(index, { path: event.target.value })} style={input} />
-      </label>
-      {sources.length > 1 && <button type="button" style={button} onClick={() => setSources(current => current.filter((_source, at) => at !== index))}>{t('source.remove')}</button>}
-    </div>)}
-    <div style={{ display: 'flex', gap: 8 }}>
-      <button type="button" style={button} onClick={() => setSources(current => [...current, emptySourceRow()])}>{t('source.add')}</button>
+    <div style={{ display: 'flex', gap: 6, color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }}>
+      <span>{t('project.name')}</span><span>→</span><span>{t('source.title')}</span><span>→</span><span>{t('module.title')}</span><span>→</span><span>{t('project.preview')}</span>
     </div>
+    {step === 'basics' && <>
+      <label style={field}><span style={fieldLabel}>{t('project.name')}</span>
+        <input aria-label={t('project.name')} placeholder={t('project.name')} value={name} onChange={event => setName(event.target.value)} style={input} />
+      </label>
+      {sources.map((source, index) => <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={field}><span style={fieldLabel}>{t('source.repo')}</span>
+          <input aria-label={t('source.repo')} placeholder={t('source.repo')} value={source.repo} onChange={event => update(index, { repo: event.target.value })} style={input} />
+        </label>
+        <label style={field}><span style={fieldLabel}>{t('source.path')}</span>
+          <input aria-label={t('source.path')} placeholder={t('source.path')} value={source.path} onChange={event => update(index, { path: event.target.value })} style={input} />
+        </label>
+        {sources.length > 1 && <button type="button" style={button} onClick={() => setSources(current => current.filter((_source, at) => at !== index))}>{t('source.remove')}</button>}
+      </div>)}
+      <div><button type="button" style={button} onClick={() => setSources(current => [...current, emptySourceRow()])}>{t('source.add')}</button></div>
+    </>}
+    {step === 'modules' && <>
+      <p style={{ ...fieldLabel, margin: 0 }}>{t('module.optional')}</p>
+      {modules.map((module, index) => <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={field}><span style={fieldLabel}>{t('module.source')}</span>
+          <select aria-label={t('module.source')} value={module.source} onChange={event => updateModule(index, { source: event.target.value })} style={input}>
+            <option value="">{t('module.source')}</option>
+            {sources.map((source, at) => <option key={at} value={ids[at]}>{source.path}</option>)}
+          </select>
+        </label>
+        <label style={field}><span style={fieldLabel}>{t('module.path')}</span>
+          <input aria-label={t('module.path')} placeholder={t('module.path')} value={module.path} onChange={event => updateModule(index, { path: event.target.value })} style={input} />
+        </label>
+        <button type="button" style={button} onClick={() => setModules(current => current.filter((_module, at) => at !== index))}>{t('module.remove')}</button>
+      </div>)}
+      <div><button type="button" style={button} onClick={() => setModules(current => [...current, emptyModuleRow()])}>{t('module.add')}</button></div>
+    </>}
+    {step === 'preview' && <>
+      <p style={{ ...fieldLabel, margin: 0 }}>{t('project.previewHint')}</p>
+      <pre style={{ margin: 0, overflow: 'auto', maxHeight: 220, fontSize: 11, lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)' }}>{JSON.stringify(request ?? null, undefined, 2)}</pre>
+    </>}
     {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
     <div style={{ display: 'flex', gap: 8 }}>
-      <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('form.create')}</button>
-      <button type="button" style={button} onClick={() => { setOpen(false); setFailed(false) }}>{t('form.cancel')}</button>
+      {step === 'basics' && <button type="submit" style={button} disabled={name.trim() === ''}>{t('form.next')}</button>}
+      {step === 'modules' && <button type="submit" style={button} disabled={request === undefined}>{t('form.next')}</button>}
+      {step !== 'basics' && <button type="button" style={button} onClick={() => setStep(step === 'preview' ? 'modules' : 'basics')}>{t('form.back')}</button>}
+      {step === 'preview' && <button type="submit" style={button} disabled={busy || request === undefined}>{busy ? t('form.submitPending') : t('form.confirm')}</button>}
+      <button type="button" style={button} onClick={reset}>{t('form.cancel')}</button>
     </div>
   </form>
 }
