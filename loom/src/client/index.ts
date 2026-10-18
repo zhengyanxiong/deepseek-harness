@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import contribution from 'dsh-loom/remote'
-import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest } from 'dsh-loom/types'
+import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest } from 'dsh-loom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { NS, en, zh, type LoomKey } from './locales.ts'
@@ -69,6 +69,9 @@ export function apply(ctx: ClientContext): void {
         transitionTask: (request: TransitionTaskRequest) => ui.remote.loom.transitionTask(request),
         workspaceChanges: (request: WorkspaceChangesRequest) => ui.remote.loom.workspaceChanges(request),
         cleanupWorkspace: (request: CleanupWorkspaceRequest) => ui.remote.loom.cleanupWorkspace(request),
+        acquireExecution: (request: ExecutionRequest) => ui.remote.loom.acquireExecution(request),
+        releaseExecution: (request: ReleaseExecutionRequest) => ui.remote.loom.releaseExecution(request),
+        takeoverExecution: (request: ExecutionRequest) => ui.remote.loom.takeoverExecution(request),
         createSessionInWorkspace: async (path: string) => {
           const workspace = await ui.workspaces.create({ path })
           return ui.sessions.create({ workspaceId: workspace.workspaceId })

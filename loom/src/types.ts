@@ -6,6 +6,7 @@ export type * from './domain/project.ts'
 export type * from './domain/task.ts'
 export type * from './domain/version.ts'
 export type * from './domain/execution.ts'
+export type * from './domain/audit.ts'
 export type * from './host/catalog.ts'
 
 /** Admit one project configuration. */
@@ -79,4 +80,14 @@ export interface TransitionTaskRequest {
   readonly taskId: string
   readonly target: 'pending' | 'running' | 'review' | 'completed' | 'failed'
   readonly actor: 'human' | 'agent'
+}
+
+/** One Session requesting execution access to a prepared workspace. */
+export interface ExecutionRequest {
+  readonly workspaceId: string
+  readonly sessionId: string
+}
+/** Release an exact ownership generation after its Agent turn finished. */
+export interface ReleaseExecutionRequest extends ExecutionRequest {
+  readonly generation: number
 }

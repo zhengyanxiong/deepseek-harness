@@ -1,5 +1,5 @@
 /** Catalog projections for the Loom shell; pure functions with no Host runtime imports. */
-import type { CatalogSnapshot, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
+import type { CatalogSnapshot, ExecutionState, Lock, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
 import type { BoardColumn, BoardTask } from './board.ts'
 import { projectBoard } from './board.ts'
 
@@ -195,4 +195,22 @@ export function currentLock(snapshot: CatalogSnapshot, task: TaskRecord | undefi
 export function currentWorkspace(snapshot: CatalogSnapshot, task: TaskRecord | undefined) {
   const workspaceId = task?.attempts.at(-1)?.workspaceId
   return workspaceId === undefined ? undefined : snapshot.workspaces.find(workspace => workspace.id === workspaceId)
+}
+
+/** Resolve workspace execution scheduling for a task's latest attempt.
+ * @param snapshot - Authoritative catalog snapshot.
+ * @param task - Task whose workspace is requested.
+ * @returns the persisted execution state, or undefined before the first execution.
+ */
+export function currentExecution(snapshot: CatalogSnapshot, task: TaskRecord | undefined): ExecutionState | undefined {
+  const workspaceId = task?.attempts.at(-1)?.workspaceId
+  return workspaceId === undefined ? undefined : snapshot.executions.find(execution => execution.workspaceId === workspaceId)
+}
+
+/** Native Session attached most recently to a task's current attempt.
+ * @param task - Task whose current Session is requested.
+ * @returns the newest attached Session id, or undefined before any association.
+ */
+export function boundSessionId(task: TaskRecord | undefined): string | undefined {
+  return task?.attempts.at(-1)?.sessionIds.at(-1)
 }

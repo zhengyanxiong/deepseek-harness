@@ -8,7 +8,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock,
   PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord,
-  WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord,
+  WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
 } from 'dsh-loom/types'
 import { LockButton, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
@@ -34,6 +34,9 @@ export interface LoomInjected {
   createSessionInWorkspace(path: string): Promise<SessionId>
   workspaceChanges(request: WorkspaceChangesRequest): Promise<RemoteResult<{ repositories: WorkspaceRepositoryChangesRecord[] }>>
   cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
+  acquireExecution(request: ExecutionRequest): Promise<RemoteResult<ExecutionState>>
+  releaseExecution(request: ReleaseExecutionRequest): Promise<RemoteResult<ExecutionState>>
+  takeoverExecution(request: ExecutionRequest): Promise<RemoteResult<ExecutionState>>
 }
 interface LoomSeat {
   SessionProvider: SessionProviderComponent
@@ -75,7 +78,7 @@ function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?
  * @param props - locale, native catalog, session acquisition, catalog actions, and renderer seats.
  * @returns the whole Loom page.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, cleanupWorkspace, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [view, setView] = useState<View>('workbench')
   const [project, setProject] = useState<ProjectRecord['id']>()
@@ -92,6 +95,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [asideOpen, setAsideOpen] = useState(true)
   const [bottomCollapsed, setBottomCollapsed] = useState(true)
   const [pane, setPane] = useState<LoomBottomPane>('diff')
+  const [diffCount, setDiffCount] = useState(0)
   const [kbMode, setKbMode] = useState<'flat' | 'grouped'>('grouped')
   const [filterProject, setFilterProject] = useState('')
   const [filterVersion, setFilterVersion] = useState('')
@@ -109,6 +113,15 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     }, () => { if (active) setCatalog({ status: 'error' }) })
     return () => { active = false }
   }, [loadSnapshot, attempt])
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void loadSnapshot().then((result) => {
+        if (result.ok) setCatalog({ status: 'ready', snapshot: result.value })
+      }, () => undefined)
+    }, 5000)
+    return () => { window.clearInterval(timer) }
+  }, [loadSnapshot])
   useEffect(() => {
     if (selected === undefined) return
     let reference: SessionReference
@@ -142,10 +155,22 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const displayProject = currentProject ?? (taskVersion === undefined ? undefined : snapshot?.projects.find(candidate => candidate.id === taskVersion.projectId))
   const displayVersion = currentVersion ?? taskVersion
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
+  useEffect(() => {
+    if (detailWorkspace?.id === undefined || detailWorkspace.cleaned === true) { setDiffCount(0); return }
+    let active = true
+    workspaceChanges({ workspaceId: detailWorkspace.id }).then((result) => {
+      if (active) setDiffCount(result.ok ? result.value.repositories.reduce((total, repository) => total + repository.files.length, 0) : 0)
+    }, () => { if (active) setDiffCount(0) })
+    return () => { active = false }
+  }, [detailWorkspace?.id, detailWorkspace?.cleaned, attempt, workspaceChanges])
   const activeCount = snapshot === undefined ? 0 : activeWorkspaceCount(snapshot)
+  const auditWorkspaceIds = new Set<string>((detailTask?.attempts ?? []).map(candidate => candidate.workspaceId))
+  const auditRows = snapshot === undefined ? [] : snapshot.audit.filter(entry => detailTask === undefined
+    || entry.taskId === detailTask.id
+    || (entry.workspaceId !== undefined && auditWorkspaceIds.has(entry.workspaceId))).slice(-40).reverse()
   const available = held !== undefined && held.id === selected && failure !== selected && heldRef.current?.reference === held.reference
   const execution: ExecutionActions = {
-    prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, cleanupWorkspace,
+    prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution,
     onSession: id => { setSelected(id); setView('workbench') },
     onChanged: () => setAttempt(current => current + 1),
   }
@@ -291,7 +316,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       {view === 'kanban'
         ? <LoomKanban
             t={t}
-            snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [] }}
+            snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }}
             filter={filter}
             mode={kbMode}
             projectValue={filterProject}
@@ -357,14 +382,15 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       {asideOpen && <aside style={aside}>
         {view === 'kanban'
           ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
-          : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [] }} project={displayProject} version={displayVersion} task={detailTask} />}
+          : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} />}
       </aside>}
     </div>
     <LoomBottomPanel
       t={t}
       collapsed={bottomCollapsed}
       pane={pane}
-      task={detailTask}
+      audit={auditRows}
+      diffCount={diffCount}
       workspaceId={detailWorkspace?.id}
       loadChanges={workspaceChanges}
       renderFactorySlot={renderFactorySlot}

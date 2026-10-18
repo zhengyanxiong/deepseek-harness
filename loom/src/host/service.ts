@@ -12,10 +12,13 @@ import { createCatalog, type Catalog } from './catalog.ts'
 import type {
   AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest,
   CleanupWorkspaceRequest, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceChangesRequest, WorkspaceRepositoryChangesRecord, WorkspaceStatusResult,
-  VersionRecord, WorkspaceRecord,
+  VersionRecord, WorkspaceRecord, ExecutionRequest, ReleaseExecutionRequest,
 } from '../types.ts'
 import type { Lock } from '../domain/task.ts'
+import { ExecutionError, type ExecutionState, type StopOutcome } from '../domain/execution.ts'
 import { resolveCommit } from '../git/workspace.ts'
+import type {} from './events.ts'
+import type { LoomAgent } from './events.ts'
 
 /** Absolute catalog file and optional workspace parent; the service creates missing directories. */
 export interface Config { catalogFile: string; workspacesDir?: string }
@@ -38,6 +41,8 @@ const sessionRequest = z.strictObject({ taskId: nonempty, sessionId: nonempty })
 const transitionRequest = z.strictObject({ taskId: nonempty, target: z.enum(['pending', 'running', 'review', 'completed', 'failed']), actor: z.enum(['human', 'agent']) })
 const workspaceChangesRequest = z.strictObject({ workspaceId: nonempty })
 const cleanupWorkspaceRequest = z.strictObject({ workspaceId: nonempty, discardChanges: z.boolean().optional() })
+const executionRequest = z.strictObject({ workspaceId: nonempty, sessionId: nonempty })
+const releaseExecutionRequest = z.strictObject({ workspaceId: nonempty, sessionId: nonempty, generation: z.number().int().nonnegative() })
 
 declare module '@deepseek-ai/cordis' { interface Context { loom: LoomService } }
 
@@ -65,7 +70,18 @@ export default class LoomService extends TypertRemoteService {
     }, 'loom: settle catalog operations')
   }
 
-  async [Service.init](): Promise<void> { await this.catalog }
+  async [Service.init](): Promise<void> {
+    await this.catalog
+    this.ctx.on('tools/pre-execute', async (exec, next) => {
+      if (exec.agent === undefined) return next()
+      const decision = await this.admitExecution(exec.agent.session.id)
+      return decision ?? next()
+    })
+    this.ctx.on('agent/status', ({ agent, status }) => {
+      if (status === 'idle') void this.releaseSession(agent.session.id)
+    })
+    this.ctx.on('session/disposed', session => { void this.releaseSession(session.id) })
+  }
 
   private run<T>(operation: (catalog: Catalog) => T | Promise<T>): Promise<T> {
     if (this.ctx.invocation?.peer.principal.kind !== 'owner') throw new Error('owner_required')
@@ -77,6 +93,67 @@ export default class LoomService extends TypertRemoteService {
     this.pending.add(call)
     void call.then(() => this.pending.delete(call), () => this.pending.delete(call))
     return call
+  }
+
+  /**
+   * Acquire or enqueue execution access for one Loom-attached Session.
+   * The Agent tool gate calls the same transition before allowing a tool call.
+   * @param sessionId - Session observed on the Agent runtime.
+   * @returns a denial when another Session holds the workspace, otherwise undefined.
+   */
+  private async admitExecution(sessionId: Branded<'SessionId'>): Promise<{ readonly kind: 'deny'; readonly reason: string } | undefined> {
+    try {
+      const catalog = await this.catalog
+      if (this.closed) return undefined
+      const snapshot = catalog.snapshot()
+      const task = [...snapshot.tasks].reverse().find(candidate => candidate.attempts.some(attempt => attempt.sessionIds.includes(sessionId)))
+      const attempt = task === undefined ? undefined : [...task.attempts].reverse().find(candidate => candidate.sessionIds.includes(sessionId))
+      const workspace = attempt === undefined ? undefined : snapshot.workspaces.find(candidate => candidate.id === attempt.workspaceId && candidate.cleaned !== true)
+      if (workspace === undefined) return undefined
+      const current = snapshot.executions.find(execution => execution.workspaceId === workspace.id)
+      if (current?.owner?.sessionId === sessionId) return undefined
+      if (current?.waiting.includes(sessionId) === true) return { kind: 'deny', reason: 'Loom workspace execution is queued behind another session.' }
+      const state = await catalog.acquireExecution(workspace.id, sessionId)
+      if (state.owner?.sessionId === sessionId) return undefined
+      return { kind: 'deny', reason: 'Loom workspace execution is held by another session. Wait for handoff or request takeover.' }
+    } catch {
+      return { kind: 'deny', reason: 'Loom execution state is unavailable; the tool call was not executed.' }
+    }
+  }
+
+  private async releaseSession(sessionId: Branded<'SessionId'>): Promise<void> {
+    try {
+      const catalog = await this.catalog
+      if (this.closed) return
+      await catalog.releaseSession(sessionId)
+    } catch {
+      // Teardown cleanup is best effort; the tool gate still refuses a non-owner.
+    }
+  }
+
+  /**
+   * Stop one owning Agent turn and wait for observable idleness.
+   * Child Agents are not separately awaited; the owner's turn cancellation is the
+   * stop evidence this Host can observe.
+   * @param sessionId - Session holding the current workspace execution token.
+   * @returns the trusted stop outcome used to confirm or block handoff.
+   */
+  private async stopOwner(sessionId: Branded<'SessionId'>): Promise<StopOutcome> {
+    const agents = this.ctx.get('agents') as { get(id: Branded<'SessionId'>): LoomAgent | undefined } | undefined
+    if (agents === undefined) return 'unknown'
+    const agent = agents.get(sessionId)
+    if (agent === undefined || agent.status !== 'running') return 'stopped'
+    try {
+      agent.cancel({ kind: 'user' }, { keepInbox: true })
+    } catch {
+      return 'failed'
+    }
+    const deadline = Date.now() + 10_000
+    while (Date.now() < deadline) {
+      if (agent.status !== 'running') return 'stopped'
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    return 'unknown'
   }
 
   /** Read a detached catalog snapshot. @returns current committed records. */
@@ -187,5 +264,61 @@ export default class LoomService extends TypertRemoteService {
       const parsed = transitionRequest.parse(request)
       return catalog.transitionTask(brandString<TaskRecord['id']>(parsed.taskId), parsed.target, parsed.actor)
     })
+  }
+
+  /** Acquire workspace execution access or join its FIFO wait queue. @param request - workspace and requesting Session. @returns the committed scheduling state. */
+  @Remote
+  acquireExecution(request: ExecutionRequest): Promise<ExecutionState> {
+    return this.run(catalog => {
+      const parsed = executionRequest.parse(request)
+      return catalog.acquireExecution(
+        brandString<WorkspaceRecord['id']>(parsed.workspaceId),
+        brandString<Branded<'SessionId'>>(parsed.sessionId),
+      )
+    })
+  }
+
+  /** Release an exact owned generation after its Agent turn settles. @param request - workspace, Session and generation. @returns the scheduling state after FIFO promotion. */
+  @Remote
+  releaseExecution(request: ReleaseExecutionRequest): Promise<ExecutionState> {
+    return this.run(catalog => {
+      const parsed = releaseExecutionRequest.parse(request)
+      const workspaceId = brandString<WorkspaceRecord['id']>(parsed.workspaceId)
+      const sessionId = brandString<Branded<'SessionId'>>(parsed.sessionId)
+      const state = catalog.snapshot().executions.find(candidate => candidate.workspaceId === workspaceId)
+      if (state?.owner?.sessionId !== sessionId || Number(state.owner.generation) !== parsed.generation) throw new Error('stale_owner')
+      return catalog.releaseExecution(workspaceId, state.owner)
+    })
+  }
+
+  /**
+   * Stop the current owner through the Agent runtime, then confirm or block handoff.
+   * @param request - workspace and the Session requesting ownership.
+   * @returns the state after confirmed stop, or the blocked takeover state.
+   */
+  @Remote
+  async takeoverExecution(request: ExecutionRequest): Promise<ExecutionState> {
+    if (this.ctx.invocation?.peer.principal.kind !== 'owner') throw new Error('owner_required')
+    if (this.closed) throw new Error('loom_disposed')
+    const parsed = executionRequest.parse(request)
+    const workspaceId = brandString<WorkspaceRecord['id']>(parsed.workspaceId)
+    const sessionId = brandString<Branded<'SessionId'>>(parsed.sessionId)
+    const call = (async () => {
+      const catalog = await this.catalog
+      if (this.closed) throw new Error('loom_disposed')
+      const begun = await catalog.beginTakeover(workspaceId, sessionId)
+      const outcome = await this.stopOwner(begun.owner.sessionId)
+      try {
+        return await catalog.finishTakeover(workspaceId, begun.owner, outcome)
+      } catch (error) {
+        if (!(error instanceof ExecutionError) || error.code !== 'stale_owner') throw error
+        const settled = catalog.snapshot().executions.find(candidate => candidate.workspaceId === workspaceId)
+        if (settled?.owner?.sessionId !== sessionId) throw error
+        return settled
+      }
+    })()
+    this.pending.add(call)
+    void call.then(() => this.pending.delete(call), () => this.pending.delete(call))
+    return call
   }
 }

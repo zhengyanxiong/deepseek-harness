@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
-import { brandString } from '@deepseek-ai/dsh-brand'
+import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
 import { ExecutionPanel, type ExecutionActions } from '../src/client/LoomExecution.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
 import type { CatalogSnapshot, Lock, TaskRecord, VersionRecord, WorkspaceRecord } from 'dsh-loom/types'
@@ -24,6 +24,8 @@ const snapshot: CatalogSnapshot = {
   locks: [lock],
   tasks: [],
   workspaces: [workspace],
+  audit: [],
+  executions: [],
 }
 const pending: TaskRecord = { id: brandString<TaskRecord['id']>('t1'), versionId, title: 'Checkout', status: 'pending', attempts: [] }
 const running: TaskRecord = {
@@ -41,6 +43,9 @@ const actions: ExecutionActions = {
   transitionTask: () => Promise.reject(new Error('unused')),
   createSessionInWorkspace: () => Promise.reject(new Error('unused')),
   cleanupWorkspace: () => Promise.reject(new Error('unused')),
+  acquireExecution: () => Promise.reject(new Error('unused')),
+  releaseExecution: () => Promise.reject(new Error('unused')),
+  takeoverExecution: () => Promise.reject(new Error('unused')),
   onSession: () => {},
   onChanged: () => {},
 }
@@ -69,4 +74,63 @@ it('requires human confirmation from review', () => {
   expect(html).toContain(en['task.accept'])
   expect(html).toContain(en['task.continue'])
   expect(html).toContain(en['task.fail'])
+})
+
+it('shows waiting and takeover controls when another Session owns the workspace', () => {
+  const owner = { workspaceId: workspace.id, sessionId: brandString<'SessionId'>('s2'), generation: brandNumber<'loom.execution-generation'>(1) }
+  const withExecution: CatalogSnapshot = {
+    ...snapshot,
+    executions: [{ workspaceId: workspace.id, generation: brandNumber<'loom.execution-generation'>(1), owner, waiting: [brandString<'SessionId'>('s1')], takeover: null }],
+  }
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: running, snapshot: withExecution, selectedSession: undefined, actions }))
+  expect(html).toContain(en['execution.owner'])
+  expect(html).toContain(en['execution.waiting'])
+  expect(html).toContain(en['execution.takeover'])
+  expect(html).not.toContain(en['execution.release'])
+})
+it('shows release for the owning Session', () => {
+  const owner = { workspaceId: workspace.id, sessionId: brandString<'SessionId'>('s1'), generation: brandNumber<'loom.execution-generation'>(2) }
+  const withExecution: CatalogSnapshot = {
+    ...snapshot,
+    executions: [{ workspaceId: workspace.id, generation: brandNumber<'loom.execution-generation'>(2), owner, waiting: [], takeover: null }],
+  }
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: running, snapshot: withExecution, selectedSession: undefined, actions }))
+  expect(html).toContain(en['execution.release'])
+  expect(html).not.toContain(en['execution.wait'])
+})
+
+it('offers a failed task its retained matching workspace for a new attempt', () => {
+  const failed: TaskRecord = {
+    ...pending,
+    status: 'failed',
+    attempts: [{ id: brandString<'loom.attempt'>('a1'), lock, workspaceId: workspace.id, sessionIds: [], status: 'failed' }],
+  }
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: failed, snapshot, selectedSession: undefined, actions }))
+  expect(html).toContain(en['workspace.reuse'])
+  expect(html).toContain(en['task.start'])
+})
+it('does not offer reuse after the previous workspace was cleaned', () => {
+  const failed: TaskRecord = {
+    ...pending,
+    status: 'failed',
+    attempts: [{ id: brandString<'loom.attempt'>('a1'), lock, workspaceId: workspace.id, sessionIds: [], status: 'failed' }],
+  }
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, {
+    t, task: failed, selectedSession: undefined, actions,
+    snapshot: { ...snapshot, workspaces: [{ ...workspace, cleaned: true }] },
+  }))
+  expect(html).not.toContain(en['workspace.reuse'])
+})
+
+it('acts for the selected Session rather than the task’s last attached Session', () => {
+  const owner = { workspaceId: workspace.id, sessionId: brandString<'SessionId'>('s1'), generation: brandNumber<'loom.execution-generation'>(1) }
+  const withExecution: CatalogSnapshot = {
+    ...snapshot,
+    executions: [{ workspaceId: workspace.id, generation: brandNumber<'loom.execution-generation'>(1), owner, waiting: [], takeover: null }],
+  }
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, {
+    t, task: running, snapshot: withExecution, selectedSession: brandString<'SessionId'>('s2'), actions,
+  }))
+  expect(html).toContain(en['execution.takeover'])
+  expect(html).not.toContain(en['execution.release'])
 })

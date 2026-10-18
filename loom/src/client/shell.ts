@@ -1,6 +1,6 @@
 /** Shared visual tokens and small projections for the Loom shell. */
 import type { CSSProperties } from 'react'
-import type { Lock } from 'dsh-loom/types'
+import type { AuditEvent, Lock } from 'dsh-loom/types'
 import type { TaskStatus } from '../domain/task.ts'
 import type { LoomKey } from './locales.ts'
 
@@ -34,6 +34,25 @@ export const STATUS_META: Readonly<Record<TaskStatus, { readonly key: LoomKey; r
 
 /** Status order shown by the board and tree. */
 export const STATUS_ORDER: readonly TaskStatus[] = ['pending', 'running', 'review', 'completed', 'failed']
+
+/** Locale keys for audited business events. */
+export const AUDIT_LABEL: Readonly<Record<AuditEvent, LoomKey>> = {
+  'project.created': 'audit.project.created',
+  'version.created': 'audit.version.created',
+  'lock.generated': 'audit.lock.generated',
+  'task.created': 'audit.task.created',
+  'task.transitioned': 'audit.task.transitioned',
+  'workspace.prepared': 'audit.workspace.prepared',
+  'workspace.cleaned': 'audit.workspace.cleaned',
+  'attempt.started': 'audit.attempt.started',
+  'session.attached': 'audit.session.attached',
+  'execution.acquired': 'audit.execution.acquired',
+  'execution.queued': 'audit.execution.queued',
+  'execution.released': 'audit.execution.released',
+  'execution.takeover-requested': 'audit.execution.takeover-requested',
+  'execution.takeover-stopped': 'audit.execution.takeover-stopped',
+  'execution.takeover-blocked': 'audit.execution.takeover-blocked',
+}
 
 export const pill: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, border: `0.5px solid ${COLORS.border}`, borderRadius: 999, padding: '1px 8px', fontSize: 11, color: COLORS.dim, whiteSpace: 'nowrap' }
 export const button: CSSProperties = { color: 'inherit', background: 'transparent', border: `0.5px solid ${COLORS.border}`, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', font: 'inherit' }

@@ -2,11 +2,12 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, Lock, PrepareWorkspaceRequest, StartAttemptRequest,
-  TaskRecord, TransitionTaskRequest, WorkspaceRecord,
+  AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, ExecutionRequest, ExecutionState, Lock, PrepareWorkspaceRequest,
+  ReleaseExecutionRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceRecord,
 } from 'dsh-loom/types'
 import type { LoomKey } from './locales.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { currentExecution } from './projection.ts'
 
 type Translate = (key: LoomKey) => string
 
@@ -23,6 +24,9 @@ export interface ExecutionActions {
   transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
   createSessionInWorkspace(path: string): Promise<SessionId>
   cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
+  acquireExecution(request: ExecutionRequest): Promise<RemoteResult<ExecutionState>>
+  releaseExecution(request: ReleaseExecutionRequest): Promise<RemoteResult<ExecutionState>>
+  takeoverExecution(request: ExecutionRequest): Promise<RemoteResult<ExecutionState>>
   onSession(sessionId: SessionId): void
   onChanged(): void
 }
@@ -44,9 +48,15 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [cleaning, setCleaning] = useState(false)
+  const [takeoverConfirm, setTakeoverConfirm] = useState(false)
   const current = task.attempts.at(-1)
   const version = snapshot.versions.find(candidate => candidate.id === task.versionId)
   const workspace = current === undefined ? undefined : snapshot.workspaces.find(candidate => candidate.id === current.workspaceId)
+  const execution = currentExecution(snapshot, task)
+  const boundSession = current?.sessionIds.at(-1)
+  const actorSession = selectedSession ?? boundSession
+  const ownsExecution = execution?.owner != null && execution.owner.sessionId === actorSession
+  const waitingExecution = actorSession !== undefined && execution?.waiting.includes(actorSession) === true
   async function transition(target: TransitionTaskRequest['target'], actor: TransitionTaskRequest['actor']): Promise<void> {
     setBusy(true); setFailed(false)
     try {
@@ -71,6 +81,34 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
       const result = await actions.cleanupWorkspace({ workspaceId: workspace.id, discardChanges: true })
       if (!result.ok) { setFailed(true); return }
       setCleaning(false)
+      actions.onChanged()
+    } catch { setFailed(true) } finally { setBusy(false) }
+  }
+  async function acquire(): Promise<void> {
+    if (workspace === undefined || actorSession === undefined) return
+    setBusy(true); setFailed(false)
+    try {
+      const result = await actions.acquireExecution({ workspaceId: workspace.id, sessionId: actorSession })
+      if (!result.ok) { setFailed(true); return }
+      actions.onChanged()
+    } catch { setFailed(true) } finally { setBusy(false) }
+  }
+  async function release(): Promise<void> {
+    if (workspace === undefined || execution?.owner === null || execution?.owner === undefined) return
+    setBusy(true); setFailed(false)
+    try {
+      const result = await actions.releaseExecution({ workspaceId: workspace.id, sessionId: execution.owner.sessionId, generation: Number(execution.owner.generation) })
+      if (!result.ok) { setFailed(true); return }
+      actions.onChanged()
+    } catch { setFailed(true) } finally { setBusy(false) }
+  }
+  async function takeover(): Promise<void> {
+    if (workspace === undefined || actorSession === undefined) return
+    setBusy(true); setFailed(false)
+    try {
+      const result = await actions.takeoverExecution({ workspaceId: workspace.id, sessionId: actorSession })
+      if (!result.ok) { setFailed(true); return }
+      setTakeoverConfirm(false)
       actions.onChanged()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
@@ -105,6 +143,23 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
         {selectedSession !== undefined && current !== undefined && !current.sessionIds.includes(selectedSession) && <button style={button} disabled={busy} onClick={() => { void attach() }}>{t('session.open')}</button>}
       </>}
     </div>
+    {workspace !== undefined && boundSession !== undefined && workspace.cleaned !== true && <div style={{ ...box, gap: 6 }}>
+      <p style={{ ...alert, margin: 0 }}>{t('execution.owner')}: {execution?.owner === null || execution?.owner === undefined ? t('ctx.ready') : execution.owner.sessionId.slice(0, 8)}</p>
+      {execution?.takeover !== null && execution?.takeover !== undefined && <p style={{ ...alert, margin: 0 }}>{execution.takeover.stopStatus === 'requested' ? t('execution.stopping') : t('execution.blocked')}</p>}
+      {execution?.owner !== null && execution?.owner !== undefined && !ownsExecution && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {!waitingExecution && <button style={button} disabled={busy || execution?.takeover !== null} onClick={() => { void acquire() }}>{t('execution.wait')}</button>}
+        {waitingExecution && <span style={{ ...alert, margin: 0 }}>{t('execution.waiting')}</span>}
+        {!takeoverConfirm && <button style={button} disabled={busy || execution?.takeover !== null} onClick={() => setTakeoverConfirm(true)}>{t('execution.takeover')}</button>}
+      </div>}
+      {takeoverConfirm && <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <p style={{ ...alert, margin: 0 }}>{t('execution.takeoverWarning')}</p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={button} disabled={busy} onClick={() => { void takeover() }}>{busy ? t('execution.stopping') : t('form.confirm')}</button>
+          <button style={button} disabled={busy} onClick={() => setTakeoverConfirm(false)}>{t('form.cancel')}</button>
+        </div>
+      </div>}
+      {ownsExecution && (execution?.takeover === null || execution?.takeover === undefined) && <button style={button} disabled={busy} onClick={() => { void release() }}>{t('execution.release')}</button>}
+    </div>}
     {workspace !== undefined && workspace.cleaned !== true && <div style={{ marginTop: 8 }}>
       {cleaning ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <p style={alert}>{t('workspace.cleanupWarning')}</p>
@@ -134,9 +189,16 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const [path, setPath] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
+  const [reuse, setReuse] = useState(false)
+  const lastAttempt = task.attempts.at(-1)
+  const previousWorkspace = lastAttempt === undefined ? undefined : snapshot.workspaces.find(candidate => candidate.id === lastAttempt.workspaceId && candidate.cleaned !== true)
+  const canReuse = task.status === 'failed' && previousWorkspace !== undefined && previousWorkspace.lockId === lockId
   useEffect(() => {
     if (lockId === undefined && locks.length > 0) setLockId(locks.at(-1)?.id)
   }, [lockId, locks])
+  useEffect(() => {
+    if (!canReuse) setReuse(false)
+  }, [canReuse])
   if (locks.length === 0) return <p style={{ ...alert, marginTop: 8 }}>{t('lock.empty')}</p>
   const absolute = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(path.trim())
   async function start(event: FormEvent): Promise<void> {
@@ -145,11 +207,14 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
     if (custom && !absolute) { setFailure(t('workspace.absoluteRequired')); return }
     setBusy(true); setFailure(undefined)
     try {
-      const prepared = await actions.prepareWorkspace({ versionId, lockId, ...(custom ? { path: path.trim() } : {}) })
-      if (!prepared.ok) { setFailure(prepared.error.message); return }
-      const started = await actions.startAttempt({ taskId: task.id, workspaceId: prepared.value.id })
+      const reused = reuse && canReuse ? previousWorkspace : undefined
+      const prepared = reused === undefined ? await actions.prepareWorkspace({ versionId, lockId, ...(custom ? { path: path.trim() } : {}) }) : undefined
+      if (prepared !== undefined && !prepared.ok) { setFailure(prepared.error.message); return }
+      const target = reused ?? (prepared !== undefined && prepared.ok ? prepared.value : undefined)
+      if (target === undefined) { setFailure(t('state.error')); return }
+      const started = await actions.startAttempt({ taskId: task.id, workspaceId: target.id })
       if (!started.ok) { setFailure(started.error.message); return }
-      const sessionId = await actions.createSessionInWorkspace(prepared.value.path)
+      const sessionId = await actions.createSessionInWorkspace(target.path)
       const attached = await actions.attachSession({ taskId: task.id, sessionId })
       if (!attached.ok) { setFailure(attached.error.message); return }
       setPath('')
@@ -163,9 +228,13 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
         {locks.map(lock => <option key={lock.id} value={lock.id}>{lock.repositories.map(repository => repository.commit.slice(0, 7)).join(' + ')}</option>)}
       </select>
     </label>
-    <p style={{ ...alert, margin: 0 }}>{t('workspace.auto')}</p>
-    <button type="button" style={button} aria-pressed={custom} onClick={() => { setCustom(value => !value); setFailure(undefined) }}>{t('workspace.custom')}</button>
-    {custom && <input aria-label={t('workspace.path')} placeholder={t('workspace.path')} value={path} onChange={event => setPath(event.target.value)} style={input} />}
+    {canReuse && <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <button type="button" style={button} aria-pressed={reuse} onClick={() => { setReuse(value => !value); setFailure(undefined) }}>{t('workspace.reuse')}</button>
+      {reuse && <p style={{ ...alert, margin: 0 }}>{t('workspace.reuseWarning')}</p>}
+    </div>}
+    {!reuse && <p style={{ ...alert, margin: 0 }}>{t('workspace.auto')}</p>}
+    {!reuse && <button type="button" style={button} aria-pressed={custom} onClick={() => { setCustom(value => !value); setFailure(undefined) }}>{t('workspace.custom')}</button>}
+    {!reuse && custom && <input aria-label={t('workspace.path')} placeholder={t('workspace.path')} value={path} onChange={event => setPath(event.target.value)} style={input} />}
     {failure !== undefined && <p role="alert" style={alert}>{t('state.error')}<span style={{ display: 'block', opacity: 0.7, marginTop: 4, overflowWrap: 'anywhere' }}>{failure}</span></p>}
     <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('task.start')}</button>
   </form>

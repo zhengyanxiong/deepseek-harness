@@ -167,3 +167,28 @@ it('runs a task round through a prepared workspace, Session association, review 
   expect(await call('transitionTask', { request: { taskId: task.id, target: 'completed', actor: 'human' } })).toMatchObject({ status: 'completed', attempts: [{ status: 'completed' }] })
   expect(await call('snapshot')).toMatchObject({ workspaces: [{ id: workspace.id }], tasks: [{ id: task.id, status: 'completed' }] })
 })
+
+it('exposes execution acquisition, blocked handoff and release through the gateway', async () => {
+  const { call, dir } = await setup()
+  const repo = join(dir, 'repo'); await mkdir(repo)
+  const exec = promisify(execFile)
+  await exec('git', ['init', '--quiet', repo])
+  await writeFile(join(repo, 'file'), 'content')
+  await exec('git', ['-C', repo, 'add', 'file'])
+  await exec('git', ['-C', repo, '-c', 'user.name=Loom Test', '-c', 'user.email=loom@example.invalid', 'commit', '-qm', 'initial'])
+  const project = await call('createProject', { request: { name: 'Git', sources: [{ id: 'web', repo, path: 'web' }], modules: [] } }) as { id: string }
+  const version = await call('createVersion', { request: { projectId: project.id, name: 'v', sources: [{ sourceId: 'web', ref: 'HEAD' }] } }) as { id: string }
+  const lock = await call('generateLock', { request: { versionId: version.id } }) as { id: string }
+  const workspace = await call('registerWorkspace', { request: { path: join(dir, 'workspace'), versionId: version.id, lockId: lock.id } }) as { id: string }
+  const first = await call('acquireExecution', { request: { workspaceId: workspace.id, sessionId: 'session-a' } }) as { owner: { sessionId: string; generation: number }; waiting: string[] }
+  expect(first.owner.sessionId).toBe('session-a')
+  const second = await call('acquireExecution', { request: { workspaceId: workspace.id, sessionId: 'session-b' } }) as { owner: { sessionId: string }; waiting: string[] }
+  expect(second.owner.sessionId).toBe('session-a')
+  expect(second.waiting).toEqual(['session-b'])
+  const released = await call('releaseExecution', { request: { workspaceId: workspace.id, sessionId: 'session-a', generation: first.owner.generation } }) as { owner: { sessionId: string; generation: number } }
+  expect(released.owner.sessionId).toBe('session-b')
+  const takeover = await call('takeoverExecution', { request: { workspaceId: workspace.id, sessionId: 'session-a' } }) as { owner: { sessionId: string }; takeover: { stopStatus: string } }
+  expect(takeover.owner.sessionId).toBe('session-b')
+  expect(takeover.takeover.stopStatus).toBe('unknown')
+  expect((await call('snapshot') as { audit: { event: string }[] }).audit.map(entry => entry.event)).toEqual(expect.arrayContaining(['execution.acquired', 'execution.queued', 'execution.takeover-requested', 'execution.takeover-blocked', 'execution.released']))
+})
