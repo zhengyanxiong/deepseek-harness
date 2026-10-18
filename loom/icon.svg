@@ -1,7 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect x="8" y="8" width="48" height="48" rx="12" fill="#E6F0EA"/>
-  <path d="M22 17v30M42 17v30" stroke="#255C45" stroke-width="6" stroke-linecap="round"/>
-  <path d="M17 24h30M17 40h30" stroke="#255C45" stroke-width="6" stroke-linecap="round"/>
-  <path d="M22 21v6M42 37v6" stroke="#E6F0EA" stroke-width="10"/>
-  <path d="M22 19v10M42 35v10" stroke="#255C45" stroke-width="6"/>
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M16.9 17.4 L22.5 26.5 L27.5 9.5" stroke="url(#loom-right)" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M8.5 9.5 L13.5 26.5 L19.1 14.6" stroke="url(#loom-left)" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" />
+  <defs>
+    <linearGradient id="loom-left" x1="8" y1="9" x2="20" y2="18" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A78BFA" />
+      <stop offset="1" stop-color="#6D5EF8" />
+    </linearGradient>
+    <linearGradient id="loom-right" x1="16" y1="15" x2="28" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4F8CFF" />
+      <stop offset="1" stop-color="#2DD4BF" />
+    </linearGradient>
+  </defs>
 </svg>

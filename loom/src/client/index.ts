@@ -1,4 +1,5 @@
 /** Workloom main panel registration and native Session retention actions. */
+import { createElement } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -15,6 +16,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, DeleteProjectRequest, DeleteTaskRequest, DeleteVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest, RegisterTemporarySessionRequest } from 'dsh-workloom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
+import { LoomMark } from './LoomMark.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { openFilePreview, openReviewPreview, previewTargetFromAddress, reviewIndexFromOptions, reviewTargetFromAddress } from './preview.ts'
 import { NS, en, zh, type LoomKey } from './locales.ts'
@@ -183,7 +185,7 @@ export function apply(ctx: ClientContext): void {
   })
 }
 
-/** Text-only sidebar mark until Loom artwork is approved. */
-function LoomSidebarIcon() {
-  return 'L'
+/** Sidebar entry mark; the surrounding button owns active color. */
+function LoomSidebarIcon({ size = 16 }: { readonly size?: number }) {
+  return createElement(LoomMark, { size })
 }

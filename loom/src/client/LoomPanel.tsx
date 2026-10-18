@@ -24,6 +24,7 @@ import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
 import { LoomResizeHandle } from './LoomResizeHandle.tsx'
 import { LoomFilePreview } from './LoomFilePreview.tsx'
 import { LoomReviewPreview } from './LoomReviewPreview.tsx'
+import { LoomBrandMark } from './LoomMark.tsx'
 import { openFilePreview, workspacePreview, workspaceReviewPreview } from './preview.ts'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
 import { LoomKanban, LoomKanbanAside } from './LoomKanban.tsx'
@@ -546,7 +547,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     <header className="loom-topbar" style={topbar}>
       {narrow && <button type="button" aria-label={t('side.projects')} aria-expanded={sidebarOpen} title={t('side.projects')} onClick={() => setSidebarOpen(value => !value)} style={{ ...topAction, width: 28, height: 28 }} className="loom-top-action"><IconFolderOpenRegular size={14} /></button>}
       <span style={topBrand}>
-        <span style={{ width: 22, height: 22, borderRadius: 6, background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.purple})`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none', fontSize: 11, color: '#fff' }}>织</span>
+        <LoomBrandMark size={22} />
         <span className="loom-brand-name">{t('brand')}</span>
       </span>
       <span aria-hidden className="loom-top-divider" style={topDivider} />
