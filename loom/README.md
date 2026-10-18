@@ -1,5 +1,21 @@
 # Loom implementation status
 
+## Install
+
+Loom is a DSH bundle. DSH `0.2.1-rc.2` through `0.2.x` and Node.js `>=22.19` are required; its manifest declares that DSH range and installation refuses a release outside it. From this directory, build and pack:
+
+```sh
+pnpm run build
+npm pack
+dsh plugin --profile web add ./dsh-loom-0.1.0.tgz
+```
+
+Start the profile with `dsh --profile web`. The Web sidebar then lists **Loom**. A bundle installed from a built tarball needs no install-time build permission. Publishing the same package to npm and installing `dsh-loom@0.1.0` works the same way; the package name in `cordis.patch.yml` must match the published name.
+
+The current repository root is the DSH application, not this bundle, so `dsh plugin add` cannot consume the repository URL directly: a Git install reads the package at the repository root. To distribute through Git without npm, attach the `npm pack` tarball to a GitHub Release and pass its URL to `dsh plugin add`, or move this directory into a standalone bundle repository whose root manifest declares `dsh.bundle` and whose built `lib/` is available (via committed artifacts or a self-contained `prepare` script). A Git `prepare` script requires an explicit build permission in the user's profile.
+
+## Implementation status
+
 This directory contains the in-progress Loom bundle, domain model, storage, local Git adapters, the owner-only Host catalog Remote service, and the Client workbench. The Client loads the projects, versions, tasks and task details it renders from the Host snapshot endpoint over its own generated Remote contribution, creates projects, versions, tasks and Locks through the same namespace, materializes a prepared workspace from a Lock, starts an execution round with a native Session attached to that workspace, applies the allowed task transitions, compares the workspace against its Lock through the native deliverables file comparison factory, and cleans up a retained workspace only after explicit confirmation in a modal that can open the native file comparison. The Host also persists workspace execution ownership with FIFO waiting, blocks Loom-attached Agent tool calls unless the calling Session owns execution access, releases ownership when its Agent turn becomes idle, and performs user-confirmed handoff by cancelling the owning Agent turn and its live descendants and waiting for observable idleness. Cleanup first runs the non-destructive check; uncommitted changes or unpushed commits require a second explicit discard confirmation. The bottom Activity pane renders the durable business audit trail. The Usage pane and context Cost/usage section render provider-reported token buckets from the native token-meter projection; terminal and test panes remain unwired.
 
 ## Implemented domain rules
@@ -35,7 +51,7 @@ pnpm --dir loom run build
 pnpm run typecheck
 ```
 
-The bundle build emits `loom/lib/index.js` and `loom/lib/client.js`. `pnpm --dir loom run build` first runs `scripts/generate-typert.ts`, which generates `lib/typert.host.js` (Typert Loader artifact) and `lib/typert.remote-client.{js,d.ts,d.ts.map}` (Client contribution mounted with `ctx.remote.$mount`). Generated files are build artifacts and are not the source of record; repeated generation is byte-identical. The artifacts resolve from the repository's own `@deepseek-ai/*` packages, so they rely on the same module resolution as any installed plugin, and loading them inside an isolated profile is not yet verified.
+The bundle build emits `loom/lib/index.js` and `loom/lib/client.js`. `pnpm --dir loom run build` first runs `scripts/generate-typert.ts`, which generates `lib/typert.host.js` (Typert Loader artifact) and `lib/typert.remote-client.{js,d.ts,d.ts.map}` (Client contribution mounted with `ctx.remote.$mount`). Generated files are build artifacts and are not the source of record; repeated generation is byte-identical. The artifacts resolve from the repository's own `@deepseek-ai/*` packages, so they rely on the same module resolution as any installed plugin. Installing the packed tarball into an empty profile and mounting its Web header has been verified; the native Diff factory still depends on the deployed DSH build.
 
 ## Host configuration
 

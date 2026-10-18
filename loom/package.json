@@ -31,6 +31,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
+    "src/types.ts",
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
@@ -57,11 +58,16 @@
       ]
     }
   },
+  "engines": {
+    "node": ">=22.19",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
   "scripts": {
     "generate": "node --import tsx/esm scripts/generate-typert.ts",
     "build": "pnpm run generate && tsdown",
     "watch": "tsdown --watch",
-    "install-local": "pnpm run build && node scripts/stage.mjs"
+    "install-local": "pnpm run build && node scripts/stage.mjs",
+    "prepack": "pnpm run build"
   },
   "dependencies": {
     "zod": "^4.0.0"
