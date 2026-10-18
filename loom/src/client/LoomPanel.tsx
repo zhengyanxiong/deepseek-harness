@@ -86,13 +86,29 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     void reference.ready.catch((_error: unknown) => { if (active) setFailure(selected) })
     return () => { active = false; reference.release() }
   }, [selected, retainSession])
+  useEffect(() => {
+    if (task === undefined || selected !== undefined || catalog.status !== 'ready') return
+    const record = catalog.snapshot.tasks.find(candidate => candidate.id === task.id)
+    const bound = record?.attempts.at(-1)?.sessionIds.at(-1)
+    if (bound !== undefined) setSelected(bound)
+  }, [task, selected, catalog])
   const available = held !== undefined && held.id === selected && failure !== selected
   const currentProject = catalog.status === 'ready' ? catalog.snapshot.projects.find(candidate => candidate.id === project) : undefined
   const currentVersion = catalog.status === 'ready' ? catalog.snapshot.versions.find(candidate => candidate.id === version) : undefined
   const detailTask = task === undefined ? undefined : (catalog.status === 'ready' ? catalog.snapshot.tasks.find(candidate => candidate.id === task.id) ?? task : task)
   const refresh = () => setAttempt(current => current + 1)
-  const execution: ExecutionActions = { prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, cleanupWorkspace, onChanged: refresh }
+  const execution: ExecutionActions = { prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, cleanupWorkspace, onSession: id => { setSelected(id); setView('workbench') }, onChanged: refresh }
   const detailWorkspaceId = detailTask?.attempts.at(-1)?.workspaceId
+  const scopedTasks = catalog.status === 'ready' ? catalog.snapshot.tasks.filter(candidate => currentVersion === undefined ? true : candidate.versionId === currentVersion.id) : []
+  const currentAttempt = detailTask?.attempts.at(-1)
+  const currentWorkspace = currentAttempt === undefined || catalog.status !== 'ready' ? undefined : catalog.snapshot.workspaces.find(candidate => candidate.id === currentAttempt.workspaceId)
+  async function transition(target: TransitionTaskRequest['target'], actor: TransitionTaskRequest['actor']): Promise<void> {
+    if (detailTask === undefined) return
+    try {
+      const result = await transitionTask({ taskId: detailTask.id, target, actor })
+      if (result.ok) refresh()
+    } catch { /* the next snapshot keeps the authoritative status */ }
+  }
   return <div style={frame}>
     <header style={line}>
       <span style={{ fontSize: 18, fontWeight: 500 }}>{t('panel')}</span>
@@ -110,13 +126,22 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           locks={catalog.snapshot.locks} selected={version} onSelect={setVersion}
           selectedProject={currentProject?.id} onProject={id => { setProject(current => current === id ? undefined : id); setVersion(undefined) }} t={t} />)}
         {catalog.status === 'ready' && <>
-          <ProjectForm t={t} create={createProject} onCreated={refresh} />
-          {currentProject !== undefined && <VersionForm t={t} project={currentProject} create={createVersion} onCreated={refresh} />}
+          <ProjectForm t={t} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); refresh() }} />
+          {currentProject !== undefined && <VersionForm t={t} project={currentProject} create={createVersion} onCreated={created => { setVersion(created.id); setTask(undefined); setSelected(undefined); refresh() }} />}
           {currentVersion !== undefined && <>
-            <TaskForm t={t} version={currentVersion} create={createTask} onCreated={refresh} />
+            <TaskForm t={t} version={currentVersion} create={createTask} onCreated={created => { setTask(created); setView('workbench'); refresh() }} />
             <LockButton t={t} version={currentVersion} generate={generateLock} onCreated={refresh} />
           </>}
         </>}
+        <h2 style={sectionTitle}>{t('task.title')}</h2>
+        {catalog.status === 'ready' && scopedTasks.length === 0 && <p style={note}>{t('task.empty')}</p>}
+        {scopedTasks.map(candidate => <button key={candidate.id} aria-pressed={task?.id === candidate.id} style={{ ...button, display: 'block', width: '100%', textAlign: 'left', marginTop: 6, overflowWrap: 'anywhere', background: task?.id === candidate.id ? 'var(--dsw-alias-bg-layer-1)' : 'transparent' }} onClick={() => {
+          if (catalog.status === 'ready') {
+            const owner = catalog.snapshot.versions.find(version => version.id === candidate.versionId)
+            if (owner !== undefined) { setProject(owner.projectId); setVersion(owner.id) }
+          }
+          setTask(candidate); setSelected(undefined); setView('workbench')
+        }}>{candidate.title} · {t(STATUS_KEY[candidate.status])}</button>)}
         <h2 style={sectionTitle}>{t('sessions')}</h2>
         <input aria-label={t('searchSessions')} placeholder={t('searchSessions')} value={search} onChange={event => setSearch(event.target.value)} style={{ ...button, boxSizing: 'border-box', width: '100%', cursor: 'text' }} />
         {sessions.ids.length === 0 && <p style={note}>{t('noSessions')}</p>}
@@ -125,18 +150,45 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       <main style={{ flex: '1 0 320px', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {view === 'board'
           ? <div style={{ padding: 20, overflow: 'auto' }}>{catalog.status === 'ready'
-            ? <TaskBoard tasks={catalog.snapshot.tasks} filter={boardFilter(version, search)} t={t} onSelect={setTask} />
+            ? <TaskBoard tasks={catalog.snapshot.tasks} filter={boardFilter(version, search)} t={t} onSelect={candidate => { setTask(candidate); setView('workbench') }} />
             : <p style={note}>{t('state.loading')}</p>}</div>
           : <>
-            <div style={line}>{t('unboundSession')}{selected !== undefined && <button style={{ ...button, marginLeft: 'auto' }} onClick={() => setSelected(undefined)}>{t('session.close')}</button>}</div>
-            {failure !== undefined && failure === selected ? <p role="alert" style={{ ...note, margin: 20 }}>{t('session.unavailable')}</p> : available ? <SessionProvider key={held.id} session={held.reference}>{renderSlot('loom.conversation', {})}</SessionProvider> : <p style={{ ...note, margin: 20 }}>{t(selected === undefined ? 'chooseSession' : 'session.loading')}</p>}
+            <div style={line}>
+              <span style={{ fontWeight: 500, overflowWrap: 'anywhere' }}>{detailTask === undefined ? t('unboundSession') : detailTask.title}</span>
+              {detailTask !== undefined && <span style={{ color: 'var(--dsw-alias-label-secondary)' }}>{t(STATUS_KEY[detailTask.status])}</span>}
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {detailTask?.status === 'running' && <>
+                  <button style={button} onClick={() => { void transition('review', 'agent') }}>{t('task.review')}</button>
+                  <button style={button} onClick={() => { void transition('failed', 'human') }}>{t('task.fail')}</button>
+                </>}
+                {detailTask?.status === 'review' && <>
+                  <button style={button} onClick={() => { void transition('completed', 'human') }}>{t('task.accept')}</button>
+                  <button style={button} onClick={() => { void transition('running', 'human') }}>{t('task.continue')}</button>
+                  <button style={button} onClick={() => { void transition('failed', 'human') }}>{t('task.fail')}</button>
+                </>}
+                {selected !== undefined && <button style={button} onClick={() => setSelected(undefined)}>{t('session.close')}</button>}
+              </span>
+            </div>
+            {failure !== undefined && failure === selected
+              ? <p role="alert" style={{ ...note, margin: 20 }}>{t('session.unavailable')}</p>
+              : available
+                ? <SessionProvider key={held.id} session={held.reference}>{renderSlot('loom.conversation', {})}</SessionProvider>
+                : selected !== undefined
+                  ? <p style={{ ...note, margin: 20 }}>{t('session.loading')}</p>
+                  : detailTask === undefined
+                    ? <p style={{ ...note, margin: 20 }}>{t('chooseTask')}</p>
+                    : <div style={{ padding: 20, overflow: 'auto' }}>
+                        <h2 style={sectionTitle}>{t('task.details')}</h2>
+                        {catalog.status === 'ready' && <ExecutionPanel t={t} task={detailTask} snapshot={catalog.snapshot} selectedSession={selected} actions={execution} />}
+                      </div>}
           </>}
       </main>
       <aside style={{ ...side, borderLeft: '0.5px solid var(--dsw-alias-border-l4)' }}>
         <h2 style={sectionTitle}>{t('task.details')}</h2>
         {detailTask === undefined ? <p style={note}>{t('task.select')}</p> : <>
           <TaskDetails task={detailTask} t={t} />
-          {catalog.status === 'ready' && <ExecutionPanel t={t} task={detailTask} snapshot={catalog.snapshot} selectedSession={selected} actions={execution} />}
+          {currentWorkspace !== undefined && <p style={{ margin: '8px 0 0', overflowWrap: 'anywhere' }}>{t('workspace.path')}: {currentWorkspace.path}</p>}
+          {currentAttempt !== undefined && <p style={{ margin: '8px 0 0', overflowWrap: 'anywhere' }}>{t('attempt.title')}: {detailTask.attempts.length} · {t('session.title')}: {currentAttempt.sessionIds.length}</p>}
         </>}
         <h2 style={sectionTitle}>{t('context')}</h2>
         {selected !== undefined && <p style={{ overflowWrap: 'anywhere' }}>{sessions.byId[selected]?.displayTitle ?? selected}</p>}

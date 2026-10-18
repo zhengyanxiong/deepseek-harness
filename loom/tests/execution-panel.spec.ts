@@ -41,6 +41,7 @@ const actions: ExecutionActions = {
   transitionTask: () => Promise.reject(new Error('unused')),
   createSessionInWorkspace: () => Promise.reject(new Error('unused')),
   cleanupWorkspace: () => Promise.reject(new Error('unused')),
+  onSession: () => {},
   onChanged: () => {},
 }
 it('offers the start form only for a startable task with a Lock', () => {

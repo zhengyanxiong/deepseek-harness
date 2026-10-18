@@ -143,7 +143,7 @@ export function taskRequest(version: VersionRecord, title: string): CreateTaskRe
 interface ProjectFormProps {
   t: Translate
   create(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
-  onCreated(): void
+  onCreated(project: ProjectRecord): void
 }
 
 type ProjectStep = 'basics' | 'modules' | 'preview'
@@ -177,7 +177,7 @@ export function ProjectForm({ t, create, onCreated }: ProjectFormProps) {
     try {
       const result = await create(request)
       if (!result.ok) { setFailed(true); return }
-      reset(); onCreated()
+      reset(); onCreated(result.value)
     } catch { setFailed(true) } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>
@@ -234,7 +234,7 @@ interface VersionFormProps {
   t: Translate
   project: ProjectRecord
   create(request: CreateVersionRequest): Promise<RemoteResult<VersionRecord>>
-  onCreated(): void
+  onCreated(version: VersionRecord): void
 }
 
 /** Create one version with a ref per project repository; Lock generation stays separate. */
@@ -253,7 +253,7 @@ export function VersionForm({ t, project, create, onCreated }: VersionFormProps)
     try {
       const result = await create(request)
       if (!result.ok) { setFailed(true); return }
-      setName(''); setRefs({}); setOpen(false); onCreated()
+      setName(''); setRefs({}); setOpen(false); onCreated(result.value)
     } catch { setFailed(true) } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>
@@ -272,7 +272,7 @@ interface TaskFormProps {
   t: Translate
   version: VersionRecord
   create(request: CreateTaskRequest): Promise<RemoteResult<TaskRecord>>
-  onCreated(): void
+  onCreated(task: TaskRecord): void
 }
 
 /** Create one task under the selected version. */
@@ -290,7 +290,7 @@ export function TaskForm({ t, version, create, onCreated }: TaskFormProps) {
     try {
       const result = await create(request)
       if (!result.ok) { setFailed(true); return }
-      setTitle(''); setOpen(false); onCreated()
+      setTitle(''); setOpen(false); onCreated(result.value)
     } catch { setFailed(true) } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void submit(event) }}>

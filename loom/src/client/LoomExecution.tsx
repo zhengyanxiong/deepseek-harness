@@ -1,5 +1,5 @@
 /** Execution controls for the selected task: workspaces, sessions and business status. */
-import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, Lock, PrepareWorkspaceRequest, StartAttemptRequest,
@@ -23,6 +23,7 @@ export interface ExecutionActions {
   transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
   createSessionInWorkspace(path: string): Promise<SessionId>
   cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
+  onSession(sessionId: SessionId): void
   onChanged(): void
 }
 
@@ -80,6 +81,7 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
       const sessionId = await actions.createSessionInWorkspace(workspace.path)
       const result = await actions.attachSession({ taskId: task.id, sessionId })
       if (!result.ok) { setFailed(true); return }
+      actions.onSession(sessionId)
       actions.onChanged()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
@@ -131,6 +133,9 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const [path, setPath] = useState('')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    if (lockId === undefined && locks.length > 0) setLockId(locks.at(-1)?.id)
+  }, [lockId, locks])
   if (locks.length === 0) return <p style={{ ...alert, marginTop: 8 }}>{t('lock.empty')}</p>
   async function start(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -145,6 +150,7 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
       const attached = await actions.attachSession({ taskId: task.id, sessionId })
       if (!attached.ok) { setFailed(true); return }
       setPath('')
+      actions.onSession(sessionId)
       actions.onChanged()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
