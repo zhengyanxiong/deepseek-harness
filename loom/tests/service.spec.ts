@@ -102,6 +102,21 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   await expect(readFile(join(root, 'web', 'file'), 'utf8')).rejects.toThrow()
   await expect(call('prepareWorkspace', { request: { path: root, versionId: version.id, lockId: lock.id } })).rejects.toThrow('workspace_path_registered')
 })
+it('creates its own isolated workspace when the request omits a path', async () => {
+  const { call, dir } = await setup()
+  const repo = join(dir, 'repo'); await mkdir(repo)
+  const exec = promisify(execFile)
+  await exec('git', ['init', '--quiet', repo])
+  await writeFile(join(repo, 'file'), 'content')
+  await exec('git', ['-C', repo, 'add', 'file'])
+  await exec('git', ['-C', repo, '-c', 'user.name=Loom Test', '-c', 'user.email=loom@example.invalid', 'commit', '-qm', 'initial'])
+  const project = await call('createProject', { request: { name: 'Auto', sources: [{ id: 'web', repo, path: 'web' }], modules: [] } }) as { id: string }
+  const version = await call('createVersion', { request: { projectId: project.id, name: 'v', sources: [{ sourceId: 'web', ref: 'HEAD' }] } }) as { id: string }
+  const lock = await call('generateLock', { request: { versionId: version.id } }) as { id: string }
+  const workspace = await call('prepareWorkspace', { request: { versionId: version.id, lockId: lock.id } }) as { id: string; path: string }
+  expect(workspace.path.startsWith(join(dir, 'workspaces', 'workspace-'))).toBe(true)
+  expect(await readFile(join(workspace.path, 'web', 'file'), 'utf8')).toBe('content')
+})
 it('refuses stale direct service references after disposal', async () => {
   const { ctx, fiber } = await setup()
   const stale = ctx.loom

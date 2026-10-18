@@ -5,7 +5,8 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { mkdirSync } from 'node:fs'
-import { dirname, isAbsolute } from 'node:path'
+import { dirname, isAbsolute, join, normalize } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createCatalog, type Catalog } from './catalog.ts'
 import type {
@@ -16,17 +17,22 @@ import type {
 import type { Lock } from '../domain/task.ts'
 import { resolveCommit } from '../git/workspace.ts'
 
-/** Absolute catalog file with one owning process; the service creates missing parent directories. */
-export interface Config { catalogFile: string }
-const configSchema: Schema<Config> = Schema.object({ catalogFile: Schema.transform(Schema.string().required(), value => {
-  if (!isAbsolute(value)) throw new Error('catalogFile must be absolute')
+/** Absolute catalog file and optional workspace parent; the service creates missing directories. */
+export interface Config { catalogFile: string; workspacesDir?: string }
+const absolute = Schema.transform(Schema.string().required(), value => {
+  if (!isAbsolute(value) || normalize(value) !== value) throw new Error('path must be absolute and normalized')
   return value
-}).required() })
+})
+const configSchema: Schema<Config> = Schema.object({
+  catalogFile: absolute.required(),
+  workspacesDir: absolute,
+})
 const nonempty = z.string().trim().min(1)
 const versionRequest = z.strictObject({ projectId: nonempty, name: nonempty, sources: z.array(z.strictObject({ sourceId: nonempty, ref: nonempty })).min(1) })
 const taskRequest = z.strictObject({ versionId: nonempty, title: nonempty })
 const lockRequest = z.strictObject({ versionId: nonempty })
-const workspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty })
+const workspaceRequest = z.strictObject({ path: nonempty.optional(), versionId: nonempty, lockId: nonempty })
+const registerWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty })
 const attemptRequest = z.strictObject({ taskId: nonempty, workspaceId: nonempty })
 const sessionRequest = z.strictObject({ taskId: nonempty, sessionId: nonempty })
 const transitionRequest = z.strictObject({ taskId: nonempty, target: z.enum(['pending', 'running', 'review', 'completed', 'failed']), actor: z.enum(['human', 'agent']) })
@@ -41,12 +47,15 @@ export default class LoomService extends TypertRemoteService {
   static Config = configSchema
   private readonly catalog: Promise<Catalog>
   private readonly pending = new Set<Promise<unknown>>()
+  private readonly workspacesDir: string
   private closed = false
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'loom')
     const admitted = configSchema(config)
+    this.workspacesDir = admitted.workspacesDir ?? join(dirname(admitted.catalogFile), 'workspaces')
     mkdirSync(dirname(admitted.catalogFile), { recursive: true })
+    mkdirSync(this.workspacesDir, { recursive: true })
     this.catalog = createCatalog(admitted.catalogFile, resolveCommit)
     // Observe startup rejection even if disposal wins before Cordis invokes init.
     void this.catalog.catch(() => undefined)
@@ -102,13 +111,14 @@ export default class LoomService extends TypertRemoteService {
     })
   }
 
-  /** Materialize a workspace from a version Lock and record it. @param request - absolute root and owning baseline. @returns persisted workspace. */
+  /** Materialize a workspace from a version Lock and record it. @param request - owning baseline and an optional absolute root. @returns persisted workspace. */
   @Remote
   prepareWorkspace(request: PrepareWorkspaceRequest): Promise<WorkspaceRecord> {
     return this.run(catalog => {
       const parsed = workspaceRequest.parse(request)
+      const path = parsed.path ?? join(this.workspacesDir, `workspace-${randomUUID().slice(0, 8)}`)
       return catalog.prepareWorkspace({
-        path: parsed.path,
+        path,
         versionId: brandString<Lock['versionId']>(parsed.versionId),
         lockId: brandString<Lock['id']>(parsed.lockId),
       })
@@ -140,7 +150,7 @@ export default class LoomService extends TypertRemoteService {
   @Remote
   registerWorkspace(request: RegisterWorkspaceRequest): Promise<WorkspaceRecord> {
     return this.run(catalog => {
-      const parsed = workspaceRequest.parse(request)
+      const parsed = registerWorkspaceRequest.parse(request)
       return catalog.registerPreparedWorkspace({
         path: parsed.path,
         versionId: brandString<Lock['versionId']>(parsed.versionId),

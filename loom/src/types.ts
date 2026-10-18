@@ -53,7 +53,8 @@ export interface WorkspaceRepositoryChangesRecord {
 }
 /** Materialize one prepared workspace from a version Lock. */
 export interface PrepareWorkspaceRequest {
-  readonly path: string
+  /** Explicit absolute root; the Host creates its own directory when omitted. */
+  readonly path?: string
   readonly versionId: string
   readonly lockId: string
 }

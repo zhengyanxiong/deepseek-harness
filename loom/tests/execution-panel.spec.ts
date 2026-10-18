@@ -47,7 +47,8 @@ const actions: ExecutionActions = {
 it('offers the start form only for a startable task with a Lock', () => {
   const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot, selectedSession: undefined, actions }))
   expect(html).toContain(en['task.start'])
-  expect(html).toContain(en['workspace.path'])
+  expect(html).toContain(en['workspace.auto'])
+  expect(html).toContain(en['workspace.custom'])
   expect(html).not.toContain(en['task.accept'])
 })
 it('explains a missing Lock instead of offering an unusable start button', () => {

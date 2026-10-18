@@ -126,33 +126,36 @@ interface StartFormProps {
   actions: ExecutionActions
 }
 
-/** Prepare a workspace from one Lock, start the round, then open its first native Session. */
+/** Prepare an isolated workspace from one Lock, start the round, then open its native Session. */
 function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const locks = snapshot.locks.filter(lock => lock.versionId === versionId)
   const [lockId, setLockId] = useState<Lock['id'] | undefined>(locks.at(-1)?.id)
+  const [custom, setCustom] = useState(false)
   const [path, setPath] = useState('')
   const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const [failure, setFailure] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (lockId === undefined && locks.length > 0) setLockId(locks.at(-1)?.id)
   }, [lockId, locks])
   if (locks.length === 0) return <p style={{ ...alert, marginTop: 8 }}>{t('lock.empty')}</p>
+  const absolute = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(path.trim())
   async function start(event: FormEvent): Promise<void> {
     event.preventDefault()
-    if (lockId === undefined || path.trim() === '') { setFailed(true); return }
-    setBusy(true); setFailed(false)
+    if (lockId === undefined) { setFailure(t('lock.select')); return }
+    if (custom && !absolute) { setFailure(t('workspace.absoluteRequired')); return }
+    setBusy(true); setFailure(undefined)
     try {
-      const prepared = await actions.prepareWorkspace({ path: path.trim(), versionId, lockId })
-      if (!prepared.ok) { setFailed(true); return }
+      const prepared = await actions.prepareWorkspace({ versionId, lockId, ...(custom ? { path: path.trim() } : {}) })
+      if (!prepared.ok) { setFailure(prepared.error.message); return }
       const started = await actions.startAttempt({ taskId: task.id, workspaceId: prepared.value.id })
-      if (!started.ok) { setFailed(true); return }
+      if (!started.ok) { setFailure(started.error.message); return }
       const sessionId = await actions.createSessionInWorkspace(prepared.value.path)
       const attached = await actions.attachSession({ taskId: task.id, sessionId })
-      if (!attached.ok) { setFailed(true); return }
+      if (!attached.ok) { setFailure(attached.error.message); return }
       setPath('')
       actions.onSession(sessionId)
       actions.onChanged()
-    } catch { setFailed(true) } finally { setBusy(false) }
+    } catch (error) { setFailure(error instanceof Error ? error.message : t('state.error')) } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void start(event) }}>
     <label style={{ ...alert }}>{t('lock.select')}
@@ -160,8 +163,10 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
         {locks.map(lock => <option key={lock.id} value={lock.id}>{lock.repositories.map(repository => repository.commit.slice(0, 7)).join(' + ')}</option>)}
       </select>
     </label>
-    <input aria-label={t('workspace.path')} placeholder={t('workspace.path')} value={path} onChange={event => setPath(event.target.value)} style={input} />
-    {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
+    <p style={{ ...alert, margin: 0 }}>{t('workspace.auto')}</p>
+    <button type="button" style={button} aria-pressed={custom} onClick={() => { setCustom(value => !value); setFailure(undefined) }}>{t('workspace.custom')}</button>
+    {custom && <input aria-label={t('workspace.path')} placeholder={t('workspace.path')} value={path} onChange={event => setPath(event.target.value)} style={input} />}
+    {failure !== undefined && <p role="alert" style={alert}>{t('state.error')}<span style={{ display: 'block', opacity: 0.7, marginTop: 4, overflowWrap: 'anywhere' }}>{failure}</span></p>}
     <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('task.start')}</button>
   </form>
 }
