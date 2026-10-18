@@ -5,9 +5,10 @@ import type { InjectFace, PropsLocale, PropsRuntime, SessionProviderComponent } 
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ProjectConfig, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-loom/types'
+import type { AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, StartAttemptRequest, TaskRecord, TransitionTaskRequest, VersionRecord, WorkspaceRecord } from 'dsh-loom/types'
 import { TaskBoard } from './TaskBoard.tsx'
 import { LockButton, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
+import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 import type { BoardFilter, BoardTask } from './board.ts'
 import { NS } from './locales.ts'
 
@@ -19,6 +20,11 @@ export interface LoomInjected {
   createVersion(request: CreateVersionRequest): Promise<RemoteResult<VersionRecord>>
   createTask(request: CreateTaskRequest): Promise<RemoteResult<TaskRecord>>
   generateLock(request: GenerateLockRequest): Promise<RemoteResult<Lock>>
+  prepareWorkspace(request: PrepareWorkspaceRequest): Promise<RemoteResult<WorkspaceRecord>>
+  startAttempt(request: StartAttemptRequest): Promise<RemoteResult<TaskRecord>>
+  attachSession(request: AttachSessionRequest): Promise<RemoteResult<TaskRecord>>
+  transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
+  createSessionInWorkspace(path: string): Promise<SessionId>
 }
 interface LoomSeat {
   SessionProvider: SessionProviderComponent
@@ -44,7 +50,7 @@ const bottomKeys = ['diff', 'terminal', 'tests', 'audit', 'costs'] as const
  * @param props - Locale, native catalog, session acquisition, catalog reads, and renderer seats.
  * @returns Loom's workbench; unconnected capabilities stay labeled instead of showing mock data.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, SessionProvider, renderSlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, SessionProvider, renderSlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [selected, setSelected] = useState<SessionId>()
   const [held, setHeld] = useState<{ id: SessionId; reference: SessionReference }>()
@@ -80,7 +86,9 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const available = held !== undefined && held.id === selected && failure !== selected
   const currentProject = catalog.status === 'ready' ? catalog.snapshot.projects.find(candidate => candidate.id === project) : undefined
   const currentVersion = catalog.status === 'ready' ? catalog.snapshot.versions.find(candidate => candidate.id === version) : undefined
+  const detailTask = task === undefined ? undefined : (catalog.status === 'ready' ? catalog.snapshot.tasks.find(candidate => candidate.id === task.id) ?? task : task)
   const refresh = () => setAttempt(current => current + 1)
+  const execution: ExecutionActions = { prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, onChanged: refresh }
   return <div style={frame}>
     <header style={line}>
       <span style={{ fontSize: 18, fontWeight: 500 }}>{t('panel')}</span>
@@ -122,7 +130,10 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       </main>
       <aside style={{ ...side, borderLeft: '0.5px solid var(--dsw-alias-border-l4)' }}>
         <h2 style={sectionTitle}>{t('task.details')}</h2>
-        {task === undefined ? <p style={note}>{t('task.select')}</p> : <TaskDetails task={task} t={t} />}
+        {detailTask === undefined ? <p style={note}>{t('task.select')}</p> : <>
+          <TaskDetails task={detailTask} t={t} />
+          {catalog.status === 'ready' && <ExecutionPanel t={t} task={detailTask} snapshot={catalog.snapshot} selectedSession={selected} actions={execution} />}
+        </>}
         <h2 style={sectionTitle}>{t('context')}</h2>
         {selected !== undefined && <p style={{ overflowWrap: 'anywhere' }}>{sessions.byId[selected]?.displayTitle ?? selected}</p>}
       </aside>

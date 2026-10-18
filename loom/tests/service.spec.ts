@@ -57,6 +57,24 @@ it('creates a missing catalog parent directory on init', async () => {
   const envelope = JSON.parse(await readFile(file, 'utf8')) as { schema: string; data: { projects: unknown[] } }
   expect(envelope).toMatchObject({ schema: 'loom-json-store', data: { projects: [] } })
 })
+it('materializes a workspace from a Lock through the gateway', async () => {
+  const { call, dir } = await setup()
+  const repo = join(dir, 'repo'); await mkdir(repo)
+  const exec = promisify(execFile)
+  await exec('git', ['init', '--quiet', repo])
+  await writeFile(join(repo, 'file'), 'content')
+  await exec('git', ['-C', repo, 'add', 'file'])
+  await exec('git', ['-C', repo, '-c', 'user.name=Loom Test', '-c', 'user.email=loom@example.invalid', 'commit', '-qm', 'initial'])
+  const project = await call('createProject', { request: { name: 'Git', sources: [{ id: 'web', repo, path: 'web' }], modules: [] } }) as { id: string }
+  const version = await call('createVersion', { request: { projectId: project.id, name: 'v', sources: [{ sourceId: 'web', ref: 'HEAD' }] } }) as { id: string }
+  const lock = await call('generateLock', { request: { versionId: version.id } }) as { id: string }
+  const root = join(dir, 'workspace')
+  const workspace = await call('prepareWorkspace', { request: { path: root, versionId: version.id, lockId: lock.id } }) as { id: string; path: string }
+  expect(workspace.path).toBe(root)
+  expect(await readFile(join(root, 'web', 'file'), 'utf8')).toBe('content')
+  expect(await call('snapshot')).toMatchObject({ workspaces: [{ id: workspace.id, versionId: version.id, lockId: lock.id }] })
+  await expect(call('prepareWorkspace', { request: { path: root, versionId: version.id, lockId: lock.id } })).rejects.toThrow('workspace_path_registered')
+})
 it('refuses stale direct service references after disposal', async () => {
   const { ctx, fiber } = await setup()
   const stale = ctx.loom

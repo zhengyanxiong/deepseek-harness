@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { createCatalog, type Catalog } from './catalog.ts'
 import type {
   AttachSessionRequest, CatalogSnapshot, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest,
-  ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest,
+  PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest,
   VersionRecord, WorkspaceRecord,
 } from '../types.ts'
 import type { Lock } from '../domain/task.ts'
@@ -97,6 +97,19 @@ export default class LoomService extends TypertRemoteService {
     return this.run(catalog => {
       const parsed = taskRequest.parse(request)
       return catalog.createTask(brandString<VersionRecord['id']>(parsed.versionId), parsed.title)
+    })
+  }
+
+  /** Materialize a workspace from a version Lock and record it. @param request - absolute root and owning baseline. @returns persisted workspace. */
+  @Remote
+  prepareWorkspace(request: PrepareWorkspaceRequest): Promise<WorkspaceRecord> {
+    return this.run(catalog => {
+      const parsed = workspaceRequest.parse(request)
+      return catalog.prepareWorkspace({
+        path: parsed.path,
+        versionId: brandString<Lock['versionId']>(parsed.versionId),
+        lockId: brandString<Lock['id']>(parsed.lockId),
+      })
     })
   }
 

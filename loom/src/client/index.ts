@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import contribution from 'dsh-loom/remote'
-import type { CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, ProjectConfig } from 'dsh-loom/types'
+import type { AttachSessionRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest } from 'dsh-loom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { NS, en, zh, type LoomKey } from './locales.ts'
@@ -37,7 +37,7 @@ export function apply(ctx: ClientContext): void {
     const mounting = ctx.remote.$mount(contribution)
     return async () => { await (await mounting)() }
   }, 'loom: remote namespace')
-  ctx.inject(['slots', 'locale', 'sessions', 'remote.loom'], (ui) => {
+  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom'], (ui) => {
     ui.effect(() => ui.locale.register(NS, { en, zh }), 'loom: dictionary')
     const t = ui.locale.bind(NS)
     ui.slots.inject('main', () => ui.slots.register({
@@ -50,6 +50,14 @@ export function apply(ctx: ClientContext): void {
         createVersion: (request: CreateVersionRequest) => ui.remote.loom.createVersion(request),
         createTask: (request: CreateTaskRequest) => ui.remote.loom.createTask(request),
         generateLock: (request: GenerateLockRequest) => ui.remote.loom.generateLock(request),
+        prepareWorkspace: (request: PrepareWorkspaceRequest) => ui.remote.loom.prepareWorkspace(request),
+        startAttempt: (request: StartAttemptRequest) => ui.remote.loom.startAttempt(request),
+        attachSession: (request: AttachSessionRequest) => ui.remote.loom.attachSession(request),
+        transitionTask: (request: TransitionTaskRequest) => ui.remote.loom.transitionTask(request),
+        createSessionInWorkspace: async (path: string) => {
+          const workspace = await ui.workspaces.create({ path })
+          return ui.sessions.create({ workspaceId: workspace.workspaceId })
+        },
       }),
     }, LoomPanel))
     ui.slots.inject('loom.conversation', () => ui.slots.register({ name: 'loom.conversation' }, ConversationEmbed))

@@ -23,6 +23,12 @@ export interface CreateTaskRequest {
 export interface GenerateLockRequest {
   readonly versionId: string
 }
+/** Materialize one prepared workspace from a version Lock. */
+export interface PrepareWorkspaceRequest {
+  readonly path: string
+  readonly versionId: string
+  readonly lockId: string
+}
 /** Record one prepared workspace. */
 export interface RegisterWorkspaceRequest {
   readonly path: string

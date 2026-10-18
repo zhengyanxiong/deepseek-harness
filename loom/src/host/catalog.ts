@@ -7,6 +7,7 @@ import { resolveLock } from '../domain/version.ts'
 import { isAbsolute, normalize } from 'node:path'
 import { createTask as pendingTask, startAttempt, attachSession, transitionTask, type Task, type Lock, type Workspace, type TaskStatus } from '../domain/task.ts'
 import { createJsonStore, JsonStoreError } from '../storage/json-store.ts'
+import { prepareWorkspace as materializeWorkspace } from '../git/workspace.ts'
 
 /** Project identity and admitted repository configuration. */
 export interface ProjectRecord { id: Branded<'loom.project'>; config: ProjectConfig }
@@ -20,7 +21,7 @@ export interface WorkspaceRecord extends Workspace { path: string }
 export interface CatalogSnapshot { projects: ProjectRecord[]; versions: VersionRecord[]; locks: Lock[]; tasks: TaskRecord[]; workspaces: WorkspaceRecord[] }
 /** Catalog operation rejection, suitable for caller-owned localization. */
 export class CatalogError extends Error {
-  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered') { super(code); this.name = 'CatalogError' }
+  constructor(readonly code: 'missing_project' | 'missing_version' | 'invalid_version' | 'invalid_catalog' | 'missing_lock' | 'missing_task' | 'missing_workspace' | 'workspace_mismatch' | 'workspace_path_registered' | 'invalid_workspace_path') { super(code); this.name = 'CatalogError' }
 }
 const text = z.string().trim().min(1)
 const id = <B extends string>() => text.transform(value => brandString<Branded<B>>(value))
@@ -78,6 +79,7 @@ export interface Catalog {
   createVersion(projectId: ProjectRecord['id'], name: string, sources: readonly { sourceId: Branded<'loom.source'>; ref: string }[]): Promise<VersionRecord>
   generateLock(versionId: VersionRecord['id']): Promise<Lock>
   createTask(versionId: VersionRecord['id'], title: string): Promise<TaskRecord>
+  prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
   startAttempt(taskId: TaskRecord['id'], workspaceId: WorkspaceRecord['id']): Promise<TaskRecord>
   attachSession(taskId: TaskRecord['id'], sessionId: Branded<'SessionId'>): Promise<TaskRecord>
@@ -125,6 +127,25 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
   }
 
   return {
+    prepareWorkspace: async input => transaction(async draft => {
+      const version = versionIn(draft, input.versionId)
+      const lock = draft.locks.find(item => item.id === input.lockId)
+      if (!lock) throw new CatalogError('missing_lock')
+      if (lock.versionId !== version.id) throw new CatalogError('workspace_mismatch')
+      if (!isAbsolute(input.path) || normalize(input.path) !== input.path) throw new CatalogError('invalid_workspace_path')
+      const project = draft.projects.find(item => item.id === version.projectId)
+      if (!project) throw new CatalogError('missing_project')
+      if (draft.workspaces.some(item => item.path === input.path)) throw new CatalogError('workspace_path_registered')
+      const repositories = project.config.sources.map(source => {
+        const pinned = lock.repositories.find(repository => repository.sourceId === source.id)
+        if (pinned === undefined) throw new CatalogError('workspace_mismatch')
+        return { repo: source.repo, path: source.path, commit: pinned.commit }
+      })
+      await materializeWorkspace(input.path, repositories)
+      const record = { id: brandString<WorkspaceRecord['id']>(randomUUID()), path: input.path, versionId: version.id, lockId: lock.id }
+      draft.workspaces.push(record)
+      return record
+    }),
     registerPreparedWorkspace: async input => {
       const record = workspaceSchema.parse({ ...input, id: randomUUID() })
       return transaction(draft => {
