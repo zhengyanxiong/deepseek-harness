@@ -12,6 +12,7 @@ import type {
   WorkspaceChangesRequest, WorkspaceRecord, WorkspaceRepositoryChangesRecord, ExecutionRequest, ReleaseExecutionRequest, ExecutionState,
 } from 'dsh-loom/types'
 import { ImportProjectForm, ProjectForm, TaskForm, VersionForm } from './LoomForms.tsx'
+import { LoomSettings, readPreferences, writePreferences, type LoomPreferences } from './LoomSettings.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
 import { LoomContextPanel } from './LoomContextPanel.tsx'
@@ -54,7 +55,7 @@ type View = 'workbench' | 'kanban'
 type CreateKind = 'project' | 'import' | 'version' | 'task'
 
 const frame: CSSProperties = { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: COLORS.text, background: COLORS.bg, fontSize: 13, overflow: 'hidden' }
-const topbar: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, height: 44, padding: '0 12px', background: COLORS.panel, borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none', position: 'relative', zIndex: 20 }
+const topbar: CSSProperties = { display: 'flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 4, minHeight: 44, padding: '5px 12px', background: COLORS.panel, borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none', position: 'relative', zIndex: 20 }
 const sidebar: CSSProperties = { width: 230, flex: 'none', background: COLORS.panel, borderRight: `0.5px solid ${COLORS.border}`, overflowY: 'auto', padding: '8px 0' }
 const center: CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: COLORS.bg }
 const aside: CSSProperties = { width: 272, flex: 'none', display: 'flex', flexDirection: 'column', borderLeft: `0.5px solid ${COLORS.border}`, background: COLORS.panel }
@@ -131,7 +132,9 @@ function readPinnedProjects(): ProjectRecord['id'][] {
  */
 export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, createVersion, createTask, generateLock, prepareWorkspace, startAttempt, attachSession, transitionTask, createSessionInWorkspace, workspaceChanges, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
-  const [view, setView] = useState<View>('workbench')
+  const [preferences, setPreferences] = useState<LoomPreferences>(readPreferences)
+  const [view, setView] = useState<View>(preferences.view)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [project, setProject] = useState<ProjectRecord['id']>()
   const [version, setVersion] = useState<VersionRecord['id']>()
   const [task, setTask] = useState<TaskRecord>()
@@ -144,11 +147,11 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [search, setSearch] = useState('')
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
-  const [asideOpen, setAsideOpen] = useState(true)
+  const [asideOpen, setAsideOpen] = useState(preferences.contextOpen)
   const [bottomCollapsed, setBottomCollapsed] = useState(true)
   const [pane, setPane] = useState<LoomBottomPane>('diff')
   const [diffCount, setDiffCount] = useState(0)
-  const [kbMode, setKbMode] = useState<'flat' | 'grouped'>('grouped')
+  const [kbMode, setKbMode] = useState<'flat' | 'grouped'>(preferences.kanbanMode)
   const [filterProject, setFilterProject] = useState('')
   const [filterVersion, setFilterVersion] = useState('')
   const [filterPriority, setFilterPriority] = useState<TaskPriority | ''>('')
@@ -158,6 +161,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [expandedVersions, setExpandedVersions] = useState<ReadonlySet<string>>(new Set())
   const [create, setCreate] = useState<CreateKind>()
   const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => { writePreferences(preferences) }, [preferences])
   useEffect(() => {
     if (typeof localStorage === 'undefined') return
     try { localStorage.setItem('loom.pinnedProjects', JSON.stringify(pinnedProjects)) } catch { /* Storage can be unavailable in private browsing; pins remain in memory. */ }
@@ -268,6 +272,12 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     } catch { /* the next snapshot keeps the authoritative status */ }
   }
   function openCreate(kind: CreateKind): void { setCreate(kind); setMenuOpen(false) }
+  function updatePreferences(next: LoomPreferences): void {
+    setPreferences(next)
+    setView(next.view)
+    setKbMode(next.kanbanMode)
+    setAsideOpen(next.contextOpen)
+  }
   const selectedSessionTitle = selected === undefined ? undefined : sessions.byId[selected]?.displayTitle
   const headerTitle = detailTask?.title ?? selectedSessionTitle ?? t('conv.titleFallback')
   const filter: ShellFilter = {
@@ -311,8 +321,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
         {activeCount} {t('top.activeWorkspaces')}
       </span>
       <div style={{ display: 'flex', border: `0.5px solid ${COLORS.border}`, borderRadius: 7, overflow: 'hidden' }}>
-        <button type="button" aria-pressed={view === 'workbench'} onClick={() => setView('workbench')} style={{ background: view === 'workbench' ? COLORS.panel3 : 'none', border: 'none', color: view === 'workbench' ? COLORS.text : COLORS.dim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: view === 'workbench' ? 600 : 400 }}>{t('workbench')}</button>
-        <button type="button" aria-pressed={view === 'kanban'} onClick={() => setView('kanban')} style={{ background: view === 'kanban' ? COLORS.panel3 : 'none', border: 'none', color: view === 'kanban' ? COLORS.text : COLORS.dim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: view === 'kanban' ? 600 : 400 }}>{t('view.kanban')}</button>
+        <button type="button" aria-pressed={view === 'workbench'} onClick={() => { setView('workbench'); setPreferences(current => ({ ...current, view: 'workbench' })) }} style={{ background: view === 'workbench' ? COLORS.panel3 : 'none', border: 'none', color: view === 'workbench' ? COLORS.text : COLORS.dim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: view === 'workbench' ? 600 : 400 }}>{t('workbench')}</button>
+        <button type="button" aria-pressed={view === 'kanban'} onClick={() => { setView('kanban'); setPreferences(current => ({ ...current, view: 'kanban' })) }} style={{ background: view === 'kanban' ? COLORS.panel3 : 'none', border: 'none', color: view === 'kanban' ? COLORS.text : COLORS.dim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: view === 'kanban' ? 600 : 400 }}>{t('view.kanban')}</button>
       </div>
       <span style={{ flex: 1 }} />
       <div style={{ position: 'relative' }}>
@@ -324,7 +334,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           <button type="button" style={{ ...select, border: 'none', textAlign: 'left', padding: '7px 8px', opacity: createDisabledTask ? 0.45 : 1 }} disabled={createDisabledTask} onClick={() => openCreate('task')}>{t('top.newTask')}</button>
         </div>}
       </div>
-      <button type="button" aria-label={t('top.settings')} aria-pressed={asideOpen} onClick={() => setAsideOpen(value => !value)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer', fontSize: 14 }}>⚙</button>
+      <button type="button" aria-label={t('ctx.project')} aria-pressed={asideOpen} onClick={() => setAsideOpen(value => { const next = !value; setPreferences(current => ({ ...current, contextOpen: next })); return next })} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer', fontSize: 13 }}>▤</button>
+      <button type="button" aria-label={t('top.settings')} onClick={() => setSettingsOpen(true)} style={{ width: 28, height: 28, borderRadius: 6, border: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer', fontSize: 14 }}>⚙</button>
     </header>
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <aside style={sidebar}>
@@ -404,7 +415,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             priorityValue={filterPriority}
             moduleValue={filterModule}
             searchValue={kbSearch}
-            onMode={setKbMode}
+            onMode={mode => { setKbMode(mode); setPreferences(current => ({ ...current, kanbanMode: mode })) }}
             onProject={(value) => { setFilterProject(value); setFilterVersion(''); setFilterModule('') }}
             onVersion={(value) => { setFilterVersion(value); setFilterModule('') }}
             onPriority={(value) => setFilterPriority(value === '' ? '' : value as TaskPriority)}
@@ -437,6 +448,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                   <button style={select} onClick={() => { void transition('running', 'human') }}>{t('task.continue')}</button>
                   <button style={select} onClick={() => { void transition('failed', 'human') }}>{t('task.fail')}</button>
                 </>}
+                {selected !== undefined && detailTask !== undefined && <button style={select} onClick={() => { setDismissed(detailTask.id); setSelected(undefined) }}>{t('task.details')}</button>}
                 {selected !== undefined && <button style={select} onClick={() => { setDismissed(detailTask?.id); setSelected(undefined) }}>{t('session.close')}</button>}
               </span>
             </div>
@@ -482,6 +494,15 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       renderFactorySlot={renderFactorySlot}
       onToggle={() => setBottomCollapsed(value => !value)}
       onPane={setPane}
+    />
+    <LoomSettings
+      t={t}
+      open={settingsOpen}
+      preferences={preferences}
+      pinned={(snapshot?.projects ?? []).filter(candidate => pinnedProjects.includes(candidate.id))}
+      onChange={updatePreferences}
+      onUnpin={id => setPinnedProjects(current => current.filter(candidate => candidate !== id))}
+      onClose={() => setSettingsOpen(false)}
     />
     {create !== undefined && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 60 }} onClick={() => setCreate(undefined)}>
       <div style={{ width: 380, maxWidth: '92%', height: '100%', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}`, padding: 16, overflowY: 'auto' }} onClick={event => event.stopPropagation()}>

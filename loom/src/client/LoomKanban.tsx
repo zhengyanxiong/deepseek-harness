@@ -76,7 +76,7 @@ function Column({ column, t, versionNames, versionProjects, moduleNamesByProject
     aria-label={t(meta.key)}
     onDragOver={event => { event.preventDefault(); if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move' }}
     onDrop={event => { event.preventDefault(); const id = event.dataTransfer?.getData('text/plain'); if (id !== undefined && id !== '') onDropTask(id as TaskRecord['id'], column.status) }}
-    style={{ flex: 1, minWidth: 132, display: 'flex', flexDirection: 'column', background: COLORS.panel, border: `0.5px solid ${COLORS.border}`, borderRadius: 9, overflow: 'hidden' }}>
+    style={{ flex: 1, minWidth: 112, display: 'flex', flexDirection: 'column', background: COLORS.panel, border: `0.5px solid ${COLORS.border}`, borderRadius: 9, overflow: 'hidden' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', borderBottom: `0.5px solid ${COLORS.border}`, fontWeight: 700, fontSize: 12 }}>
       <span style={{ width: 8, height: 8, borderRadius: 3, background: meta.color }} />
       {t(meta.key)}

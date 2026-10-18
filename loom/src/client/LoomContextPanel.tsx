@@ -60,7 +60,7 @@ export function LoomContextPanel({ t, snapshot, project, version, task, generate
       </>}
     </section>
     {version !== undefined && <section style={{ borderBottom: `0.5px solid ${COLORS.border}`, padding: '10px 14px' }}>
-      <h4 style={sectionTitle}>{t('version.title')}</h4>
+      <h4 style={sectionTitle}>{t('version.detail')}</h4>
       <Row k={t('version.name')} v={version.name} />
       <Row k={t('version.repositories')} v={String(version.sources.length)} />
       {version.sources.map(source => <Row key={source.sourceId} k={source.sourceId} v={source.ref} />)}
