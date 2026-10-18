@@ -5,7 +5,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ViewTab } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import contribution from 'dsh-workloom/remote'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
@@ -154,7 +156,27 @@ export function apply(ctx: ClientContext): void {
         },
       }),
     }, LoomPanel))
-    ui.slots.inject('loom.conversation', () => ui.slots.register({ name: 'loom.conversation' }, ConversationEmbed))
+    const conversationViews = createSnapshotStore<readonly ViewTab[]>([])
+    const refreshConversationViews = (): void => {
+      conversationViews.set(ui.slots.entries('conversation.view').flatMap(entry => {
+        const id = entry.options.id
+        if (id === undefined) return []
+        return [{ id, label: resolveSlotLabel(entry.options.label) ?? id }]
+      }))
+    }
+    refreshConversationViews()
+    ui.effect(() => {
+      const disposeViews = ui.slots.subscribe('conversation.view', refreshConversationViews)
+      const disposeLocale = ui.locale.subscribe(refreshConversationViews)
+      return () => {
+        disposeViews()
+        disposeLocale()
+      }
+    }, 'loom: conversation views')
+    ui.slots.inject('loom.conversation', () => ui.slots.register({
+      name: 'loom.conversation',
+      inject: () => ({ hooks: { conversationViews } }),
+    }, ConversationEmbed))
     ui.slots.inject('sidebar.panellist', () => ui.slots.register({
       name: 'sidebar.panellist', id: PANEL_ID, order: 6, locale: NS, label: () => t('panel'),
     }, LoomSidebarIcon))

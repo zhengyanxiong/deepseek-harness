@@ -95,7 +95,9 @@
     "react-dom": "^18.2.0",
     "tsdown": "*",
     "tsx": "^4.20.0",
-    "@deepseek-ai/dsh-client-ui-primitives": "*"
+    "@deepseek-ai/dsh-client-ui-primitives": "*",
+    "@deepseek-ai/dsh-client-store": "*",
+    "@deepseek-ai/dsh-client-ui-slots": "*"
   },
   "license": "MIT"
 }

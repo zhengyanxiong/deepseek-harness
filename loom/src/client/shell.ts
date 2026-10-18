@@ -16,6 +16,7 @@ export const COLORS = {
   dim: 'var(--dsw-alias-label-secondary)',
   faint: 'var(--dsw-alias-label-caption)',
   accent: 'var(--dsw-alias-brand-primary)',
+  business: 'var(--dsw-alias-state-business-primary)',
   green: 'var(--dsw-alias-state-success-primary)',
   warn: 'var(--dsw-alias-state-warn-primary)',
   error: 'var(--dsw-alias-label-error)',
