@@ -10,7 +10,7 @@ type Translate = (key: LoomKey) => string
 
 /** The native factory's caller input, structurally identical to its declaration. */
 export interface NativeFileDiffInput {
-  state: 'missing' | 'error' | 'loading' | { kind: 'binary' } | { kind: 'oversized' } | { kind: 'text'; path: string; hunks: readonly WorkspaceFileChangeRecord['hunks'][number][] }
+  state: 'missing' | 'error' | 'loading' | { kind: 'binary' } | { kind: 'oversized' } | { kind: 'text'; path: string; display: string; before: boolean; after: boolean; coarse: boolean; hunks: readonly WorkspaceFileChangeRecord['hunks'][number][] }
   split: boolean
   wrap: boolean
   retry: () => void
@@ -58,7 +58,7 @@ export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot }: Loo
   const file = selected.file
   const state: NativeFileDiffInput['state'] = file.binary ? { kind: 'binary' }
     : file.hunks.length === 0 ? 'missing'
-      : { kind: 'text', path: file.path, hunks: file.hunks }
+      : { kind: 'text', path: file.path, display: file.path, before: file.before, after: file.after, coarse: false, hunks: file.hunks }
   return <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 240px) 1fr', gap: 12, padding: 8, minHeight: 0 }}>
     <div aria-label={t('diff.files')} style={{ display: 'flex', flexDirection: 'column', gap: 4, overflow: 'auto', maxHeight: 260 }}>
       {files.map((entry, entryIndex) => <button key={`${entry.repo}:${entryIndex}:${entry.file.path}`} aria-pressed={entryIndex === index} style={{ ...button, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => setIndex(entryIndex)}>

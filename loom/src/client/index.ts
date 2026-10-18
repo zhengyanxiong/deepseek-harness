@@ -26,7 +26,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'root'
       props: {
         state: 'missing' | 'error' | 'loading' | { kind: 'binary' } | { kind: 'oversized' }
-          | { kind: 'text'; path: string; hunks: readonly { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: readonly string[] }[] }
+          | { kind: 'text'; path: string; display: string; before: boolean; after: boolean; coarse: boolean; hunks: readonly { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: readonly string[] }[] }
         split: boolean
         wrap: boolean
         retry: () => void

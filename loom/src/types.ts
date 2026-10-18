@@ -47,6 +47,8 @@ export interface WorkspaceFileChangeRecord {
   readonly added: number
   readonly deleted: number
   readonly binary: boolean
+  readonly before: boolean
+  readonly after: boolean
   readonly hunks: readonly { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: readonly string[] }[]
 }
 /** One repository's changes inside a prepared workspace. */

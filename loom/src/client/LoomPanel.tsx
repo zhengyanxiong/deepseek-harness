@@ -488,7 +488,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                 ? <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
                     <div style={{ maxWidth: 720, margin: '0 auto', background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 16 }}>
                       <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>{detailTask.title}</h3>
-                      {snapshot !== undefined && <ExecutionPanel t={t} task={detailTask} snapshot={snapshot} selectedSession={selected} actions={execution} />}
+                      {snapshot !== undefined && <ExecutionPanel t={t} task={detailTask} snapshot={snapshot} selectedSession={selected} actions={execution} loadChanges={workspaceChanges} renderFactorySlot={renderFactorySlot} />}
                     </div>
                   </div>
                 : <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>

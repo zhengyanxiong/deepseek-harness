@@ -75,13 +75,16 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   expect(await call('snapshot')).toMatchObject({ workspaces: [{ id: workspace.id, versionId: version.id, lockId: lock.id }] })
   await writeFile(join(root, 'web', 'file'), 'changed\nsecond\n')
   await writeFile(join(root, 'web', 'new.txt'), 'added\n')
-  const changes = await call('workspaceChanges', { request: { workspaceId: workspace.id } }) as { repositories: { files: { path: string; added: number; deleted: number; hunks: { lines: string[] }[] }[] }[] }
+  const changes = await call('workspaceChanges', { request: { workspaceId: workspace.id } }) as { repositories: { files: { path: string; added: number; deleted: number; before: boolean; after: boolean; hunks: { lines: string[] }[] }[] }[] }
   const files = changes.repositories[0]!.files
   expect(files.map(file => file.path).sort()).toEqual(['file', 'new.txt'])
   const changed = files.find(file => file.path === 'file')!
   expect(changed.added).toBe(2)
   expect(changed.deleted).toBe(1)
+  expect(changed.before).toBe(true)
+  expect(changed.after).toBe(true)
   expect(changed.hunks.flatMap(hunk => hunk.lines)).toContain('-content')
+  expect(files.find(file => file.path === 'new.txt')).toMatchObject({ before: false, after: true })
   expect(files.find(file => file.path === 'new.txt')!.hunks[0]!.lines).toEqual(['+added'])
   const status = await call('workspaceStatus', { request: { workspaceId: workspace.id } }) as { running: boolean; repositories: { files: unknown[] }[] }
   expect(status.running).toBe(false)

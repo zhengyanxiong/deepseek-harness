@@ -50,20 +50,24 @@ const actions: ExecutionActions = {
   onSession: () => {},
   onChanged: () => {},
 }
+const diffProps = {
+  loadChanges: () => Promise.reject(new Error('unused')),
+  renderFactorySlot: () => null,
+}
 it('offers the start form only for a startable task with a Lock', () => {
-  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot, selectedSession: undefined, actions }))
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['task.start'])
   expect(html).toContain(en['workspace.auto'])
   expect(html).toContain(en['workspace.custom'])
   expect(html).not.toContain(en['task.accept'])
 })
 it('explains a missing Lock instead of offering an unusable start button', () => {
-  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot: { ...snapshot, locks: [] }, selectedSession: undefined, actions }))
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot: { ...snapshot, locks: [] }, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['lock.empty'])
   expect(html).not.toContain(en['task.start'])
 })
 it('shows the running round and its agent transition', () => {
-  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: running, snapshot, selectedSession: undefined, actions }))
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: running, snapshot, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(workspace.path)
   expect(html).toContain(en['task.review'])
   expect(html).toContain(en['task.fail'])
@@ -71,7 +75,7 @@ it('shows the running round and its agent transition', () => {
   expect(html).not.toContain(en['task.start'])
 })
 it('requires human confirmation from review', () => {
-  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: { ...running, status: 'review' }, snapshot, selectedSession: undefined, actions }))
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: { ...running, status: 'review' }, snapshot, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['task.accept'])
   expect(html).toContain(en['task.continue'])
   expect(html).toContain(en['task.fail'])
@@ -83,7 +87,7 @@ it('shows waiting and takeover controls when another Session owns the workspace'
     ...snapshot,
     executions: [{ workspaceId: workspace.id, generation: brandNumber<'loom.execution-generation'>(1), owner, waiting: [brandString<'SessionId'>('s1')], takeover: null }],
   }
-  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: running, snapshot: withExecution, selectedSession: undefined, actions }))
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: running, snapshot: withExecution, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['execution.owner'])
   expect(html).toContain(en['execution.waiting'])
   expect(html).toContain(en['execution.takeover'])
@@ -95,7 +99,7 @@ it('shows release for the owning Session', () => {
     ...snapshot,
     executions: [{ workspaceId: workspace.id, generation: brandNumber<'loom.execution-generation'>(2), owner, waiting: [], takeover: null }],
   }
-  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: running, snapshot: withExecution, selectedSession: undefined, actions }))
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: running, snapshot: withExecution, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['execution.release'])
   expect(html).not.toContain(en['execution.wait'])
 })
@@ -106,7 +110,7 @@ it('offers a failed task its retained matching workspace for a new attempt', () 
     status: 'failed',
     attempts: [{ id: brandString<'loom.attempt'>('a1'), lock, workspaceId: workspace.id, sessionIds: [], status: 'failed' }],
   }
-  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: failed, snapshot, selectedSession: undefined, actions }))
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: failed, snapshot, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['workspace.select'])
   expect(html).toContain(workspace.path)
   expect(html).not.toContain(en['workspace.reuse'])
@@ -119,7 +123,7 @@ it('does not offer a cleaned workspace', () => {
     attempts: [{ id: brandString<'loom.attempt'>('a1'), lock, workspaceId: workspace.id, sessionIds: [], status: 'failed' }],
   }
   const html = renderToStaticMarkup(createElement(ExecutionPanel, {
-    t, task: failed, selectedSession: undefined, actions,
+    t, task: failed, selectedSession: undefined, actions, ...diffProps,
     snapshot: { ...snapshot, workspaces: [{ ...workspace, cleaned: true }] },
   }))
   expect(html).not.toContain(`<option value="${workspace.id}"`)
@@ -134,7 +138,7 @@ it('offers an idle workspace owned by another task in the same version', () => {
     attempts: [{ id: brandString<'loom.attempt'>('a2'), lock, workspaceId: workspace.id, sessionIds: [], status: 'completed' }],
   }
   const html = renderToStaticMarkup(createElement(ExecutionPanel, {
-    t, task: pending, selectedSession: undefined, actions,
+    t, task: pending, selectedSession: undefined, actions, ...diffProps,
     snapshot: { ...snapshot, tasks: [pending, other] },
   }))
   expect(html).toContain(workspace.path)
@@ -149,7 +153,7 @@ it('disables a workspace while another task in the same version runs on it', () 
     attempts: [{ id: brandString<'loom.attempt'>('a2'), lock, workspaceId: workspace.id, sessionIds: [], status: 'running' }],
   }
   const html = renderToStaticMarkup(createElement(ExecutionPanel, {
-    t, task: pending, selectedSession: undefined, actions,
+    t, task: pending, selectedSession: undefined, actions, ...diffProps,
     snapshot: { ...snapshot, tasks: [pending, other] },
   }))
   expect(html).toContain(workspace.path)
@@ -164,7 +168,7 @@ it('acts for the selected Session rather than the task’s last attached Session
     executions: [{ workspaceId: workspace.id, generation: brandNumber<'loom.execution-generation'>(1), owner, waiting: [], takeover: null }],
   }
   const html = renderToStaticMarkup(createElement(ExecutionPanel, {
-    t, task: running, snapshot: withExecution, selectedSession: brandString<'SessionId'>('s2'), actions,
+    t, task: running, snapshot: withExecution, selectedSession: brandString<'SessionId'>('s2'), actions, ...diffProps,
   }))
   expect(html).toContain(en['execution.takeover'])
   expect(html).not.toContain(en['execution.release'])

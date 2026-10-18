@@ -179,6 +179,8 @@ export interface WorkspaceFileChange {
   readonly added: number
   readonly deleted: number
   readonly binary: boolean
+  readonly before: boolean
+  readonly after: boolean
   readonly hunks: readonly WorkspaceFileHunk[]
 }
 /** One unified hunk with absolute line numbers, matching the native diff view's input. */
@@ -203,11 +205,13 @@ function parseDiff(text: string): WorkspaceFileChange[] {
   let added = 0
   let deleted = 0
   let binary = false
+  let before = true
+  let after = true
   let hunks: WorkspaceFileHunk[] = []
   let current: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] } | undefined
   const flushFile = (): void => {
-    if (path !== undefined) files.push({ path, added, deleted, binary, hunks })
-    path = undefined; added = 0; deleted = 0; binary = false; hunks = []; current = undefined
+    if (path !== undefined) files.push({ path, added, deleted, binary, before, after, hunks })
+    path = undefined; added = 0; deleted = 0; binary = false; before = true; after = true; hunks = []; current = undefined
   }
   for (const line of text.split('\n')) {
     if (line.startsWith('diff --git ')) {
@@ -218,6 +222,8 @@ function parseDiff(text: string): WorkspaceFileChange[] {
     }
     if (path === undefined) continue
     if (line.startsWith('Binary files ')) { binary = true; continue }
+    if (line.startsWith('new file mode ')) { before = false; continue }
+    if (line.startsWith('deleted file mode ')) { after = false; continue }
     const hunk = HUNK.exec(line)
     if (hunk !== null) {
       current = { oldStart: Number(hunk[1]), oldLines: Number(hunk[2] ?? '1'), newStart: Number(hunk[3]), newLines: Number(hunk[4] ?? '1'), lines: [] }

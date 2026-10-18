@@ -9,6 +9,8 @@ import type { LoomKey } from './locales.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { currentExecution } from './projection.ts'
 import { failureKey, shortCommit, STATUS_META } from './shell.ts'
+import { LoomCleanupDialog } from './LoomCleanupDialog.tsx'
+import type { LoadWorkspaceChanges, RenderFileDiffSlot } from './LoomDiff.tsx'
 
 type Translate = (key: LoomKey) => string
 
@@ -38,6 +40,8 @@ interface ExecutionPanelProps {
   snapshot: CatalogSnapshot
   selectedSession: SessionId | undefined
   actions: ExecutionActions
+  loadChanges: LoadWorkspaceChanges
+  renderFactorySlot: RenderFileDiffSlot
 }
 
 /**
@@ -45,10 +49,10 @@ interface ExecutionPanelProps {
  * @param props - Selected task, catalog records, the active Loom session, and Host actions.
  * @returns business controls without pretending a Session state is a task state.
  */
-export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: ExecutionPanelProps) {
+export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, loadChanges, renderFactorySlot }: ExecutionPanelProps) {
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [cleaning, setCleaning] = useState(false)
+  const [cleanOpen, setCleanOpen] = useState(false)
   const [cleanFailure, setCleanFailure] = useState<string | undefined>(undefined)
   const [discardAllowed, setDiscardAllowed] = useState(false)
   const [takeoverConfirm, setTakeoverConfirm] = useState(false)
@@ -88,7 +92,7 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
         setDiscardAllowed(!discard && (key === 'error.workspaceChanges' || key === 'error.workspaceUnpushed'))
         return
       }
-      setCleaning(false); setCleanFailure(undefined); setDiscardAllowed(false)
+      setCleanOpen(false); setCleanFailure(undefined); setDiscardAllowed(false)
       actions.onChanged()
     } catch { setFailed(true) } finally { setBusy(false) }
   }
@@ -184,16 +188,19 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions }: 
       {ownsExecution && (execution?.takeover === null || execution?.takeover === undefined) && <button style={button} disabled={busy} onClick={() => { void release() }}>{t('execution.release')}</button>}
     </div>}
     {workspace !== undefined && workspace.cleaned !== true && <div style={{ marginTop: 8 }}>
-      {cleaning ? <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <p style={alert}>{t('workspace.cleanupWarning')}</p>
-        {cleanFailure !== undefined && <p role="alert" style={alert}>{failureKey(cleanFailure) === undefined ? t('state.error') : t(failureKey(cleanFailure)!)}</p>}
-        <div style={{ display: 'flex', gap: 8 }}>
-          {discardAllowed
-            ? <button style={button} disabled={busy} onClick={() => { void clean(true) }}>{t('workspace.cleanupDiscard')}</button>
-            : <button style={button} disabled={busy} onClick={() => { void clean(false) }}>{t('workspace.cleanupConfirm')}</button>}
-          <button style={button} disabled={busy} onClick={() => { setCleaning(false); setCleanFailure(undefined); setDiscardAllowed(false) }}>{t('form.cancel')}</button>
-        </div>
-      </div> : <button style={button} disabled={busy} onClick={() => { setCleaning(true); setCleanFailure(undefined); setDiscardAllowed(false) }}>{t('workspace.cleanup')}</button>}
+      <button style={button} disabled={busy} onClick={() => { setCleanOpen(true); setCleanFailure(undefined); setDiscardAllowed(false) }}>{t('workspace.cleanup')}</button>
+      {cleanOpen && <LoomCleanupDialog
+        t={t}
+        workspace={workspace}
+        busy={busy}
+        failure={cleanFailure}
+        discardAllowed={discardAllowed}
+        loadChanges={loadChanges}
+        renderFactorySlot={renderFactorySlot}
+        onConfirm={() => { void clean(false) }}
+        onDiscard={() => { void clean(true) }}
+        onCancel={() => { setCleanOpen(false); setCleanFailure(undefined); setDiscardAllowed(false) }}
+      />}
     </div>}
     {failed && <p role="alert" style={alert}>{t('state.error')}</p>}
   </div>
