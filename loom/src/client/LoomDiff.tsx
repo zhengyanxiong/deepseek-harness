@@ -8,6 +8,8 @@ import type {
   WorkspaceChangesRequest, WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord,
 } from 'dsh-workloom/types'
 import { LoomFileCounts, LoomFileRow } from './LoomFileRow.tsx'
+import { LoomWrapToggle } from './LoomWrapToggle.tsx'
+import { diffViewport } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
@@ -100,6 +102,9 @@ interface LoomDiffProps {
   readonly workspaceId: string | undefined
   readonly loadChanges: LoadWorkspaceChanges
   readonly renderFactorySlot: RenderFileDiffSlot
+  /** Whether the comparison wraps wide lines instead of scrolling sideways. */
+  readonly wrap: boolean
+  readonly onToggleWrap: () => void
   /** Open a file outside the inline comparison, such as the workbench aside. */
   readonly onOpenFile?: (path: string) => void
 }
@@ -137,7 +142,7 @@ function TreeBranch({ t, node, depth, collapsed, selectedKey, onToggle, onSelect
  * @param props - selected workspace, its changes read, and the native factory renderer.
  * @returns the tree and comparison, or the state that stands in for them.
  */
-export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, onOpenFile }: LoomDiffProps): ReactNode {
+export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, wrap, onToggleWrap, onOpenFile }: LoomDiffProps): ReactNode {
   const [changes, setChanges] = useState<readonly WorkspaceRepositoryChangesRecord[] | 'loading' | 'error'>('loading')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [selectedKey, setSelectedKey] = useState<string | undefined>(undefined)
@@ -166,9 +171,10 @@ export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, onOpe
   const deleted = files.reduce((total, entry) => total + entry.file.deleted, 0)
   return <div style={{ display: 'grid', gridTemplateColumns: 'minmax(190px, 280px) 1fr', gap: 12, padding: 8, minHeight: 0, height: '100%', boxSizing: 'border-box', fontSize: 11.5, lineHeight: 1.5 }}>
     <div aria-label={t('diff.files')} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', borderRight: '0.5px solid var(--dsw-alias-border-l4)' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '7px 8px 6px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11 }}>
-        <span>{t('diff.files')} {String(files.length)}</span>
-        <span style={{ marginLeft: 'auto' }}><LoomFileCounts file={{ display: '', added, deleted }} t={t} /></span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px 6px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11 }}>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('diff.files')} {String(files.length)}</span>
+        <span style={{ marginLeft: 'auto', flex: 'none' }}><LoomFileCounts file={{ display: '', added, deleted }} t={t} /></span>
+        <LoomWrapToggle t={t} wrap={wrap} onToggle={onToggleWrap} />
       </div>
       <div role="group" aria-label={t('diff.files')} style={{ minHeight: 0, overflow: 'auto', padding: '0 4px 6px' }}>
         {trees.map(tree => <TreeBranch key={tree.path} t={t} node={tree} depth={0} collapsed={collapsed} selectedKey={selected.key} onToggle={(path) => setCollapsed(current => {
@@ -178,8 +184,8 @@ export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, onOpe
         })} onSelectFile={(entry) => { setSelectedKey(entry.key); onOpenFile?.(entry.file.path) }} />)}
       </div>
     </div>
-    <div style={{ minWidth: 0, minHeight: 0, overflow: 'auto' }}>
-      {renderFactorySlot('deliverables.fileDiff', { state, split: true, wrap: false, retry: () => setAttempt(current => current + 1) }, { fallback: <p style={{ margin: 0 }}>{t('integrationUnavailable')}</p> })}
+    <div data-loom-diff-viewport style={diffViewport}>
+      {renderFactorySlot('deliverables.fileDiff', { state, split: true, wrap, retry: () => setAttempt(current => current + 1) }, { fallback: <p style={{ margin: 0 }}>{t('integrationUnavailable')}</p> })}
     </div>
   </div>
 }

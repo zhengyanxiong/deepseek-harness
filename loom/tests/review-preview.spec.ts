@@ -30,6 +30,7 @@ it('loads the turn summary and the selected native comparison', async () => {
   await act(async () => {
     root.render(createElement(LoomReviewPreview, {
       t: (key: keyof typeof en) => en[key], sessionId: 's1', seq: 9, initialIndex: 1,
+      wrap: false, onToggleWrap: () => {},
       renderFactorySlot: (_name, props) => {
         const kind = typeof props.state === 'string' ? props.state : props.state.kind
         states.push(kind)

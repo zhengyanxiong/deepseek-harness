@@ -661,6 +661,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     setKbMode(next.kanbanMode)
     setAsideOpen(next.contextOpen)
   }
+  function togglePreviewWrap(): void { updatePreferences({ ...preferences, previewWrap: !preferences.previewWrap }) }
   const selectedSessionTitle = selected === undefined ? undefined : sessions.byId[selected]?.displayTitle
   const headerTitle = detailTask?.title ?? selectedSessionTitle ?? t('conv.titleFallback')
   const filter: ShellFilter = {
@@ -881,7 +882,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                 ? <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
                     <div style={{ maxWidth: 720, margin: '0 auto', background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 16 }}>
                       <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>{detailTask.title}</h3>
-                      {snapshot !== undefined && <ExecutionPanel t={t} task={detailTask} snapshot={snapshot} selectedSession={selected} actions={execution} loadChanges={workspaceChanges} renderFactorySlot={renderFactorySlot} />}
+                      {snapshot !== undefined && <ExecutionPanel t={t} task={detailTask} snapshot={snapshot} selectedSession={selected} actions={execution} loadChanges={workspaceChanges} renderFactorySlot={renderFactorySlot} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} />}
                     </div>
                   </div>
                 : <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -913,7 +914,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                 <span style={{ ...metaLine, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('review.title', { turn: String(review.turn) })}</span>
                 <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => { workspacePreview.close(); workspaceReviewPreview.close() }} style={{ marginLeft: 'auto', width: 26, height: 26, padding: 0, justifyContent: 'center' }} />
               </div>
-              <LoomReviewPreview t={t} sessionId={review.sessionId} seq={review.seq} initialIndex={review.index} renderFactorySlot={renderFactorySlot} onOpenFile={(path) => { openFilePreview({ sessionId: review.sessionId, path, mode: 'file' }) }} />
+              <LoomReviewPreview t={t} sessionId={review.sessionId} seq={review.seq} initialIndex={review.index} renderFactorySlot={renderFactorySlot} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} onOpenFile={(path) => { openFilePreview({ sessionId: review.sessionId, path, mode: 'file' }) }} />
             </div>
           : preview !== undefined
             ? <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
@@ -922,7 +923,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                 <span style={{ ...metaLine, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preview.path}</span>
                 <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => workspacePreview.close()}>{t('form.close')}</button>
               </div>
-              <LoomFilePreview t={t} workspaceId={detailWorkspace?.id} sessionId={previewSessionId} filePath={preview.path} initialMode={preview.mode ?? 'diff'} loadChanges={workspaceChanges} readFile={readFile} renderFactorySlot={renderFactorySlot} />
+              <LoomFilePreview t={t} workspaceId={detailWorkspace?.id} sessionId={previewSessionId} filePath={preview.path} initialMode={preview.mode ?? 'diff'} loadChanges={workspaceChanges} readFile={readFile} renderFactorySlot={renderFactorySlot} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} />
             </div>
             : view === 'kanban'
             ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
@@ -941,6 +942,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       workspaceId={detailWorkspace?.id}
       loadChanges={workspaceChanges}
       renderFactorySlot={renderFactorySlot}
+      wrap={preferences.previewWrap}
+      onToggleWrap={togglePreviewWrap}
       onOpenFile={(path) => { openFilePreview({ path }); setAsideOpen(true) }}
       onToggle={() => setBottomCollapsed(value => !value)}
       onPane={setPane}

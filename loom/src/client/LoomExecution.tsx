@@ -50,6 +50,9 @@ interface ExecutionPanelProps {
   actions: ExecutionActions
   loadChanges: LoadWorkspaceChanges
   renderFactorySlot: RenderFileDiffSlot
+  /** Whether comparisons wrap wide lines instead of scrolling sideways. */
+  wrap: boolean
+  onToggleWrap: () => void
 }
 
 /**
@@ -57,7 +60,7 @@ interface ExecutionPanelProps {
  * @param props - Selected task, catalog records, the active Loom session, and Host actions.
  * @returns business controls without pretending a Session state is a task state.
  */
-export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, loadChanges, renderFactorySlot }: ExecutionPanelProps) {
+export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, loadChanges, renderFactorySlot, wrap, onToggleWrap }: ExecutionPanelProps) {
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [cleanOpen, setCleanOpen] = useState(false)
@@ -199,6 +202,8 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, lo
         discardAllowed={discardAllowed}
         loadChanges={loadChanges}
         renderFactorySlot={renderFactorySlot}
+        wrap={wrap}
+        onToggleWrap={onToggleWrap}
         onConfirm={() => { void clean(false) }}
         onDiscard={() => { void clean(true) }}
         onCancel={() => { setCleanOpen(false); setCleanFailure(undefined); setDiscardAllowed(false) }}

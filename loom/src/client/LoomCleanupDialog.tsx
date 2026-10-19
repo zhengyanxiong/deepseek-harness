@@ -23,6 +23,9 @@ export interface LoomCleanupDialogProps {
   readonly discardAllowed: boolean
   readonly loadChanges: LoadWorkspaceChanges
   readonly renderFactorySlot: RenderFileDiffSlot
+  /** Whether comparisons wrap wide lines instead of scrolling sideways. */
+  readonly wrap: boolean
+  readonly onToggleWrap: () => void
   readonly onConfirm: () => void
   readonly onDiscard: () => void
   readonly onCancel: () => void
@@ -33,7 +36,7 @@ export interface LoomCleanupDialogProps {
  * @param props - workspace, cleanup outcome and native Diff wiring.
  * @returns the modal, or null when no workspace is selected.
  */
-export function LoomCleanupDialog({ t, workspace, busy, failure, discardAllowed, loadChanges, renderFactorySlot, onConfirm, onDiscard, onCancel }: LoomCleanupDialogProps) {
+export function LoomCleanupDialog({ t, workspace, busy, failure, discardAllowed, loadChanges, renderFactorySlot, wrap, onToggleWrap, onConfirm, onDiscard, onCancel }: LoomCleanupDialogProps) {
   const [showDiff, setShowDiff] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const failureLabel = failure === undefined ? undefined : failureKey(failure)
@@ -65,7 +68,7 @@ export function LoomCleanupDialog({ t, workspace, busy, failure, discardAllowed,
         <button type="button" style={button} disabled={busy} onClick={onCancel}>{t('form.cancel')}</button>
       </div>
       </div>
-      {showDiff && <div style={{ ...diffBox, ...(maximized ? { flex: 1 } : { height: 420 }) }}><LoomDiff t={t} workspaceId={workspace.id} loadChanges={loadChanges} renderFactorySlot={renderFactorySlot} /></div>}
+      {showDiff && <div style={{ ...diffBox, ...(maximized ? { flex: 1 } : { height: 420 }) }}><LoomDiff t={t} workspaceId={workspace.id} loadChanges={loadChanges} renderFactorySlot={renderFactorySlot} wrap={wrap} onToggleWrap={onToggleWrap} /></div>}
     </div>
   </div>
 }

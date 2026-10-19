@@ -2,6 +2,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { LoomFileCounts, LoomFileRow } from './LoomFileRow.tsx'
 import type { RenderFileDiffSlot } from './LoomDiff.tsx'
+import { LoomWrapToggle } from './LoomWrapToggle.tsx'
+import { diffViewport } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey, params?: Readonly<Record<string, string>>) => string
@@ -47,6 +49,9 @@ export interface LoomReviewPreviewProps {
   readonly renderFactorySlot: RenderFileDiffSlot
   /** Opens one listed file as a whole-file preview. */
   readonly onOpenFile?: (path: string) => void
+  /** Whether the comparison wraps wide lines instead of scrolling sideways. */
+  readonly wrap: boolean
+  readonly onToggleWrap: () => void
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -103,7 +108,7 @@ function readDiff(value: unknown): ReviewDiff {
  * @param props - coordinates, native Diff factory, and the optional whole-file opener.
  * @returns the review, or the state that explains why it is unavailable.
  */
-export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderFactorySlot, onOpenFile }: LoomReviewPreviewProps): ReactNode {
+export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderFactorySlot, onOpenFile, wrap, onToggleWrap }: LoomReviewPreviewProps): ReactNode {
   const [summaryState, setSummaryState] = useState<SummaryState>({ kind: 'loading' })
   const [diff, setDiff] = useState<ReviewDiff>({ kind: 'loading' })
   const [selected, setSelected] = useState(initialIndex)
@@ -164,21 +169,23 @@ export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderF
       {selectedFile !== undefined && <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 9px', borderBottom: '0.5px solid var(--dsw-alias-border-l4)', flex: 'none', minWidth: 0 }}>
         <strong style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5 }}>{selectedFile.display}</strong>
         <span style={{ flex: 'none', display: 'flex', gap: 4 }}><LoomFileCounts file={selectedFile} t={t} /></span>
-        {onOpenFile !== undefined && <button type="button" style={{ marginLeft: 'auto', flex: 'none', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', font: 'inherit', fontSize: 11 }} onClick={() => onOpenFile(selectedFile.path)}>{t('review.openFile')}</button>}
+        <span style={{ flex: 1 }} />
+        <LoomWrapToggle t={t} wrap={wrap} onToggle={onToggleWrap} />
+        {onOpenFile !== undefined && <button type="button" style={{ flex: 'none', border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', font: 'inherit', fontSize: 11 }} onClick={() => onOpenFile(selectedFile.path)}>{t('review.openFile')}</button>}
       </div>}
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div data-loom-diff-viewport style={diffViewport}>
         {summaryState.kind === 'loading' && <p role="status" style={{ margin: 0, padding: 12 }}>{t('review.loading')}</p>}
         {summaryState.kind === 'missing' && <p role="status" style={{ margin: 0, padding: 12 }}>{t('review.missing')}</p>}
         {summaryState.kind === 'error' && <p role="alert" style={{ margin: 0, padding: 12 }}>{t('state.error')} <button type="button" onClick={() => setSummaryAttempt(current => current + 1)} style={{ marginLeft: 6, border: '0.5px solid var(--dsw-alias-border-l2)', background: 'transparent', color: 'var(--dsw-alias-label-secondary)', borderRadius: 5, padding: '2px 7px', cursor: 'pointer', font: 'inherit', fontSize: 11 }}>{t('form.retry')}</button></p>}
         {summaryState.kind === 'ready' && summaryState.summary.files.length === 0 && <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.empty')}</p>}
         {summaryState.kind === 'ready' && selectedFile !== undefined && (diff.kind === 'loading'
           ? <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.loading')}</p>
-          : <div style={{ padding: '2px 4px' }}>{renderFactorySlot('deliverables.fileDiff', {
+          : <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '2px 4px' }}>{renderFactorySlot('deliverables.fileDiff', {
               state: diff.kind === 'text' ? diff
                 : diff.kind === 'binary' ? { kind: 'binary' }
                   : diff.kind === 'oversized' ? { kind: 'oversized' }
                     : diff.kind,
-              split: true, wrap: false,
+              split: true, wrap,
               retry: () => { setDiffAttempt(current => current + 1) },
             }, { fallback: <p style={{ margin: 0, padding: 12 }}>{t('integrationUnavailable')}</p> })}</div>)}
       </div>

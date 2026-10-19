@@ -7,6 +7,7 @@ const t = (key: LoomKey) => en[key]
 const props = {
   t, collapsed: false, height: 170, pane: 'diff' as const, audit: [], diffCount: 0, usage: undefined,
   workspaceId: 'w1', loadChanges: () => Promise.reject(new Error('unused')), renderFactorySlot: () => null,
+  wrap: false, onToggleWrap: () => {},
   onToggle: () => {}, onPane: () => {},
 }
 it('offers a full-window Diff from the bottom Diff pane', () => {

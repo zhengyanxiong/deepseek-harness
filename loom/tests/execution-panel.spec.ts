@@ -58,6 +58,8 @@ const actions: ExecutionActions = {
 const diffProps = {
   loadChanges: () => Promise.reject(new Error('unused')),
   renderFactorySlot: () => null,
+  wrap: false,
+  onToggleWrap: () => {},
 }
 it('offers the start form only for a startable task with a Lock', () => {
   const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot, selectedSession: undefined, actions, ...diffProps }))

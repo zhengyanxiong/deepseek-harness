@@ -50,7 +50,7 @@ it('opens the takeover warning as a modal and closes it without taking over', as
   await act(async () => {
     root?.render(createElement(ExecutionPanel, {
       t, task, snapshot, selectedSession: undefined, actions,
-      loadChanges: unused, renderFactorySlot: () => null,
+      loadChanges: unused, renderFactorySlot: () => null, wrap: false, onToggleWrap: () => {},
     }))
   })
   const button = (label: string): HTMLButtonElement => {

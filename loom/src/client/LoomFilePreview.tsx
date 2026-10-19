@@ -6,6 +6,8 @@ import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/typ
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord } from 'dsh-workloom/types'
 import type { LoadWorkspaceChanges, NativeFileDiffInput, RenderFileDiffSlot } from './LoomDiff.tsx'
+import { LoomWrapToggle } from './LoomWrapToggle.tsx'
+import { diffViewport } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
@@ -24,6 +26,9 @@ export interface LoomFilePreviewProps {
   readonly loadChanges: LoadWorkspaceChanges
   readonly renderFactorySlot: RenderFileDiffSlot
   readonly readFile: ReadWorkspaceFile
+  /** Whether the comparison wraps wide lines instead of scrolling sideways. */
+  readonly wrap: boolean
+  readonly onToggleWrap: () => void
 }
 
 function findFile(repositories: readonly WorkspaceRepositoryChangesRecord[], path: string): { file: WorkspaceFileChangeRecord; directory: string } | undefined {
@@ -56,7 +61,7 @@ async function readWholeFile(readFile: ReadWorkspaceFile, sessionId: SessionId, 
  * @param props - file path, workspace change reader, session file reader and native factory renderer.
  * @returns the selected preview, or the state that explains why it is unavailable.
  */
-export function LoomFilePreview({ t, workspaceId, sessionId, filePath, initialMode = 'diff', loadChanges, renderFactorySlot, readFile }: LoomFilePreviewProps): ReactNode {
+export function LoomFilePreview({ t, workspaceId, sessionId, filePath, initialMode = 'diff', loadChanges, renderFactorySlot, readFile, wrap, onToggleWrap }: LoomFilePreviewProps): ReactNode {
   const [mode, setMode] = useState<'diff' | 'file'>(initialMode)
   const [changes, setChanges] = useState<readonly WorkspaceRepositoryChangesRecord[] | 'loading' | 'error'>('loading')
   const [fileText, setFileText] = useState<FileText>({ kind: 'loading' })
@@ -110,12 +115,13 @@ export function LoomFilePreview({ t, workspaceId, sessionId, filePath, initialMo
     : file.hunks.length === 0 ? 'missing'
       : { kind: 'text', path: file.path, display: file.path, before: file.before, after: file.after, coarse: false, hunks: file.hunks }
   return <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>{tabs}
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 12px', borderBottom: '0.5px solid var(--dsw-alias-border-l4)', flex: 'none' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderBottom: '0.5px solid var(--dsw-alias-border-l4)', flex: 'none' }}>
       <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace', fontSize: 11.5 }} title={file.path}>{file.path}</span>
       <span style={{ marginLeft: 'auto', color: 'var(--dsw-alias-label-tertiary)', fontSize: 11, whiteSpace: 'nowrap' }}>+{String(file.added)} −{String(file.deleted)}</span>
+      <LoomWrapToggle t={t} wrap={wrap} onToggle={onToggleWrap} />
     </div>
-    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-      {renderFactorySlot('deliverables.fileDiff', { state, split: true, wrap: false, retry: () => setAttempt(current => current + 1) }, { fallback: <p style={{ margin: 0, padding: 12 }}>{t('integrationUnavailable')}</p> })}
+    <div data-loom-diff-viewport style={diffViewport}>
+      {renderFactorySlot('deliverables.fileDiff', { state, split: true, wrap, retry: () => setAttempt(current => current + 1) }, { fallback: <p style={{ margin: 0, padding: 12 }}>{t('integrationUnavailable')}</p> })}
     </div>
   </div>
 }

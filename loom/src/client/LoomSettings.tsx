@@ -20,10 +20,12 @@ export interface LoomPreferences {
   readonly bottomHeight: number
   /** Maximum Session rows shown in each sidebar group. */
   readonly sessionLimit: number
+  /** Whether comparisons wrap wide lines instead of scrolling sideways. */
+  readonly previewWrap: boolean
 }
 
 /** Defaults used when storage is empty or malformed. */
-export const DEFAULT_PREFERENCES: LoomPreferences = { view: 'workbench', kanbanMode: 'grouped', contextOpen: true, asideWidth: 272, previewWidth: 560, bottomHeight: 170, sessionLimit: 5 }
+export const DEFAULT_PREFERENCES: LoomPreferences = { view: 'workbench', kanbanMode: 'grouped', contextOpen: true, asideWidth: 272, previewWidth: 560, bottomHeight: 170, sessionLimit: 5, previewWrap: true }
 const STORAGE_KEY = 'loom.preferences'
 
 /**
@@ -39,12 +41,13 @@ export function readPreferences(): LoomPreferences {
     const view = record.view === 'kanban' ? 'kanban' : 'workbench'
     const kanbanMode = record.kanbanMode === 'flat' ? 'flat' : 'grouped'
     const contextOpen = record.contextOpen !== false
+    const previewWrap = record.previewWrap !== false
     const size = (key: 'asideWidth' | 'previewWidth' | 'bottomHeight' | 'sessionLimit', fallback: number, min: number, max: number): number => {
       const raw = record[key]
       return typeof raw === 'number' && Number.isFinite(raw) ? Math.min(Math.max(Math.round(raw), min), max) : fallback
     }
     return {
-      view, kanbanMode, contextOpen,
+      view, kanbanMode, contextOpen, previewWrap,
       asideWidth: size('asideWidth', DEFAULT_PREFERENCES.asideWidth, 220, 720),
       previewWidth: size('previewWidth', DEFAULT_PREFERENCES.previewWidth, 300, 960),
       bottomHeight: size('bottomHeight', DEFAULT_PREFERENCES.bottomHeight, 80, 900),

@@ -161,6 +161,14 @@ export function thrownFailureReport(error: unknown): FailureReport {
   return { message: 'delete.unknownFailure', ...(message === '' ? {} : { detail: message }) }
 }
 
+/**
+ * Host for the native comparison. Its body owns the scrolling, so the host must
+ * bound the height: a bare scrolling block leaves the body at full content height,
+ * which strands the columns' horizontal bars at the bottom of the whole
+ * comparison and drops wheel scrolling over the code.
+ */
+export const diffViewport: CSSProperties = { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }
+
 export const pill: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, border: `0.5px solid ${COLORS.border}`, borderRadius: 999, padding: '1px 8px', fontSize: 11, color: COLORS.dim, whiteSpace: 'nowrap' }
 export const button: CSSProperties = { color: 'inherit', background: 'transparent', border: `0.5px solid ${COLORS.border}`, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', font: 'inherit' }
 export const select: CSSProperties = { ...button, background: COLORS.panel2, cursor: 'pointer' }
