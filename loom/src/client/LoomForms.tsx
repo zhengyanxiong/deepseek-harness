@@ -1,14 +1,14 @@
 /** Inline creation and edit forms for Loom projects, versions and tasks. */
 import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import {
-  Button, IconAgentPresetOutlineRegular, IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular, IconDownloadOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular, Menu,
+  Button, IconAgentPresetOutlineRegular, IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular, IconDownloadOutlineRegular, IconFolderOpenRegular, IconPlusOutlineRegular, IconTrashOutlineRegular, Menu,
   type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock, ModuleConfig,
   ProjectConfig, ProjectRecord, SourceConfig, TaskRecord, TaskPriority, VersionRecord,
-  UpdateProjectRequest, UpdateTaskRequest, UpdateVersionRequest,
+  UpdateProjectRequest, UpdateTaskRequest, UpdateVersionRequest, RepositoryBranches, RepositoryBranchesRequest,
 } from 'dsh-workloom/types'
 import { parseProject, ProjectError } from '../domain/project.ts'
 import { COLORS, failureKey } from './shell.ts'
@@ -211,12 +211,49 @@ function PresetOptionLabel({ name, description }: { readonly name: string; reado
   </span>
 }
 
+/** Free-text ref input backed by the repository's local branch list. */
+export function BranchPicker({ t, source, value, listBranches, onChange }: {
+  t: Translate
+  source: SourceConfig
+  value: string
+  listBranches?: ((request: RepositoryBranchesRequest) => Promise<RemoteResult<RepositoryBranches>>) | undefined
+  onChange(value: string): void
+}) {
+  const [branches, setBranches] = useState<readonly string[]>()
+  const [loading, setLoading] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const listId = `loom-branch-${source.id}`
+  async function load(): Promise<void> {
+    if (listBranches === undefined || loading) return
+    setLoading(true); setFailed(false)
+    try {
+      const result = await listBranches({ repo: source.repo })
+      if (result.ok) setBranches(result.value.branches)
+      else setFailed(true)
+    } catch { setFailed(true) } finally { setLoading(false) }
+  }
+  return <div style={field}>
+    <span style={fieldLabel}>{t('source.branch')}</span>
+    <div style={{ display: 'flex', gap: 6 }}>
+      <input aria-label={`${t('source.branch')} ${source.path}`} list={listBranches === undefined ? undefined : listId}
+        placeholder={t('source.branchPlaceholder')} value={value}
+        onChange={event => onChange(event.target.value)} onFocus={() => { if (branches === undefined) void load() }} style={{ ...input, flex: 1 }} />
+      {listBranches !== undefined && <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => { void load() }}>{loading ? t('branch.loading') : t('branch.load')}</Button>}
+    </div>
+    {listBranches !== undefined && branches !== undefined && <datalist id={listId}>{branches.map(branch => <option key={branch} value={branch} />)}</datalist>}
+    <p style={hint}>
+      {failed ? t('branch.unavailable') : branches === undefined ? t('branch.chooseOrType') : t('branch.available').replace('{count}', String(branches.length))}
+    </p>
+  </div>
+}
+
 interface ProjectFormProps {
   t: Translate
   create(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
   update?(request: UpdateProjectRequest): Promise<RemoteResult<ProjectRecord>>
   project?: ProjectRecord
   agentPresets?: readonly AgentPresetOption[]
+  pickDirectory?: (startPath?: string) => Promise<string | null>
   onCreated(project: ProjectRecord): void
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -232,7 +269,7 @@ const PROJECT_STEPS: readonly { readonly key: ProjectStep; readonly label: LoomK
 ]
 
 /** Create or edit one project with its repositories, optional modules and a preview before saving. */
-export function ProjectForm({ t, create, update, project, agentPresets = [], onCreated, open: controlledOpen, onOpenChange }: ProjectFormProps) {
+export function ProjectForm({ t, create, update, project, agentPresets = [], pickDirectory, onCreated, open: controlledOpen, onOpenChange }: ProjectFormProps) {
   const editing = project !== undefined
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
@@ -357,11 +394,21 @@ export function ProjectForm({ t, create, update, project, agentPresets = [], onC
           <span style={{ ...fieldLabel, flex: 1 }}>{t('source.item')} {index + 1}</span>
           {sources.length > 1 && <Button type="button" size="sm" variant="ghost" icon={<IconTrashOutlineRegular />} onClick={() => setSources(current => current.filter((_source, at) => at !== index))}>{t('source.remove')}</Button>}
         </div>
-        <label style={field}><span style={fieldLabel}>{t('source.repo')}</span>
-          <input aria-label={t('source.repo')} placeholder={t('source.repo')} value={source.repo} onChange={event => updateSource(index, { repo: event.target.value })} style={input} />
-        </label>
+        <div style={field}><span style={fieldLabel}>{t('source.repo')}</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input aria-label={t('source.repo')} placeholder={t('source.repoHint')} value={source.repo} onChange={event => updateSource(index, { repo: event.target.value })} style={{ ...input, flex: 1 }} />
+            {pickDirectory !== undefined && <Button type="button" variant="outline" icon={<IconFolderOpenRegular />} onClick={() => {
+              void pickDirectory(source.repo.trim() === '' ? undefined : source.repo.trim()).then(picked => {
+                if (picked === null) return
+                updateSource(index, { repo: picked, ...(source.path.trim() === '' ? { path: picked.split(/[\\/]/u).filter(Boolean).at(-1) ?? '' } : {}) })
+              })
+            }}>{t('source.browse')}</Button>}
+          </div>
+          <p style={hint}>{t('source.repoHint')}</p>
+        </div>
         <label style={field}><span style={fieldLabel}>{t('source.path')}</span>
           <input aria-label={t('source.path')} placeholder={t('source.path')} value={source.path} onChange={event => updateSource(index, { path: event.target.value })} style={input} />
+          <p style={hint}>{t('source.pathHint')}</p>
         </label>
       </div>)}
       <Button type="button" variant="outline" icon={<IconPlusOutlineRegular />} style={{ alignSelf: 'flex-start' }} onClick={() => setSources(current => [...current, emptySourceRow()])}>{t('source.add')}</Button>
@@ -418,6 +465,7 @@ export function ProjectForm({ t, create, update, project, agentPresets = [], onC
 interface VersionFormProps {
   t: Translate
   project: ProjectRecord
+  listBranches?: (request: RepositoryBranchesRequest) => Promise<RemoteResult<RepositoryBranches>>
   create(request: CreateVersionRequest): Promise<RemoteResult<VersionRecord>>
   update?(request: UpdateVersionRequest): Promise<RemoteResult<VersionRecord>>
   version?: VersionRecord
@@ -427,7 +475,7 @@ interface VersionFormProps {
 }
 
 /** Create or edit one version with a ref per project repository; Lock generation stays separate. */
-export function VersionForm({ t, project, create, update, version, onCreated, open: controlledOpen, onOpenChange }: VersionFormProps) {
+export function VersionForm({ t, project, listBranches, create, update, version, onCreated, open: controlledOpen, onOpenChange }: VersionFormProps) {
   const editing = version !== undefined
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
@@ -461,13 +509,13 @@ export function VersionForm({ t, project, create, update, version, onCreated, op
     </label>
     <div style={stack}>
       {project.config.sources.map(source => <div key={source.id} style={card}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={fieldLabel}>{t('source.ref')}</span>
-          <span style={{ color: COLORS.dim, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{source.id}</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+          <span style={{ ...fieldLabel, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.path}</span>
+          <span style={{ marginLeft: 'auto', color: COLORS.faint, fontFamily: 'ui-monospace, monospace', fontSize: 10.5, flex: 'none' }}>{source.id}</span>
         </div>
-        <input aria-label={`${t('source.ref')} ${source.id}`} placeholder={`${source.id}: ${t('source.ref')}`}
-          value={refs[source.id] ?? ''} onChange={event => setRefs(current => ({ ...current, [source.id]: event.target.value }))} style={input} />
-        <p style={{ ...hint, overflowWrap: 'anywhere' }}>{source.repo} → {source.path}</p>
+        <BranchPicker t={t} source={source} value={refs[source.id] ?? ''} listBranches={listBranches}
+          onChange={value => setRefs(current => ({ ...current, [source.id]: value }))} />
+        <p style={{ ...hint, overflowWrap: 'anywhere' }}>{source.repo}</p>
       </div>)}
     </div>
     {failure !== undefined && <FailureNotice failure={failure} t={t} />}
@@ -534,6 +582,7 @@ export function TaskForm({ t, version, project, create, update, task, onCreated,
     <label style={field}><span style={fieldLabel}>{t('task.description')}</span>
       <textarea aria-label={t('task.description')} placeholder={t('task.description')} value={description} maxLength={4000} rows={4} onChange={event => setDescription(event.target.value)} style={textarea} />
     </label>
+    <p style={hint}>{t('task.draftHint')}</p>
     <label style={field}><span style={fieldLabel}>{t('task.priority')}</span>
       <select aria-label={t('task.priority')} value={priority} onChange={event => setPriority(event.target.value as TaskPriority)} style={input}>
         <option value="low">{t('task.priority.low')}</option>
@@ -648,10 +697,12 @@ interface LockButtonProps {
   version: VersionRecord
   generate(request: GenerateLockRequest): Promise<RemoteResult<Lock>>
   onCreated(): void
+  existing?: boolean
+  disabled?: boolean
 }
 
 /** Pin every repository ref of the selected version into a new immutable Lock. */
-export function LockButton({ t, version, generate, onCreated }: LockButtonProps) {
+export function LockButton({ t, version, generate, onCreated, existing = false, disabled = false }: LockButtonProps) {
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string>()
   async function run(): Promise<void> {
@@ -664,8 +715,12 @@ export function LockButton({ t, version, generate, onCreated }: LockButtonProps)
       setFailure(error instanceof Error ? error.message : String(error))
     } finally { setBusy(false) }
   }
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-    <Button variant="primary" disabled={busy} onClick={() => { void run() }}>{busy ? t('lock.resolving') : t('lock.new')}</Button>
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+    <Button size={existing ? 'sm' : 'md'} variant={existing ? 'outline' : 'primary'} disabled={busy || disabled} onClick={() => { void run() }}>
+      {busy ? t('lock.resolving') : existing ? t('lock.regenerate') : t('lock.new')}
+    </Button>
+    {existing && <p style={{ margin: 0, color: COLORS.faint, fontSize: 10.5, lineHeight: 1.5 }}>{t('lock.regenerateHint')}</p>}
+    {disabled && <p style={{ margin: 0, color: COLORS.faint, fontSize: 10.5, lineHeight: 1.5 }}>{t('lock.disabledRunning')}</p>}
     {failure !== undefined && <FailureNotice failure={failure} t={t} />}
   </div>
 }

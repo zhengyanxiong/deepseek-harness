@@ -58,6 +58,7 @@ function gitDetail(error: unknown): string | undefined {
 }
 
 function safeRelativePath(path: string): string {
+  if (path === '.') return '.'
   if (path.length === 0 || isAbsolute(path) || path.includes('\\') || path.includes(':') || /[\x00-\x1f]/u.test(path)
     || path.split('/').some(part => part === '' || part === '.' || part === '..' || part.trim() !== part)) throw new WorkspacePreparationError('invalid_path')
   const normalized = normalize(path)
@@ -136,6 +137,17 @@ export async function workingTreeStatus(worktree: string): Promise<string> {
  * @param repositories - Local repositories and exact commits to materialize.
  * @returns created root and worktree paths.
  */
+async function branchTip(repo: string, branch: string): Promise<string | undefined> {
+  try {
+    return (await execFile('git', ['-C', repo, 'rev-parse', '--verify', `refs/heads/${branch}`], { windowsHide: true })).stdout.trim()
+  } catch { return undefined }
+}
+
+async function branchCheckedOut(repo: string, branch: string): Promise<boolean> {
+  const listing = (await execFile('git', ['-C', repo, 'worktree', 'list', '--porcelain'], { windowsHide: true })).stdout
+  return listing.split(/\r?\n/u).some(line => line.trim() === `branch refs/heads/${branch}`)
+}
+
 export async function prepareWorkspace(root: string, repositories: readonly WorkspaceRepository[]): Promise<PreparedWorkspace> {
   const requests = repositories.map(request => ({ ...request }))
   const rootPath = resolve(root)
@@ -148,14 +160,14 @@ export async function prepareWorkspace(root: string, repositories: readonly Work
     if (!COMMIT.test(request.commit)) throw new WorkspacePreparationError('invalid_commit')
     const path = safeRelativePath(request.path)
     const target = resolve(rootPath, path)
-    if (!inside(rootPath, target) || [...seen].some(other => other.toLowerCase() === target.toLowerCase() || inside(other.toLowerCase(), target.toLowerCase()) || inside(target.toLowerCase(), other.toLowerCase()))) throw new WorkspacePreparationError('overlapping_paths')
+    if ((!inside(rootPath, target) && target !== rootPath) || [...seen].some(other => other.toLowerCase() === target.toLowerCase() || inside(other.toLowerCase(), target.toLowerCase()) || inside(target.toLowerCase(), other.toLowerCase()))) throw new WorkspacePreparationError('overlapping_paths')
     seen.add(target)
     if (await exists(target)) throw new WorkspacePreparationError('existing_target')
     if (request.branch !== undefined && !/^(?![-.])[A-Za-z0-9._/-]+$/u.test(request.branch)) throw new WorkspacePreparationError('invalid_branch')
     prepared.push({ repo, target, branch: request.branch })
   }
   if (await exists(rootPath)) throw new WorkspacePreparationError('existing_root')
-  const created: { target: string; repo: string; branch: string | undefined }[] = []
+  const created: { target: string; repo: string; branch: string | undefined; createdBranch: boolean }[] = []
   const createdDirs: string[] = []
   try {
     await mkdir(rootPath, { mode: 0o700 })
@@ -175,19 +187,31 @@ export async function prepareWorkspace(root: string, repositories: readonly Work
           createdDirs.push(directory)
         }
       }
-      const args = request.branch === undefined
-        ? ['-C', repo, 'worktree', 'add', '--detach', '--', target, request.commit]
-        : ['-C', repo, 'worktree', 'add', '-b', request.branch, '--', target, request.commit]
+      let args: string[]
+      let createdBranch = false
+      if (request.branch === undefined) {
+        args = ['-C', repo, 'worktree', 'add', '--detach', '--', target, request.commit]
+      } else {
+        const tip = await branchTip(repo, request.branch)
+        if (tip === undefined) {
+          args = ['-C', repo, 'worktree', 'add', '-b', request.branch, '--', target, request.commit]
+          createdBranch = true
+        } else {
+          if (tip !== request.commit) throw new WorkspacePreparationError('branch_mismatch')
+          if (await branchCheckedOut(repo, request.branch)) throw new WorkspacePreparationError('branch_checked_out')
+          args = ['-C', repo, 'worktree', 'add', '--', target, request.branch]
+        }
+      }
       await execFile('git', args, { windowsHide: true })
-      created.push({ target, repo, branch: request.branch })
+      created.push({ target, repo, branch: request.branch, createdBranch })
     }
     return { root: rootPath, worktrees: created.map(item => item.target) }
   } catch (error) {
     const rollbackErrors: string[] = []
-    for (const { target, repo, branch } of [...created].reverse()) {
+    for (const { target, repo, branch, createdBranch } of [...created].reverse()) {
       try {
         await execFile('git', ['-C', repo, 'worktree', 'remove', '--', target], { windowsHide: true })
-        if (branch !== undefined) await execFile('git', ['-C', repo, 'branch', '-D', '--', branch], { windowsHide: true })
+        if (branch !== undefined && createdBranch) await execFile('git', ['-C', repo, 'branch', '-D', '--', branch], { windowsHide: true })
       } catch (rollback) { rollbackErrors.push(`remove ${target}: ${String(rollback)}`) }
     }
     for (const directory of [...createdDirs].reverse()) {
@@ -266,6 +290,36 @@ function parseDiff(text: string): WorkspaceFileChange[] {
   }
   flushFile()
   return files
+}
+
+/** Local branches and checked-out branch of one Git repository. */
+export interface RepositoryBranches {
+  /** Absolute repository root Git resolved for the requested path. */
+  readonly topLevel: string
+  /** Checked-out branch, absent for a detached HEAD. */
+  readonly current?: string
+  /** Local branch names, sorted. */
+  readonly branches: readonly string[]
+}
+
+/**
+ * Read local branches from one repository without changing its worktree.
+ * @param repo - Absolute local Git repository path or a directory inside it.
+ * @returns resolved root, current branch and sorted local branch names.
+ */
+export async function repositoryBranches(repo: string): Promise<RepositoryBranches> {
+  const topLevel = await localRepository(repo)
+  let names: string
+  try {
+    names = (await execFile('git', ['-C', topLevel, 'for-each-ref', '--format=%(refname:short)', 'refs/heads'], { windowsHide: true })).stdout
+  } catch (error) { throw new WorkspacePreparationError('branches_failed', [], error) }
+  let current: string | undefined
+  try {
+    const value = (await execFile('git', ['-C', topLevel, 'symbolic-ref', '--quiet', '--short', 'HEAD'], { windowsHide: true })).stdout.trim()
+    if (value !== '') current = value
+  } catch { /* A detached HEAD is a valid workspace state and has no branch name. */ }
+  const branches = [...new Set(names.split(/\r?\n/u).map(name => name.trim()).filter(name => name !== ''))].sort((a, b) => a.localeCompare(b))
+  return { topLevel, ...(current === undefined ? {} : { current }), branches }
 }
 
 /**

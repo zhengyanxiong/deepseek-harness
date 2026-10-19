@@ -95,12 +95,44 @@ export interface PrepareWorkspaceRequest {
   readonly path?: string
   readonly versionId: string
   readonly lockId: string
+  /** Optional branch per source id; an omitted source stays on a detached HEAD. */
+  readonly branches?: Readonly<Record<string, string>>
 }
-/** Record one prepared workspace. */
+/** Record one prepared workspace whose directories already exist. */
 export interface RegisterWorkspaceRequest {
   readonly path: string
   readonly versionId: string
   readonly lockId: string
+  /** Branch per source id; omitted entries keep the repository's current branch. */
+  readonly branches?: Readonly<Record<string, string>>
+}
+/** Read branches of one local Git repository. */
+export interface RepositoryBranchesRequest {
+  readonly repo: string
+}
+/** One local Git repository's checked-out and available branches. */
+export interface RepositoryBranches {
+  readonly topLevel: string
+  readonly current?: string
+  readonly branches: readonly string[]
+}
+/** Validate one existing workspace root against a version's repositories. */
+export interface InspectWorkspaceRequest {
+  readonly path: string
+  readonly versionId: string
+}
+/** Per-repository inspection of an existing workspace root. */
+export interface WorkspaceInspection {
+  readonly path: string
+  readonly repositories: readonly {
+    readonly sourceId: string
+    readonly repo: string
+    readonly directory: string
+    readonly topLevel?: string
+    readonly current?: string
+    readonly branches: readonly string[]
+    readonly error?: string
+  }[]
 }
 /** Start the next execution round of one task. */
 export interface StartAttemptRequest {
@@ -136,4 +168,19 @@ export interface ExecutionRequest {
 /** Release an exact ownership generation after its Agent turn finished. */
 export interface ReleaseExecutionRequest extends ExecutionRequest {
   readonly generation: number
+}
+
+/** One directory row in the native directory browser. */
+export interface DirectoryEntry {
+  readonly name: string
+  readonly path: string
+  readonly hidden: boolean
+}
+/** One directory level and its ancestry, as the Host browse backend reports it. */
+export interface DirectoryListing {
+  readonly path: string
+  readonly home: string
+  readonly crumbs: readonly DirectoryEntry[]
+  readonly entries: readonly DirectoryEntry[]
+  readonly truncated: boolean
 }

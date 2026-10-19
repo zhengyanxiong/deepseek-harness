@@ -21,6 +21,14 @@ it('rejects unknown module repositories', () => {
   const value = input(); value.modules[0]!.sourceId = 'missing'
   expect(() => parseProject(value)).toThrow('unknown_source')
 })
+it('accepts a single repository at the workspace root', () => {
+  const value = input(); value.sources[0]!.path = '.'
+  expect(parseProject(value).sources[0]?.path).toBe('.')
+})
+it('rejects a root repository combined with another directory', () => {
+  const value = input(); value.sources[0]!.path = '.'; value.sources.push({ id: 'nested', repo: '/repos/nested', path: 'nested' })
+  expect(() => parseProject(value)).toThrow('overlapping_paths')
+})
 it('accepts a module at the repository root', () => {
   const value = input(); value.modules[0]!.path = '.'
   expect(parseProject(value).modules[0]?.path).toBe('.')

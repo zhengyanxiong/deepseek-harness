@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
-import { ExecutionPanel, type ExecutionActions } from '../src/client/LoomExecution.tsx'
+import { ExecutionPanel, taskDraftPrompt, type ExecutionActions } from '../src/client/LoomExecution.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
 import { failureKey } from '../src/client/shell.ts'
 import type { CatalogSnapshot, Lock, TaskRecord, VersionRecord, WorkspaceRecord } from 'dsh-workloom/types'
@@ -40,6 +40,10 @@ const running: TaskRecord = {
 }
 const actions: ExecutionActions = {
   prepareWorkspace: () => Promise.reject(new Error('unused')),
+  registerWorkspace: () => Promise.reject(new Error('unused')),
+  repositoryBranches: () => Promise.reject(new Error('unused')),
+  inspectWorkspace: () => Promise.reject(new Error('unused')),
+  pickDirectory: () => Promise.resolve(null),
   startAttempt: () => Promise.reject(new Error('unused')),
   attachSession: () => Promise.reject(new Error('unused')),
   transitionTask: () => Promise.reject(new Error('unused')),
@@ -59,7 +63,7 @@ it('offers the start form only for a startable task with a Lock', () => {
   const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['task.start'])
   expect(html).toContain(en['workspace.auto'])
-  expect(html).toContain(en['workspace.custom'])
+  expect(html).toContain(en['workspace.existing'])
   expect(html).not.toContain(en['task.accept'])
 })
 it('explains a missing Lock instead of offering an unusable start button', () => {
@@ -112,9 +116,8 @@ it('offers a failed task its retained matching workspace for a new attempt', () 
     attempts: [{ id: brandString<'loom.attempt'>('a1'), lock, workspaceId: workspace.id, sessionIds: [], status: 'failed' }],
   }
   const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: failed, snapshot, selectedSession: undefined, actions, ...diffProps }))
-  expect(html).toContain(en['workspace.select'])
+  expect(html).toContain(en['workspace.existing'])
   expect(html).toContain(workspace.path)
-  expect(html).not.toContain(en['workspace.reuse'])
   expect(html).toContain(en['task.start'])
 })
 it('does not offer a cleaned workspace', () => {
@@ -143,7 +146,7 @@ it('offers an idle workspace owned by another task in the same version', () => {
     snapshot: { ...snapshot, tasks: [pending, other] },
   }))
   expect(html).toContain(workspace.path)
-  expect(html).not.toContain('disabled')
+  expect(html).not.toContain(en['workspace.busy'])
 })
 it('disables a workspace while another task in the same version runs on it', () => {
   const other: TaskRecord = {
@@ -182,4 +185,24 @@ it('explains known workspace failures instead of only showing a code', () => {
   expect(failureKey('invalid_repository: /tmp/repo (spawn git ENOENT)')).toBe('error.invalidRepository')
   expect(failureKey('git_not_found: /tmp/repo')).toBe('error.gitNotFound')
   expect(failureKey('unmapped_failure')).toBeUndefined()
+})
+
+it('builds the composer draft from the task title and optional requirements', () => {
+  const draft = taskDraftPrompt(t, { ...pending, description: 'Verify totals' })
+  expect(draft).toContain(pending.title)
+  expect(draft).toContain('Verify totals')
+  expect(draft).toContain(en['task.draftTitle'])
+  expect(draft).toContain(en['task.draftDescription'])
+  expect(taskDraftPrompt(t, pending)).not.toContain(en['task.draftDescription'])
+})
+
+it('offers a branch picker and draft hint when a new workspace will be created', () => {
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, {
+    t, task: pending, snapshot: { ...snapshot, workspaces: [], projects: [{ id: brandString<'loom.project'>('p1'), config: { name: 'Shop', sources: [{ id: lock.repositories[0]!.sourceId, repo: brandString<'loom.repo'>('/repo'), path: 'web' }], modules: [] } }] }, selectedSession: undefined, actions, ...diffProps,
+  }))
+  expect(html).toContain(en['source.branch'])
+  expect(html).toContain(en['branch.load'])
+  expect(html).toContain(en['workspace.autoHint'])
+  expect(html).toContain(en['workspace.branchHint'])
+  expect(html).toContain(en['task.draftHint'])
 })

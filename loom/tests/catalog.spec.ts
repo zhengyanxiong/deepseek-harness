@@ -294,7 +294,7 @@ it('shares an idle workspace between tasks in one version and refuses while anot
 })
 
 
-it('creates worktrees on deterministic branches recorded with the workspace', async () => {
+it('creates worktrees on caller-selected branches recorded with the workspace', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
   const repo = join(dir, 'repo')
   await mkdir(repo)
@@ -309,16 +309,16 @@ it('creates worktrees on deterministic branches recorded with the workspace', as
   const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo, path: 'web' }], modules: [] })
   const version = await catalog.createVersion(project.id, 'Release', [{ sourceId: project.config.sources[0]!.id, ref: 'HEAD' }])
   const lock = await catalog.generateLock(version.id)
-  const workspace = await catalog.prepareWorkspace({ path: join(dir, 'workspace'), versionId: version.id, lockId: lock.id })
-  const branch = workspace.branches?.['web']
-  expect(branch).toMatch(/^loom\/Release\/web-[a-f0-9]{8}$/u)
+  const branch = 'loom/Release/web-test0001'
+  const workspace = await catalog.prepareWorkspace({ path: join(dir, 'workspace'), versionId: version.id, lockId: lock.id, branches: { web: branch } })
+  expect(workspace.branches?.['web']).toBe(branch)
   expect((await exec('git', ['-C', join(workspace.path, 'web'), 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe(branch)
   expect((await exec('git', ['-C', repo, 'branch', '--list', branch!])).stdout).toContain(branch)
   await catalog.cleanupWorkspace(workspace.id, true)
   expect((await exec('git', ['-C', repo, 'branch', '--list', branch!])).stdout.trim()).toBe('')
 })
 
-it('attaches a legacy detached workspace to a recorded branch before start', async () => {
+it('keeps a detached workspace detached when no branch was recorded', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
   const repo = join(dir, 'repo')
   await mkdir(repo)
@@ -338,8 +338,7 @@ it('attaches a legacy detached workspace to a recorded branch before start', asy
   const lock = await catalog.generateLock(version.id)
   const workspace = await catalog.registerPreparedWorkspace({ path: root, versionId: version.id, lockId: lock.id })
   expect(workspace.branches).toBeUndefined()
-  const repaired = await catalog.ensureWorkspaceBranches(workspace.id)
-  const branch = repaired.branches?.['web']
-  expect(branch).toMatch(/^loom\/Release\/web-[a-f0-9]{8}$/u)
-  expect((await exec('git', ['-C', join(root, 'web'), 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe(branch)
+  const reconciled = await catalog.ensureWorkspaceBranches(workspace.id)
+  expect(reconciled.branches).toBeUndefined()
+  await expect(exec('git', ['-C', join(root, 'web'), 'symbolic-ref', '--short', 'HEAD'])).rejects.toThrow()
 })

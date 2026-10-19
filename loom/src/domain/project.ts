@@ -67,9 +67,10 @@ export function parseProject(input: unknown): ProjectConfig {
   const sources = list(root.sources, 'sources').map((item, index): SourceConfig => {
     const at = `sources.${index}`
     const source = object(item, ['id', 'repo', 'path'], at)
-    return { id: brandString<SourceConfig['id']>(text(source.id, `${at}.id`)), repo: text(source.repo, `${at}.repo`), path: relative(source.path, `${at}.path`, false) }
+    return { id: brandString<SourceConfig['id']>(text(source.id, `${at}.id`)), repo: text(source.repo, `${at}.repo`), path: relative(source.path, `${at}.path`, true) }
   })
   if (sources.length === 0) throw new ProjectError('invalid_list', 'sources')
+  if (sources.length > 1 && sources.some(source => source.path === '.')) throw new ProjectError('overlapping_paths', 'sources')
   unique(sources.map(source => source.id), 'sources')
   for (let index = 0; index < sources.length; index++) {
     const path = sources[index]!.path.toLowerCase()

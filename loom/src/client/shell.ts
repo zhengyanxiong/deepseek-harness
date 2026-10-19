@@ -81,6 +81,7 @@ export const ACTOR_LABEL = { human: 'actor.human', agent: 'actor.agent', system:
 export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   existing_root: 'error.existingRoot',
   invalid_path: 'error.invalidPath',
+  invalid_workspace_path: 'error.invalidWorkspacePath',
   invalid_form: 'error.invalidForm',
   workspace_path_registered: 'error.pathRegistered',
   local_repository_required: 'error.repositoryRequired',
@@ -88,6 +89,9 @@ export const ERROR_LABEL: Readonly<Record<string, LoomKey>> = {
   dubious_ownership: 'error.dubiousOwnership',
   git_not_found: 'error.gitNotFound',
   invalid_commit: 'error.invalidCommit',
+  invalid_branch: 'error.invalidBranch',
+  branch_mismatch: 'error.branchMismatch',
+  branch_checked_out: 'error.branchCheckedOut',
   invalid_ref: 'error.invalidRef',
   missing_lock: 'error.lockMissing',
   workspace_busy: 'error.workspaceBusy',

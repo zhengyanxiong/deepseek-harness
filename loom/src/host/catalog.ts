@@ -5,7 +5,6 @@ import { brandNumber, brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { parseProject, type ProjectConfig } from '../domain/project.ts'
 import { resolveLock } from '../domain/version.ts'
 import { isAbsolute, normalize, resolve } from 'node:path'
-import { workspaceBranchName } from '../domain/branch.ts'
 import { createTask as pendingTask, startAttempt, attachSession, transitionTask, type Task, type Lock, type Workspace, type TaskStatus } from '../domain/task.ts'
 import { createJsonStore, JsonStoreError } from '../storage/json-store.ts'
 import { commitsSince, ensureWorktreeBranch, prepareWorkspace as materializeWorkspace, removeWorkspace, workingTreeChanges, WorkspacePreparationError, type WorkspaceRepositoryChanges } from '../git/workspace.ts'
@@ -165,12 +164,12 @@ export interface Catalog {
   createTask(versionId: VersionRecord['id'], title: string, options?: CreateTaskOptions): Promise<TaskRecord>
   updateTask(taskId: TaskRecord['id'], title: string, options?: CreateTaskOptions): Promise<TaskRecord>
   deleteTask(taskId: TaskRecord['id']): Promise<void>
-  prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
+  prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id']; branches?: Readonly<Record<string, string>> }): Promise<WorkspaceRecord>
   workspaceChanges(workspaceId: WorkspaceRecord['id']): Promise<{ repositories: WorkspaceRepositoryChanges[] }>
   workspaceStatus(workspaceId: WorkspaceRecord['id']): Promise<{ running: boolean; repositories: WorkspaceRepositoryChanges[] }>
   cleanupWorkspace(workspaceId: WorkspaceRecord['id'], discardChanges: boolean): Promise<void>
   ensureWorkspaceBranches(workspaceId: WorkspaceRecord['id']): Promise<WorkspaceRecord>
-  registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id'] }): Promise<WorkspaceRecord>
+  registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id']; branches?: Readonly<Record<string, string>> }): Promise<WorkspaceRecord>
   startAttempt(taskId: TaskRecord['id'], workspaceId: WorkspaceRecord['id']): Promise<TaskRecord>
   attachSession(taskId: TaskRecord['id'], sessionId: Branded<'SessionId'>): Promise<TaskRecord>
   registerTemporarySession(sessionId: Branded<'SessionId'>, workspacePath: string): Promise<TemporarySessionRecord>
@@ -260,14 +259,22 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       if (!project) throw new CatalogError('missing_project')
       if (draft.workspaces.some(item => item.path === input.path)) throw new CatalogError('workspace_path_registered')
       const id = brandString<WorkspaceRecord['id']>(randomUUID())
-      const branches = Object.fromEntries(project.config.sources.map(source => [source.id, workspaceBranchName(version.name, id, source.id)]))
+      const requested = input.branches ?? {}
+      for (const branch of Object.values(requested)) {
+        if (branch !== '' && !/^(?![-.])[A-Za-z0-9._/-]+$/u.test(branch)) throw new CatalogError('invalid_workspace_path')
+      }
       const repositories = project.config.sources.map(source => {
         const pinned = lock.repositories.find(repository => repository.sourceId === source.id)
         if (pinned === undefined) throw new CatalogError('workspace_mismatch')
-        return { repo: source.repo, path: source.path, commit: pinned.commit, branch: branches[source.id]! }
+        const branch = requested[source.id]
+        return { repo: source.repo, path: source.path, commit: pinned.commit, ...(branch === undefined || branch === '' ? {} : { branch }) }
       })
       await materializeWorkspace(input.path, repositories)
-      const record = { id, path: input.path, versionId: version.id, lockId: lock.id, branches, managed: true }
+      const branches = Object.fromEntries(project.config.sources.flatMap(source => {
+        const branch = requested[source.id]
+        return branch === undefined || branch === '' ? [] : [[source.id, branch] as const]
+      }))
+      const record = { id, path: input.path, versionId: version.id, lockId: lock.id, ...(Object.keys(branches).length === 0 ? {} : { branches }), managed: true }
       draft.workspaces.push(record)
       recordAudit(draft, 'workspace.prepared', 'human', { workspaceId: record.id, detail: input.path })
       return record
@@ -279,23 +286,18 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       const version = versionIn(state, workspace.versionId)
       const project = state.projects.find(item => item.id === version.projectId)
       if (!project) throw new CatalogError('missing_project')
-      if (project.config.sources.every(source => workspace.branches?.[source.id] !== undefined)) return workspace
       const branches = { ...workspace.branches }
       let changed = false
       for (const source of project.config.sources) {
-        const directory = resolve(workspace.path, source.path)
-        const base = branches[source.id] ?? workspaceBranchName(version.name, workspace.id, source.id)
-        let branch = base
-        let attached: string | undefined
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try { attached = await ensureWorktreeBranch(directory, branch); break }
-          catch (error) {
-            if (!(error instanceof WorkspacePreparationError) || error.code !== 'branch_exists' || attempt === 2) throw new CatalogError('workspace_branch_failed')
-            branch = `${base}-${randomUUID().slice(0, 4)}`
-          }
+        const requested = branches[source.id]
+        if (requested === undefined) continue
+        let attached: string
+        try { attached = await ensureWorktreeBranch(resolve(workspace.path, source.path), requested) }
+        catch (error) {
+          if (!(error instanceof WorkspacePreparationError)) throw error
+          throw new CatalogError('workspace_branch_failed')
         }
-        if (attached === undefined) throw new CatalogError('workspace_branch_failed')
-        if (branches[source.id] !== attached) { branches[source.id] = attached; changed = true }
+        if (attached !== requested) { branches[source.id] = attached; changed = true }
       }
       if (!changed) return workspace
       return transaction(draft => {

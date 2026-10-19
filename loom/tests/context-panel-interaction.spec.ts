@@ -54,7 +54,7 @@ async function render(remove: () => Promise<RemoteResult<void>>): Promise<void> 
 }
 
 function button(label: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll('button')].find(candidate => candidate.textContent === label)
+  const found = [...document.querySelectorAll('button')].find(candidate => candidate.textContent === label || candidate.getAttribute('aria-label') === label)
   if (found === undefined) throw new Error(`button ${label} is missing`)
   return found
 }

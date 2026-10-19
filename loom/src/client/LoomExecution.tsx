@@ -1,9 +1,11 @@
 /** Execution controls for the selected task: workspaces, sessions and business status. */
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { Button, IconFolderOpenRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, ExecutionRequest, ExecutionState, Lock, PrepareWorkspaceRequest,
-  ReleaseExecutionRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceRecord,
+  ReleaseExecutionRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceRecord, RegisterWorkspaceRequest,
+  RepositoryBranches, RepositoryBranchesRequest, InspectWorkspaceRequest, WorkspaceInspection,
 } from 'dsh-workloom/types'
 import type { LoomKey } from './locales.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -11,6 +13,7 @@ import { currentExecution } from './projection.ts'
 import { failureKey, shortCommit, STATUS_META } from './shell.ts'
 import { LoomCleanupDialog } from './LoomCleanupDialog.tsx'
 import { LoomTakeoverDialog } from './LoomTakeoverDialog.tsx'
+import { BranchPicker } from './LoomForms.tsx'
 import type { LoadWorkspaceChanges, RenderFileDiffSlot } from './LoomDiff.tsx'
 
 type Translate = (key: LoomKey) => string
@@ -23,6 +26,10 @@ const alert: CSSProperties = { margin: 0, color: 'var(--dsw-alias-label-secondar
 /** Actions the workbench owns; the execution panel never calls the wire itself. */
 export interface ExecutionActions {
   prepareWorkspace(request: PrepareWorkspaceRequest): Promise<RemoteResult<WorkspaceRecord>>
+  registerWorkspace(request: RegisterWorkspaceRequest): Promise<RemoteResult<WorkspaceRecord>>
+  repositoryBranches(request: RepositoryBranchesRequest): Promise<RemoteResult<RepositoryBranches>>
+  inspectWorkspace(request: InspectWorkspaceRequest): Promise<RemoteResult<WorkspaceInspection>>
+  pickDirectory(startPath?: string): Promise<string | null>
   startAttempt(request: StartAttemptRequest): Promise<RemoteResult<TaskRecord>>
   attachSession(request: AttachSessionRequest): Promise<RemoteResult<TaskRecord>>
   transitionTask(request: TransitionTaskRequest): Promise<RemoteResult<TaskRecord>>
@@ -31,7 +38,7 @@ export interface ExecutionActions {
   acquireExecution(request: ExecutionRequest): Promise<RemoteResult<ExecutionState>>
   releaseExecution(request: ReleaseExecutionRequest): Promise<RemoteResult<ExecutionState>>
   takeoverExecution(request: ExecutionRequest): Promise<RemoteResult<ExecutionState>>
-  onSession(sessionId: SessionId): void
+  onSession(sessionId: SessionId, draft?: string): void
   onChanged(): void
 }
 
@@ -224,72 +231,189 @@ function Failure({ t, failure }: { t: Translate; failure: string }): ReactNode {
   </p>
 }
 
-/** Prepare an isolated workspace from one Lock, start the round, then open its native Session. */
+/** Compose the editable first message that carries a task into the native composer. */
+export function taskDraftPrompt(t: Translate, task: TaskRecord): string {
+  const title = `${t('task.draftTitle')}${task.title}`
+  const description = task.description?.trim() ?? ''
+  return description === '' ? title : `${title}\n\n${t('task.draftDescription')}\n${description}`
+}
+
+type WorkspaceMode = 'new' | 'existing'
+
+function sourceLabel(path: string, repo: string): string {
+  return path.trim() === '' ? repo : path
+}
+
+/** Choose a Lock, a workspace origin and optional branches, then start the task in a native Session. */
 function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
+  const version = snapshot.versions.find(candidate => candidate.id === versionId)
+  const project = version === undefined ? undefined : snapshot.projects.find(candidate => candidate.id === version.projectId)
   const locks = snapshot.locks.filter(lock => lock.versionId === versionId)
-  const agentPreset = snapshot.projects.find(candidate => candidate.id === snapshot.versions.find(version => version.id === versionId)?.projectId)?.config.agentPreset
+  const agentPreset = project?.config.agentPreset
   const [lockId, setLockId] = useState<Lock['id'] | undefined>(locks.at(-1)?.id)
-  const [custom, setCustom] = useState(false)
+  const reusable = snapshot.workspaces.filter(workspace => workspace.versionId === versionId && workspace.cleaned !== true)
+  const priorWorkspace = task.attempts.at(-1)?.workspaceId
+  const priorReusable = priorWorkspace !== undefined && reusable.some(workspace => workspace.id === priorWorkspace)
+  const [mode, setMode] = useState<WorkspaceMode>(priorReusable || reusable.length > 0 ? 'existing' : 'new')
+  const [existingId, setExistingId] = useState<WorkspaceRecord['id'] | 'custom'>(priorReusable ? priorWorkspace : reusable[0]?.id ?? 'custom')
   const [path, setPath] = useState('')
+  const [branches, setBranches] = useState<Record<string, string>>({})
+  const [inspection, setInspection] = useState<WorkspaceInspection>()
+  const [inspecting, setInspecting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
-  const [workspaceId, setWorkspaceId] = useState<WorkspaceRecord['id'] | 'new'>('new')
   useEffect(() => {
     if (lockId === undefined && locks.length > 0) setLockId(locks.at(-1)?.id)
   }, [lockId, locks])
-  const available = snapshot.workspaces.filter(workspace => workspace.versionId === versionId && workspace.cleaned !== true)
-  const selected = workspaceId === 'new' ? undefined : available.find(workspace => workspace.id === workspaceId)
+  const available = reusable
+  const selected = mode === 'existing' && existingId !== 'custom' ? available.find(workspace => workspace.id === existingId) : undefined
   const sharingTasks = selected === undefined ? [] : snapshot.tasks.filter(candidate => candidate.id !== task.id && candidate.attempts.at(-1)?.workspaceId === selected.id)
   const workspaceBusy = (workspace: WorkspaceRecord): boolean => snapshot.tasks.some(candidate => candidate.id !== task.id && candidate.status === 'running' && candidate.attempts.at(-1)?.workspaceId === workspace.id)
     || snapshot.executions.some(execution => execution.workspaceId === workspace.id && execution.owner !== null)
   const workspaceBaseline = (workspace: WorkspaceRecord): string => shortCommit(snapshot.locks.find(candidate => candidate.id === workspace.lockId)) ?? workspace.lockId
-  if (locks.length === 0) return <p style={{ ...alert, marginTop: 8 }}>{t('lock.empty')}</p>
+  const inspectedReady = inspection !== undefined && inspection.repositories.length > 0 && inspection.repositories.every(repository => repository.error === undefined)
+  const canStart = mode === 'new' || selected !== undefined || (path.trim() !== '' && inspectedReady && !inspecting)
+  if (locks.length === 0) return <div style={{ ...box, marginTop: 8 }}>
+    <p style={{ ...alert, margin: 0 }}>{t('lock.empty')}</p>
+    <p style={{ ...alert, margin: 0 }}>{t('lock.generateFirst')}</p>
+  </div>
   const absolute = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(path.trim())
+  async function browse(): Promise<void> {
+    const picked = await actions.pickDirectory(path.trim() === '' ? undefined : path.trim())
+    if (picked === null) return
+    setPath(picked); setInspection(undefined); setFailure(undefined)
+    await inspect(picked)
+  }
+  async function inspect(target: string): Promise<void> {
+    if (target.trim() === '') return
+    setInspecting(true)
+    try {
+      const result = await actions.inspectWorkspace({ path: target.trim(), versionId })
+      if (!result.ok) { setFailure(result.error.message); return }
+      setInspection(result.value)
+      const current: Record<string, string> = {}
+      for (const repository of result.value.repositories) {
+        if (repository.current !== undefined) current[repository.sourceId] = repository.current
+      }
+      setBranches(current)
+    } catch (error) { setFailure(error instanceof Error ? error.message : t('state.error')) } finally { setInspecting(false) }
+  }
   async function start(event: FormEvent): Promise<void> {
     event.preventDefault()
     if (lockId === undefined) { setFailure('missing_lock'); return }
-    if (custom && !absolute) { setFailure('invalid_path'); return }
+    if (mode === 'existing' && selected === undefined && !absolute) { setFailure('invalid_path'); return }
+    if (mode === 'existing' && selected === undefined && !inspectedReady) { setFailure('invalid_workspace_path'); return }
     setBusy(true); setFailure(undefined)
     try {
-      const prepared = selected === undefined ? await actions.prepareWorkspace({ versionId, lockId, ...(custom ? { path: path.trim() } : {}) }) : undefined
-      if (prepared !== undefined && !prepared.ok) { setFailure(prepared.error.message); return }
-      const target = selected ?? (prepared !== undefined && prepared.ok ? prepared.value : undefined)
+      let target: WorkspaceRecord | undefined = selected
+      if (target === undefined && mode === 'new') {
+        const requested = Object.fromEntries(Object.entries(branches).filter(([, branch]) => branch.trim() !== '').map(([sourceId, branch]) => [sourceId, branch.trim()]))
+        const prepared = await actions.prepareWorkspace({ versionId, lockId, ...(Object.keys(requested).length === 0 ? {} : { branches: requested }) })
+        if (!prepared.ok) { setFailure(prepared.error.message); return }
+        target = prepared.value
+      } else if (target === undefined) {
+        const current = Object.fromEntries((inspection?.repositories ?? []).flatMap(repository => repository.current === undefined ? [] : [[repository.sourceId, repository.current] as const]))
+        const registered = await actions.registerWorkspace({
+          path: path.trim(), versionId, lockId,
+          ...(Object.keys(current).length === 0 ? {} : { branches: current }),
+        })
+        if (!registered.ok) { setFailure(registered.error.message); return }
+        target = registered.value
+      }
       if (target === undefined) { setFailure(t('state.error')); return }
       const started = await actions.startAttempt({ taskId: task.id, workspaceId: target.id })
       if (!started.ok) { setFailure(started.error.message); return }
       const sessionId = await actions.createSessionInWorkspace(target.path, agentPreset)
       const attached = await actions.attachSession({ taskId: task.id, sessionId })
       if (!attached.ok) { setFailure(attached.error.message); return }
-      setPath('')
-      actions.onSession(sessionId)
+      actions.onSession(sessionId, taskDraftPrompt(t, task))
       actions.onChanged()
     } catch (error) { setFailure(error instanceof Error ? error.message : t('state.error')) } finally { setBusy(false) }
   }
   return <form style={box} onSubmit={event => { void start(event) }}>
-    <label style={{ ...alert }}>{t('lock.select')}
+    <div style={formHeading}>{t('task.start')}</div>
+    <label style={field}>{t('lock.select')}
       <select aria-label={t('lock.select')} value={lockId ?? ''} disabled={selected !== undefined} onChange={event => setLockId(event.target.value === '' ? undefined : event.target.value as Lock['id'])} style={input}>
         {locks.map(lock => <option key={lock.id} value={lock.id}>{lock.repositories.map(repository => repository.commit.slice(0, 7)).join(' + ')}</option>)}
       </select>
     </label>
-    <label style={{ ...alert }}>{t('workspace.select')}
-      <select aria-label={t('workspace.select')} value={workspaceId} onChange={event => {
-        const next = event.target.value as WorkspaceRecord['id'] | 'new'
-        setWorkspaceId(next); setFailure(undefined)
-        if (next !== 'new') { const workspace = available.find(candidate => candidate.id === next); if (workspace !== undefined) setLockId(workspace.lockId) }
-      }} style={input}>
-        <option value="new">{t('workspace.auto')}</option>
-        {available.map(workspace => <option key={workspace.id} value={workspace.id} disabled={workspaceBusy(workspace)}>{workspace.path} · {workspaceBaseline(workspace)}{workspaceBusy(workspace) ? ` · ${t('workspace.busy')}` : ''}</option>)}
-      </select>
-    </label>
-    {selected !== undefined && <>
-      <p style={{ ...alert, margin: 0 }}>{t('lock.workspaceBaseline')}</p>
-      <p style={{ ...alert, margin: 0 }}>{t('workspace.shareWarning')}</p>
-      {sharingTasks.length > 0 && <p style={{ ...alert, margin: 0 }}>{t('workspace.associations')}: {sharingTasks.map(candidate => candidate.title).join(', ')}</p>}
+    <div style={field}>
+      <span>{t('workspace.source')}</span>
+      <div role="tablist" aria-label={t('workspace.source')} style={{ display: 'flex', gap: 6 }}>
+        <Button type="button" size="sm" variant={mode === 'new' ? 'primary' : 'outline'} aria-pressed={mode === 'new'} onClick={() => { setMode('new'); setFailure(undefined) }}>{t('workspace.auto')}</Button>
+        <Button type="button" size="sm" variant={mode === 'existing' ? 'primary' : 'outline'} aria-pressed={mode === 'existing'} onClick={() => { setMode('existing'); setFailure(undefined) }}>{t('workspace.existing')}</Button>
+      </div>
+    </div>
+    {mode === 'new' && <>
+      <p style={{ ...hint, margin: 0 }}>{t('workspace.autoHint')}</p>
+      {project?.config.sources.map((source, index) => <div key={source.id} style={field}>
+        <span style={fieldLabelText}>{sourceLabel(source.path, source.repo)}</span>
+        <BranchPicker t={t} source={source} value={branches[source.id] ?? ''} listBranches={actions.repositoryBranches} onChange={value => setBranches(current => ({ ...current, [source.id]: value }))} />
+        {index === 0 && <span style={hint}>{t('workspace.branchHint')}</span>}
+      </div>)}
     </>}
-    {selected === undefined && <button type="button" style={button} aria-pressed={custom} onClick={() => { setCustom(value => !value); setFailure(undefined) }}>{t('workspace.custom')}</button>}
-    {selected === undefined && custom && <input aria-label={t('workspace.path')} placeholder={t('workspace.path')} value={path} onChange={event => setPath(event.target.value)} style={input} />}
-    {selected === undefined && custom && <p style={{ ...alert, margin: 0 }}>{t('workspace.absoluteRequired')}</p>}
+    {mode === 'existing' && <>
+      <label style={field}>{t('workspace.existing')}
+        <select aria-label={t('workspace.existing')} value={existingId} onChange={event => {
+          const next = event.target.value as WorkspaceRecord['id'] | 'custom'
+          setExistingId(next); setInspection(undefined); setFailure(undefined)
+          if (next !== 'custom') {
+            const workspace = available.find(candidate => candidate.id === next)
+            if (workspace !== undefined) setLockId(workspace.lockId)
+          }
+        }} style={input}>
+          <option value="custom">{t('workspace.pickFolder')}</option>
+          {available.map(workspace => <option key={workspace.id} value={workspace.id} disabled={workspaceBusy(workspace)}>{workspace.path} · {workspaceBaseline(workspace)}{workspaceBusy(workspace) ? ` · ${t('workspace.busy')}` : ''}</option>)}
+        </select>
+      </label>
+      {selected === undefined && <>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input aria-label={t('workspace.path')} placeholder={t('workspace.pathHint')} value={path}
+            onChange={event => { setPath(event.target.value); setInspection(undefined); setFailure(undefined) }}
+            onBlur={() => { if (path.trim() !== '' && inspection === undefined) void inspect(path) }} style={{ ...input, flex: 1 }} />
+          <Button type="button" variant="outline" icon={<IconFolderOpenRegular />} onClick={() => { void browse() }}>{t('workspace.browse')}</Button>
+        </div>
+        <p style={{ ...hint, margin: 0 }}>{t('workspace.gitOnly')}</p>
+        {inspecting && <p style={{ ...alert, margin: 0 }}>{t('workspace.inspecting')}</p>}
+        {inspection !== undefined && !inspecting && !inspectedReady && <>
+          <p role="alert" style={alert}>{t('error.invalidWorkspacePath')}</p>
+          <p style={{ ...hint, margin: 0 }}>{t('workspace.rootHint')}</p>
+        </>}
+        {inspection !== undefined && !inspecting && <div style={repoList}>
+          {inspection.repositories.map(repository => <div key={repository.sourceId} style={repoRow}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repository.directory}</span>
+            {repository.error === undefined
+              ? <span style={{ color: 'var(--dsw-alias-state-success-primary)', flex: 'none' }}>{repository.current ?? t('workspace.detached')}</span>
+              : <span style={{ color: 'var(--dsw-alias-label-error)', flex: 'none' }}>{t('workspace.notGit')}</span>}
+          </div>)}
+        </div>}
+      </>}
+      {selected !== undefined && <>
+        <p style={{ ...alert, margin: 0 }}>{t('lock.workspaceBaseline')}</p>
+        <p style={{ ...alert, margin: 0 }}>{t('workspace.shareWarning')}</p>
+        {sharingTasks.length > 0 && <p style={{ ...alert, margin: 0 }}>{t('workspace.associations')}: {sharingTasks.map(candidate => candidate.title).join(', ')}</p>}
+        <p style={{ ...hint, margin: 0 }}>{t('workspace.existingBranchHint')}</p>
+        {project !== undefined && <div style={repoList}>
+          {project.config.sources.map(source => <div key={source.id} style={repoRow}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sourceLabel(source.path, source.repo)}</span>
+            <span style={{ color: 'var(--dsw-alias-label-caption)', flex: 'none' }}>{selected.branches?.[source.id] ?? t('workspace.detached')}</span>
+          </div>)}
+        </div>}
+      </>}
+      {failure === undefined && !canStart && path.trim() === '' && <p style={{ ...hint, margin: 0 }}>{t('workspace.pickFolderHint')}</p>}
+    </>}
+    {mode === 'new' && <p style={{ ...hint, margin: 0 }}>{t('workspace.autoPathHint')}</p>}
+    <p style={{ ...hint, margin: 0 }}>{t('task.draftHint')}</p>
     {failure !== undefined && <Failure t={t} failure={failure} />}
-    <button type="submit" style={button} disabled={busy}>{busy ? t('form.submitPending') : t('task.start')}</button>
+    <Button type="submit" variant="primary" disabled={busy || (mode === 'existing' && !canStart)} style={{ alignSelf: 'flex-start' }}>
+      {busy ? t('form.submitPending') : t('task.start')}
+    </Button>
   </form>
 }
+
+const formHeading: CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--dsw-alias-label-primary)' }
+const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' }
+const fieldLabelText: CSSProperties = { overflowWrap: 'anywhere' }
+const hint: CSSProperties = { color: 'var(--dsw-alias-label-caption)', fontSize: 11.5, lineHeight: 1.5 }
+const repoList: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, padding: '7px 8px', borderRadius: 6, background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l4)' }
+const repoRow: CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 10, minWidth: 0, fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' }

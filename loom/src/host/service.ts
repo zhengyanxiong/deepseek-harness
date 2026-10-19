@@ -15,10 +15,11 @@ import type {
   CleanupWorkspaceRequest, PrepareWorkspaceRequest, ProjectConfig, ProjectRecord, RegisterWorkspaceRequest, StartAttemptRequest, TaskRecord, TransitionTaskRequest, WorkspaceChangesRequest, WorkspaceRepositoryChangesRecord, WorkspaceStatusResult,
   VersionRecord, WorkspaceRecord, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest,
   DeleteProjectRequest, DeleteVersionRequest, DeleteTaskRequest, RegisterTemporarySessionRequest, ForgetTemporarySessionRequest,
+  RepositoryBranchesRequest, InspectWorkspaceRequest, WorkspaceInspection,
 } from '../types.ts'
 import type { Lock } from '../domain/task.ts'
 import { ExecutionError, type ExecutionState, type StopOutcome } from '../domain/execution.ts'
-import { resolveCommit } from '../git/workspace.ts'
+import { repositoryBranches, resolveCommit } from '../git/workspace.ts'
 import type {} from './events.ts'
 import type { LoomAgent, LoomAgentRegistry } from './events.ts'
 
@@ -42,8 +43,10 @@ const deleteProjectRequest = z.strictObject({ projectId: nonempty })
 const deleteVersionRequest = z.strictObject({ versionId: nonempty })
 const deleteTaskRequest = z.strictObject({ taskId: nonempty })
 const lockRequest = z.strictObject({ versionId: nonempty })
-const workspaceRequest = z.strictObject({ path: nonempty.optional(), versionId: nonempty, lockId: nonempty })
+const workspaceRequest = z.strictObject({ path: nonempty.optional(), versionId: nonempty, lockId: nonempty, branches: z.record(z.string(), nonempty).optional() })
 const registerWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty, lockId: nonempty, branches: z.record(z.string(), nonempty).optional() })
+const repositoryBranchesRequest = z.strictObject({ repo: nonempty })
+const inspectWorkspaceRequest = z.strictObject({ path: nonempty, versionId: nonempty })
 const attemptRequest = z.strictObject({ taskId: nonempty, workspaceId: nonempty })
 const sessionRequest = z.strictObject({ taskId: nonempty, sessionId: nonempty })
 const temporarySessionRequest = z.strictObject({ sessionId: nonempty, workspacePath: nonempty })
@@ -53,6 +56,27 @@ const workspaceChangesRequest = z.strictObject({ workspaceId: nonempty })
 const cleanupWorkspaceRequest = z.strictObject({ workspaceId: nonempty, discardChanges: z.boolean().optional() })
 const executionRequest = z.strictObject({ workspaceId: nonempty, sessionId: nonempty })
 const releaseExecutionRequest = z.strictObject({ workspaceId: nonempty, sessionId: nonempty, generation: z.number().int().nonnegative() })
+
+
+/** Inspect each version repository inside an existing workspace root. */
+async function inspectWorkspace(snapshot: CatalogSnapshot, path: string, versionId: string): Promise<WorkspaceInspection> {
+  const version = snapshot.versions.find(candidate => candidate.id === versionId)
+  if (version === undefined) throw new Error('missing_version')
+  const project = snapshot.projects.find(candidate => candidate.id === version.projectId)
+  if (project === undefined) throw new Error('missing_project')
+  const repositories: WorkspaceInspection['repositories'][number][] = []
+  for (const source of project.config.sources) {
+    const directory = join(path, source.path)
+    try {
+      const branches = await repositoryBranches(directory)
+      repositories.push({ sourceId: source.id, repo: source.repo, directory, topLevel: branches.topLevel, ...(branches.current === undefined ? {} : { current: branches.current }), branches: branches.branches })
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.split(/\r?\n/u)[0] : String(error)
+      repositories.push({ sourceId: source.id, repo: source.repo, directory, branches: [], error: detail ?? 'not_git' })
+    }
+  }
+  return { path, repositories }
+}
 
 declare module '@deepseek-ai/cordis' { interface Context { loom: LoomService } }
 
@@ -285,8 +309,22 @@ export default class LoomService extends TypertRemoteService {
         path,
         versionId: brandString<Lock['versionId']>(parsed.versionId),
         lockId: brandString<Lock['id']>(parsed.lockId),
+        ...(parsed.branches === undefined ? {} : { branches: parsed.branches }),
       })
     })
+  }
+
+  /** Read local branches of one repository. @param request - absolute repository path. @returns current and available branches. */
+  @Remote
+  repositoryBranches(request: RepositoryBranchesRequest): Promise<{ topLevel: string; current?: string; branches: readonly string[] }> {
+    return this.run(() => repositoryBranches(repositoryBranchesRequest.parse(request).repo))
+  }
+
+  /** Check one existing workspace root against a version's repositories. @param request - absolute root and version. @returns per-repository Git status, without registering anything. */
+  @Remote
+  inspectWorkspace(request: InspectWorkspaceRequest): Promise<WorkspaceInspection> {
+    const parsed = inspectWorkspaceRequest.parse(request)
+    return this.run(catalog => inspectWorkspace(catalog.snapshot(), parsed.path, parsed.versionId))
   }
 
   /** Read every repository's changes against a workspace Lock. @param request - prepared workspace identity. @returns changed files and hunks per repository. */
@@ -315,11 +353,18 @@ export default class LoomService extends TypertRemoteService {
   registerWorkspace(request: RegisterWorkspaceRequest): Promise<WorkspaceRecord> {
     return this.run(async catalog => {
       const parsed = registerWorkspaceRequest.parse(request)
+      const inspection = await inspectWorkspace(catalog.snapshot(), parsed.path, parsed.versionId)
+      const failed = inspection.repositories.find(repository => repository.error !== undefined)
+      if (failed !== undefined) throw new Error(`invalid_workspace_path: ${failed.directory} (${failed.error ?? 'not_git'})`)
+      const branches = { ...parsed.branches }
+      for (const repository of inspection.repositories) {
+        if (branches[repository.sourceId] === undefined && repository.current !== undefined) branches[repository.sourceId] = repository.current
+      }
       const workspace = await catalog.registerPreparedWorkspace({
         path: parsed.path,
         versionId: brandString<Lock['versionId']>(parsed.versionId),
         lockId: brandString<Lock['id']>(parsed.lockId),
-        ...(parsed.branches === undefined ? {} : { branches: parsed.branches }),
+        ...(Object.keys(branches).length === 0 ? {} : { branches }),
       })
       return catalog.ensureWorkspaceBranches(workspace.id)
     })

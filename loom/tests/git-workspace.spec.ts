@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, access } from 'node:
 import { tmpdir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { prepareWorkspace, resolveCommit, workingTreeStatus, WorkspacePreparationError } from '../src/git/workspace.ts'
+import { prepareWorkspace, repositoryBranches, resolveCommit, workingTreeStatus, WorkspacePreparationError } from '../src/git/workspace.ts'
 
 const exec = promisify(execFile)
 const roots: string[] = []
@@ -85,6 +85,37 @@ it('creates a real branch for each worktree instead of a detached HEAD', async (
   expect((await exec('git', ['-C', join(f.root, 'app'), 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe(branch)
   expect((await exec('git', ['-C', f.first, 'branch', '--list', branch])).stdout).toContain(branch)
   expect(await resolveCommit(join(f.root, 'app'), 'HEAD')).toBe(commit)
+})
+it('prepares one repository directly at the workspace root', async () => {
+  const f = await fixture()
+  const commit = await resolveCommit(f.first, 'HEAD')
+  await prepareWorkspace(f.root, [{ repo: f.first, path: '.', commit }])
+  expect(await resolveCommit(f.root, 'HEAD')).toBe(commit)
+  expect((await exec('git', ['-C', f.root, 'status', '--porcelain'])).stdout.trim()).toBe('')
+})
+it('checks out an existing branch when its tip is the Lock commit', async () => {
+  const f = await fixture()
+  const commit = await resolveCommit(f.first, 'HEAD')
+  await exec('git', ['-C', f.first, 'branch', 'feature/shared', commit])
+  await prepareWorkspace(f.root, [{ repo: f.first, path: 'app', commit, branch: 'feature/shared' }])
+  expect((await exec('git', ['-C', join(f.root, 'app'), 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe('feature/shared')
+  expect((await exec('git', ['-C', f.first, 'branch', '--list', 'feature/shared'])).stdout).toContain('feature/shared')
+})
+it('refuses an existing branch already checked out in another worktree', async () => {
+  const f = await fixture()
+  const commit = await resolveCommit(f.first, 'HEAD')
+  const current = (await repositoryBranches(f.first)).current
+  expect(current).toBeDefined()
+  await expect(prepareWorkspace(f.root, [{ repo: f.first, path: 'app', commit, branch: current! }])).rejects.toThrow('branch_checked_out')
+})
+it('refuses an existing branch that does not point at the Lock commit', async () => {
+  const f = await fixture()
+  const commit = await resolveCommit(f.first, 'HEAD')
+  await writeFile(join(f.first, 'file.txt'), 'moved')
+  await exec('git', ['-C', f.first, 'commit', '-qam', 'moved'])
+  await exec('git', ['-C', f.first, 'branch', 'feature/moved'])
+  await expect(prepareWorkspace(f.root, [{ repo: f.first, path: 'app', commit, branch: 'feature/moved' }])).rejects.toThrow('branch_mismatch')
+  expect((await exec('git', ['-C', f.first, 'branch', '--list', 'feature/moved'])).stdout).toContain('feature/moved')
 })
 it('deletes branches created by a workspace that fails to prepare', async () => {
   const f = await fixture()
@@ -176,4 +207,15 @@ it.skipIf(process.platform === 'win32')('reports a dubious-ownership rejection s
   } finally {
     process.env.PATH = path
   }
+})
+
+it('lists local branches and the checked-out branch without changing the worktree', async () => {
+  const f = await fixture()
+  await exec('git', ['-C', f.first, 'branch', 'feature/alpha'])
+  await exec('git', ['-C', f.first, 'switch', '-q', '-c', 'feature/beta'])
+  const branches = await repositoryBranches(f.first)
+  expect(branches.topLevel).toBe(await realpath(f.first))
+  expect(branches.current).toBe('feature/beta')
+  expect(branches.branches).toEqual(['feature/alpha', 'feature/beta', 'master'].sort((a, b) => a.localeCompare(b)))
+  expect((await exec('git', ['-C', f.first, 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe('feature/beta')
 })

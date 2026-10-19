@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { ImportProjectForm, LockButton, ProjectForm, TaskForm, emptySourceRow, parseImport, projectRequest, sourceIds, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
+import { ImportProjectForm, LockButton, ProjectForm, TaskForm, VersionForm, emptySourceRow, parseImport, projectRequest, sourceIds, taskRequest, versionRequest } from '../src/client/LoomForms.tsx'
 import { en, zh, type LoomKey } from '../src/client/locales.ts'
 import type { ProjectRecord, VersionRecord } from 'dsh-workloom/types'
 const t = (key: LoomKey) => en[key]
@@ -106,4 +106,13 @@ it('renders creation entry points with locale-owned labels', () => {
   for (const label of [en['project.new'], en['task.new'], en['lock.new'], en['project.importFile']]) expect(html).toContain(label)
   const chinese = renderToStaticMarkup(createElement(ProjectForm, { t: key => zh[key], create: () => Promise.reject(new Error('unused')), onCreated: () => {} }))
   expect(chinese).toContain(zh['project.new'])
+})
+
+it('renders free-text branch refs with a local branch picker and no default branch', () => {
+  const html = renderToStaticMarkup(createElement(VersionForm, { t, open: true, project, listBranches: async () => ({ ok: true, value: { topLevel: '/repo/shop', current: 'main', branches: ['main'] } }), create: () => Promise.reject(new Error('unused')), onCreated: () => {} }))
+  expect(html).toContain(en['source.branch'])
+  expect(html).toContain(en['source.branchPlaceholder'])
+  expect(html).toContain(en['branch.load'])
+  expect(html).toContain(en['branch.chooseOrType'])
+  expect(html).not.toContain('value="main"')
 })

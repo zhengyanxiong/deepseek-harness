@@ -6,7 +6,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type { ViewTab } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { DraftInitializationOptions, DraftInitializationResult, ViewTab } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import contribution from 'dsh-workloom/remote'
@@ -14,7 +15,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
-import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, DeleteProjectRequest, DeleteTaskRequest, DeleteVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest, RegisterTemporarySessionRequest } from 'dsh-workloom/types'
+import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, DeleteProjectRequest, DeleteTaskRequest, DeleteVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest, RegisterTemporarySessionRequest, RegisterWorkspaceRequest, RepositoryBranchesRequest, InspectWorkspaceRequest } from 'dsh-workloom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { LoomMark } from './LoomMark.tsx'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
@@ -121,7 +122,7 @@ export function apply(ctx: ClientContext): void {
       return () => { controller.openResource = original }
     }, 'loom: route file links to the workbench preview')
   })
-  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom', 'remote.workspaceFiles', 'remote.agentPresets'], (ui) => {
+  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom', 'remote.workspaceFiles', 'remote.agentPresets', 'remote.directoryPicker'], (ui) => {
     ui.effect(() => ui.locale.register(NS, { en, zh }), 'loom: dictionary')
     const t = ui.locale.bind(NS)
     ui.slots.inject('main', () => ui.slots.register({
@@ -141,6 +142,20 @@ export function apply(ctx: ClientContext): void {
         deleteTask: (request: DeleteTaskRequest) => ui.remote.loom.deleteTask(request),
         generateLock: (request: GenerateLockRequest) => ui.remote.loom.generateLock(request),
         prepareWorkspace: (request: PrepareWorkspaceRequest) => ui.remote.loom.prepareWorkspace(request),
+        registerWorkspace: (request: RegisterWorkspaceRequest) => ui.remote.loom.registerWorkspace(request),
+        repositoryBranches: (request: RepositoryBranchesRequest) => ui.remote.loom.repositoryBranches(request),
+        inspectWorkspace: (request: InspectWorkspaceRequest) => ui.remote.loom.inspectWorkspace(request),
+        pickDirectory: async () => {
+          const result = await ui.remote.directoryPicker.pick()
+          if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+          return result.value
+        },
+        listDirectory: (path, signal) => ui.remote.directoryPicker.list(path, signal),
+        requestDraftInitialization: (binding: SessionBinding, options: DraftInitializationOptions): DraftInitializationResult => {
+          const conversation = ui.get('conversation')
+          if (conversation === undefined) return 'blocked'
+          return conversation.input.requestDraftInitialization(binding, options)
+        },
         startAttempt: (request: StartAttemptRequest) => ui.remote.loom.startAttempt(request),
         attachSession: (request: AttachSessionRequest) => ui.remote.loom.attachSession(request),
         registerTemporarySession: (request: RegisterTemporarySessionRequest) => ui.remote.loom.registerTemporarySession(request),
