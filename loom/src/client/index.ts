@@ -18,6 +18,8 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, DeleteProjectRequest, DeleteTaskRequest, DeleteVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest, RegisterTemporarySessionRequest, RegisterWorkspaceRequest, RepositoryBranchesRequest, InspectWorkspaceRequest } from 'dsh-workloom/types'
 import { LoomPanel, type LoomInjected } from './LoomPanel.tsx'
 import { LoomMark } from './LoomMark.tsx'
+import { LoomNoticeHost } from './LoomNoticeHost.tsx'
+import { pushLoomNotice, reportLoomFailure } from './feedback.ts'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
 import { openFilePreview, openReviewPreview, previewTargetFromAddress, reviewIndexFromOptions, reviewTargetFromAddress } from './preview.ts'
 import { NS, en, zh, type LoomKey } from './locales.ts'
@@ -125,24 +127,36 @@ export function apply(ctx: ClientContext): void {
   ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom', 'remote.workspaceFiles', 'remote.agentPresets', 'remote.directoryPicker'], (ui) => {
     ui.effect(() => ui.locale.register(NS, { en, zh }), 'loom: dictionary')
     const t = ui.locale.bind(NS)
+    const notified = async <T,>(promise: Promise<RemoteResult<T>>, success?: LoomKey): Promise<RemoteResult<T>> => {
+      let result: RemoteResult<T>
+      try {
+        result = await promise
+      } catch (error) {
+        pushLoomNotice('error', t('notice.operationFailed'), error instanceof Error ? error.message : String(error))
+        throw error
+      }
+      if (!result.ok) reportLoomFailure(t, result.error)
+      else if (success !== undefined) pushLoomNotice('success', t(success))
+      return result
+    }
     ui.slots.inject('main', () => ui.slots.register({
       name: 'main', key: PANEL_ID, locale: NS,
       children: { 'loom.conversation': { kind: 'single', scope: 'session' } },
       inject: (): LoomInjected => ({
         retainSession: id => ui.sessions.retain(id, { source: 'loom' }),
-        loadSnapshot: () => ui.remote.loom.snapshot(),
-        createProject: (request: ProjectConfig) => ui.remote.loom.createProject(request),
-        updateProject: (request: UpdateProjectRequest) => ui.remote.loom.updateProject(request),
-        deleteProject: (request: DeleteProjectRequest) => ui.remote.loom.deleteProject(request),
-        createVersion: (request: CreateVersionRequest) => ui.remote.loom.createVersion(request),
-        updateVersion: (request: UpdateVersionRequest) => ui.remote.loom.updateVersion(request),
-        deleteVersion: (request: DeleteVersionRequest) => ui.remote.loom.deleteVersion(request),
-        createTask: (request: CreateTaskRequest) => ui.remote.loom.createTask(request),
-        updateTask: (request: UpdateTaskRequest) => ui.remote.loom.updateTask(request),
-        deleteTask: (request: DeleteTaskRequest) => ui.remote.loom.deleteTask(request),
-        generateLock: (request: GenerateLockRequest) => ui.remote.loom.generateLock(request),
-        prepareWorkspace: (request: PrepareWorkspaceRequest) => ui.remote.loom.prepareWorkspace(request),
-        registerWorkspace: (request: RegisterWorkspaceRequest) => ui.remote.loom.registerWorkspace(request),
+        loadSnapshot: () => notified(ui.remote.loom.snapshot()),
+        createProject: (request: ProjectConfig) => notified(ui.remote.loom.createProject(request), 'notice.projectCreated'),
+        updateProject: (request: UpdateProjectRequest) => notified(ui.remote.loom.updateProject(request), 'notice.projectUpdated'),
+        deleteProject: (request: DeleteProjectRequest) => notified(ui.remote.loom.deleteProject(request), 'notice.projectDeleted'),
+        createVersion: (request: CreateVersionRequest) => notified(ui.remote.loom.createVersion(request), 'notice.versionCreated'),
+        updateVersion: (request: UpdateVersionRequest) => notified(ui.remote.loom.updateVersion(request), 'notice.versionUpdated'),
+        deleteVersion: (request: DeleteVersionRequest) => notified(ui.remote.loom.deleteVersion(request), 'notice.versionDeleted'),
+        createTask: (request: CreateTaskRequest) => notified(ui.remote.loom.createTask(request), 'notice.taskCreated'),
+        updateTask: (request: UpdateTaskRequest) => notified(ui.remote.loom.updateTask(request), 'notice.taskUpdated'),
+        deleteTask: (request: DeleteTaskRequest) => notified(ui.remote.loom.deleteTask(request), 'notice.taskDeleted'),
+        generateLock: (request: GenerateLockRequest) => notified(ui.remote.loom.generateLock(request), 'notice.lockGenerated'),
+        prepareWorkspace: (request: PrepareWorkspaceRequest) => notified(ui.remote.loom.prepareWorkspace(request)),
+        registerWorkspace: (request: RegisterWorkspaceRequest) => notified(ui.remote.loom.registerWorkspace(request)),
         repositoryBranches: (request: RepositoryBranchesRequest) => ui.remote.loom.repositoryBranches(request),
         inspectWorkspace: (request: InspectWorkspaceRequest) => ui.remote.loom.inspectWorkspace(request),
         pickDirectory: async () => {
@@ -156,23 +170,26 @@ export function apply(ctx: ClientContext): void {
           if (conversation === undefined) return 'blocked'
           return conversation.input.requestDraftInitialization(binding, options)
         },
-        startAttempt: (request: StartAttemptRequest) => ui.remote.loom.startAttempt(request),
-        attachSession: (request: AttachSessionRequest) => ui.remote.loom.attachSession(request),
-        registerTemporarySession: (request: RegisterTemporarySessionRequest) => ui.remote.loom.registerTemporarySession(request),
+        startAttempt: (request: StartAttemptRequest) => notified(ui.remote.loom.startAttempt(request)),
+        attachSession: (request: AttachSessionRequest) => notified(ui.remote.loom.attachSession(request)),
+        registerTemporarySession: (request: RegisterTemporarySessionRequest) => notified(ui.remote.loom.registerTemporarySession(request)),
         listAgentPresets: () => ui.remote.agentPresets.list(),
-        transitionTask: (request: TransitionTaskRequest) => ui.remote.loom.transitionTask(request),
+        transitionTask: (request: TransitionTaskRequest) => notified(ui.remote.loom.transitionTask(request), 'notice.taskMoved'),
         workspaceChanges: (request: WorkspaceChangesRequest) => ui.remote.loom.workspaceChanges(request),
         readFile: (sessionId, path, offset, signal): Promise<RemoteResult<WorkspaceFileText>> => ui.remote.workspaceFiles.read(sessionId, path, { offset }, signal),
-        cleanupWorkspace: (request: CleanupWorkspaceRequest) => ui.remote.loom.cleanupWorkspace(request),
-        acquireExecution: (request: ExecutionRequest) => ui.remote.loom.acquireExecution(request),
-        releaseExecution: (request: ReleaseExecutionRequest) => ui.remote.loom.releaseExecution(request),
-        takeoverExecution: (request: ExecutionRequest) => ui.remote.loom.takeoverExecution(request),
+        cleanupWorkspace: (request: CleanupWorkspaceRequest) => notified(ui.remote.loom.cleanupWorkspace(request), 'notice.workspaceCleaned'),
+        acquireExecution: (request: ExecutionRequest) => notified(ui.remote.loom.acquireExecution(request)),
+        releaseExecution: (request: ReleaseExecutionRequest) => notified(ui.remote.loom.releaseExecution(request)),
+        takeoverExecution: (request: ExecutionRequest) => notified(ui.remote.loom.takeoverExecution(request)),
         createSessionInWorkspace: async (path: string, agentPreset?: string) => {
           const workspace = await ui.workspaces.create({ path })
           return ui.sessions.create({ workspaceId: workspace.workspaceId, ...(agentPreset === undefined ? {} : { agentPreset }) })
         },
       }),
     }, LoomPanel))
+    ui.slots.inject('shell.overlay', () => ui.slots.register({
+      name: 'shell.overlay', id: 'loom-notice', locale: NS,
+    }, LoomNoticeHost))
     const conversationViews = createSnapshotStore<readonly ViewTab[]>([])
     const refreshConversationViews = (): void => {
       conversationViews.set(ui.slots.entries('conversation.view').flatMap(entry => {

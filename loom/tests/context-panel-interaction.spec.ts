@@ -63,10 +63,15 @@ function dialog(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]')
 }
 
+async function chooseTaskDelete(): Promise<void> {
+  await act(async () => { button(en['ctx.more']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+}
+
 it('asks for confirmation before deleting and reports a refused deletion', async () => {
   let calls = 0
   await render(async () => { calls += 1; return { ok: false, error: { code: 'gateway/internal', message: 'task_workspace_uncleaned' } } })
-  await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  await chooseTaskDelete()
   expect(dialog()?.getAttribute('aria-label')).toBe(en['task.delete'])
   expect(dialog()?.textContent).toContain(en['delete.taskWarning'])
   expect(dialog()?.textContent).toContain(task.title)
@@ -77,21 +82,21 @@ it('asks for confirmation before deleting and reports a refused deletion', async
 
 it('clears the confirmation after a successful deletion', async () => {
   await render(async () => ({ ok: true, value: undefined }))
-  await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  await chooseTaskDelete()
   await act(async () => { button(en['delete.confirmAction']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
   expect(dialog()).toBeNull()
 })
 
 it('explains that the running Host has not loaded deletion yet', async () => {
   await render(async () => { throw new Error('ui.remote.loom.deleteTask is not a function') })
-  await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  await chooseTaskDelete()
   await act(async () => { button(en['delete.confirmAction']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
   expect(dialog()?.textContent).toContain(en['error.hostNotLoaded'])
 })
 
 it('keeps an unknown failure diagnostic visible instead of only the generic message', async () => {
   await render(async () => ({ ok: false, error: { code: 'gateway/internal', message: 'boom' } }))
-  await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  await chooseTaskDelete()
   await act(async () => { button(en['delete.confirmAction']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
   expect(dialog()?.textContent).toContain(en['delete.unknownFailure'])
   expect(dialog()?.textContent).toContain('gateway/internal: boom')

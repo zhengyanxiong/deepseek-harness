@@ -1,7 +1,7 @@
 /** Loom workbench shell: project tree, native conversation, context and kanban. */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
-  IconCloseOutlineRegular, IconEditOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconPanelLeftOutlineRegular, IconPinFillRegular, IconPinOutlineRegular,
+  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCloseOutlineRegular, IconEditOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconPanelLeftOutlineRegular, IconPinFillRegular, IconPinOutlineRegular,
   IconPlusOutlineRegular, IconSettingsOutlineRegular, IconTrashOutlineRegular, Button, Tag, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CSSProperties, ReactNode } from 'react'
@@ -19,9 +19,9 @@ import type {
   RegisterTemporarySessionRequest, TemporarySessionRecord, RegisterWorkspaceRequest, RepositoryBranchesRequest, RepositoryBranches,
   InspectWorkspaceRequest, WorkspaceInspection, DirectoryListing,
 } from 'dsh-workloom/types'
-import { ImportProjectForm, LockButton, ProjectForm, TaskForm, VersionForm, type AgentPresetOption } from './LoomForms.tsx'
+import { ImportProjectForm, LockButton, ProjectForm, TaskForm, VersionForm, type AgentPresetOption, type VersionStep } from './LoomForms.tsx'
 import { LoomSettings, readPreferences, writePreferences, type LoomPreferences } from './LoomSettings.tsx'
-import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
+import type { ExecutionActions } from './LoomExecution.tsx'
 import { LoomBottomPanel, type LoomBottomPane } from './LoomBottomPanel.tsx'
 import { LoomResizeHandle } from './LoomResizeHandle.tsx'
 import { LoomFilePreview } from './LoomFilePreview.tsx'
@@ -32,6 +32,7 @@ import { openFilePreview, workspacePreview, workspaceReviewPreview } from './pre
 import { LoomContextPanel } from './LoomContextPanel.tsx'
 import { LoomDeleteDialog } from './LoomDeleteDialog.tsx'
 import { LoomKanban, LoomKanbanAside } from './LoomKanban.tsx'
+import { LoomTaskWorkbench } from './LoomTaskWorkbench.tsx'
 import { activeWorkspaceCount, aggregateTokenUsage, boundSessions, currentWorkspace, taskSessionRows, workspaceName, type RecentSession, type ShellFilter } from './projection.ts'
 import { COLORS, failureReport, metaLine, pill, select, shortCommit, thrownFailureReport, PRIORITY_META, STATUS_META, type FailureReport } from './shell.ts'
 import { NS, type LoomKey } from './locales.ts'
@@ -95,50 +96,54 @@ type EditKind = 'project' | 'version' | 'task'
 
 const frame: CSSProperties = { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, color: COLORS.text, background: COLORS.bg, fontSize: 13, overflow: 'hidden' }
 const topbar: CSSProperties = {
-  display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 6, minHeight: 48, padding: '0 12px',
+  display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 10, rowGap: 6, minHeight: 48, padding: '0 20px',
   background: COLORS.panel, borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none', position: 'relative', zIndex: 20,
 }
-const topBrand: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, flex: 'none', fontWeight: 500, fontSize: 13.5 }
+const topBrand: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, flex: 'none', fontWeight: 500, fontSize: 14, letterSpacing: '-.01em' }
 const topDivider: CSSProperties = { width: 1, height: 18, background: COLORS.border, flex: 'none' }
 const topContext: CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 8px',
-  border: `0.5px solid ${COLORS.border}`, borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, whiteSpace: 'nowrap',
+  display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 6px',
+  border: '0.5px solid transparent', borderRadius: 6, background: 'transparent', color: COLORS.dim, whiteSpace: 'nowrap',
 }
 const topContextLabel: CSSProperties = { ...metaLine, fontSize: 10.5, flex: 'none' }
 const topSelect: CSSProperties = { minWidth: 0, background: 'transparent', border: 'none', color: COLORS.text, font: 'inherit', fontSize: 12, cursor: 'pointer', padding: 0 }
 const topActivity: CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 9px', flex: 'none',
-  border: `0.5px solid ${COLORS.border}`, borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, fontSize: 11.5, whiteSpace: 'nowrap',
+  display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 9px', flex: 'none',
+  border: '0.5px solid rgba(63, 185, 80, .22)', borderRadius: 999, background: 'rgba(63, 185, 80, .10)', color: COLORS.dim, fontSize: 11.5, whiteSpace: 'nowrap',
 }
-const topViewSwitch: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 2, height: 30, padding: 2, flex: 'none', border: `0.5px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.panel2 }
-const topViewButton: CSSProperties = { height: 24, padding: '0 12px', border: 'none', borderRadius: 6, background: 'transparent', color: COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 400 }
+const topViewSwitch: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 2, height: 32, padding: 2, flex: 'none', border: `0.5px solid ${COLORS.border}`, borderRadius: 9, background: COLORS.panel3 }
+const topViewButton: CSSProperties = { height: 26, padding: '0 12px', border: 'none', borderRadius: 6, background: 'transparent', color: COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: 11.5, fontWeight: 400 }
 const topAction: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, padding: 0,
-  border: `0.5px solid ${COLORS.border}`, borderRadius: 7, background: COLORS.panel2, color: COLORS.dim, cursor: 'pointer',
+  border: `0.5px solid ${COLORS.border}`, borderRadius: 7, background: COLORS.panel, color: COLORS.dim, cursor: 'pointer',
 }
 const topActionActive: CSSProperties = { background: COLORS.panel3, borderColor: COLORS.borderStrong, color: COLORS.text }
 const topNew: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, height: 30, padding: '0 10px',
-  border: 'none', borderRadius: 7, background: COLORS.accent, color: '#fff', cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 500,
+  border: `0.5px solid ${COLORS.borderStrong}`, borderRadius: 7, background: COLORS.panel, color: COLORS.text, cursor: 'pointer', font: 'inherit', fontSize: 12, fontWeight: 500,
 }
 const topActions: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }
 const topSpacer: CSSProperties = { flex: 1, minWidth: 8 }
 const menuItem: CSSProperties = { ...select, border: 'none', textAlign: 'left', padding: '7px 8px', fontSize: 12 }
 const topMenu: CSSProperties = { position: 'absolute', top: 36, right: 0, width: 210, background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, padding: 4, display: 'flex', flexDirection: 'column', zIndex: 40, boxShadow: '0 8px 24px rgba(0,0,0,.35)' }
-const sidebar: CSSProperties = { width: 230, flex: 'none', background: COLORS.panel, borderRight: `0.5px solid ${COLORS.border}`, overflowY: 'auto', padding: '8px 0' }
-const center: CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: COLORS.bg }
-const aside: CSSProperties = { width: 272, flex: 'none', display: 'flex', flexDirection: 'column', borderLeft: `0.5px solid ${COLORS.border}`, background: COLORS.panel }
-const drawer: CSSProperties = { width: 380, maxWidth: '92%', height: '100%', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}`, borderRadius: 'var(--dsw-radius-lg) 0 0 var(--dsw-radius-lg)', boxShadow: '-16px 0 48px rgba(0,0,0,.18)', padding: '16px 16px 20px', overflowY: 'auto' }
-const drawerHeader: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, minHeight: 28, marginBottom: 14 }
-const drawerTitle: CSSProperties = { fontSize: 14, fontWeight: 500 }
-const drawerHint: CSSProperties = { margin: '-6px 0 14px', color: COLORS.dim, fontSize: 11.5, lineHeight: 1.55 }
+const sidebar: CSSProperties = { width: 320, flex: 'none', background: COLORS.panel2, borderRight: `0.5px solid ${COLORS.border}`, overflowY: 'auto', padding: '8px 0' }
+const center: CSSProperties = { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: COLORS.panel }
+const aside: CSSProperties = { width: 344, flex: 'none', display: 'flex', flexDirection: 'column', borderLeft: `0.5px solid ${COLORS.border}`, background: COLORS.panel }
+const modalOverlay: CSSProperties = { position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, overflow: 'auto', background: 'rgba(0,0,0,.42)' }
+const modalCard: CSSProperties = { display: 'flex', flexDirection: 'column', width: '100%', maxHeight: 'calc(100% - 48px)', boxSizing: 'border-box', overflowY: 'auto', padding: '20px 22px 18px', background: COLORS.panel, border: `0.5px solid ${COLORS.border}`, borderRadius: 'var(--dsw-radius-lg)', boxShadow: '0 24px 64px rgba(0,0,0,.32)' }
+const modalHeader: CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 8, minHeight: 30, marginBottom: 6 }
+const modalTitle: CSSProperties = { fontSize: 18, fontWeight: 500, lineHeight: 1.3, letterSpacing: '-.015em' }
+const modalHint: CSSProperties = { margin: '0 0 12px', color: COLORS.dim, fontSize: 12, lineHeight: 1.55 }
+const modalMeta: CSSProperties = { marginBottom: 6, color: COLORS.faint, fontFamily: 'ui-monospace, monospace', fontSize: 10, lineHeight: 1.2, letterSpacing: '.09em', textTransform: 'uppercase' }
+const modalSub: CSSProperties = { marginTop: 7, color: COLORS.dim, fontSize: 12, lineHeight: 1.5 }
+const MODAL_WIDTH: Readonly<Record<CreateKind | EditKind, number>> = { project: 760, import: 640, version: 660, task: 660 }
 const convHeader: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '9px 16px', borderBottom: `0.5px solid ${COLORS.border}`, minHeight: 40, flex: 'none' }
 const note: CSSProperties = { padding: 12, borderRadius: 8, color: COLORS.dim, background: COLORS.panel2, lineHeight: 1.6, margin: 0 }
 
-function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?: ReactNode; badge?: string; label: string; color?: string; count?: string; onClick: () => void }) {
-  const { depth, active, arrow, icon, badge, label, color, count, onClick } = props
-  return <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left', background: active === true ? COLORS.panel3 : 'transparent', border: 'none', borderLeft: `2px solid ${active === true ? COLORS.accent : 'transparent'}`, padding: `5px 12px 5px ${String(14 + depth * 13)}px`, color: active === true ? COLORS.text : COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: depth === 2 ? 12 : 13 }}>
-    {arrow !== undefined && <span style={{ fontSize: 9, color: COLORS.faint, width: 9 }}>{arrow}</span>}
+function TreeRow(props: { depth: number; active?: boolean; expanded?: boolean; icon?: ReactNode; badge?: string; label: ReactNode; color?: string; count?: string; onClick: () => void }) {
+  const { depth, active, expanded, icon, badge, label, color, count, onClick } = props
+  return <button type="button" aria-expanded={expanded} onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left', background: active === true ? COLORS.panel3 : 'transparent', border: 'none', borderLeft: `2px solid ${active === true ? COLORS.accent : 'transparent'}`, padding: `5px 12px 5px ${String(14 + depth * 13)}px`, color: active === true ? COLORS.text : COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: depth === 2 ? 12 : 13 }}>
+    {expanded !== undefined && <span aria-hidden style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 12, height: 12, flex: 'none', color: COLORS.dim, opacity: .9 }}>{expanded ? <IconChevronDownOutlineRegular size={12} /> : <IconChevronRightOutlineRegular size={12} />}</span>}
     {icon !== undefined && <span>{icon}</span>}
     {badge !== undefined && <span style={{ fontSize: 10, color: COLORS.cyan, background: 'rgba(57,197,207,.12)', padding: '0 5px', borderRadius: 4 }}>{badge}</span>}
     <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
@@ -146,6 +151,8 @@ function TreeRow(props: { depth: number; active?: boolean; arrow?: string; icon?
     {color !== undefined && <span style={{ marginLeft: count === undefined ? 'auto' : 0, color, fontSize: 10 }}>●</span>}
   </button>
 }
+
+const versionChip: CSSProperties = { display: 'inline-flex', alignItems: 'center', height: 18, padding: '0 6px', borderRadius: 4, background: 'color-mix(in srgb, var(--loom-accent) 11%, transparent)', color: COLORS.accent, fontSize: 10.5, fontWeight: 500 }
 
 function SidebarSessionRow({ t, row, projectName, taskTitle, temporary, active, onSelect }: {
   t: LoomPanelProps['t']
@@ -201,7 +208,7 @@ function ProjectTaskRow({ task, active, t, onClick }: { task: TaskRecord; active
   const priorityMeta = PRIORITY_META[priority]
   const detail = [task.title, t(status.key), t(priorityMeta.key)].join(' · ')
   return <button type="button" aria-pressed={active} title={detail} onClick={onClick}
-    style={{ display: 'flex', alignItems: 'flex-start', gap: 7, width: '100%', padding: '5px 10px 5px 40px', textAlign: 'left', border: 'none', borderLeft: `2px solid ${active ? COLORS.accent : 'transparent'}`, background: active ? COLORS.panel3 : 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit' }}>
+    style={{ display: 'flex', alignItems: 'flex-start', gap: 7, width: '100%', padding: '5px 10px 5px 40px', textAlign: 'left', border: 'none', borderLeft: `2px solid ${active ? COLORS.accent : 'transparent'}`, background: active ? COLORS.selected : 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit' }}>
     <span aria-hidden style={{ flex: 'none', width: 6, height: 6, marginTop: 6, borderRadius: 999, background: status.color }} />
     <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, fontWeight: active ? 500 : 400, color: active ? COLORS.text : COLORS.dim }}>{task.title}</span>
@@ -233,11 +240,11 @@ function ProjectItem({ candidate, versions, tasks, activeProject, activeVersionI
   onDeleteProject: () => void
 }) {
   return <div>
-    <div className="loom-tree-row" style={{ display: 'flex', alignItems: 'center' }}>
+    <div className={activeProject ? 'loom-tree-row loom-tree-row-active' : 'loom-tree-row'} style={{ display: 'flex', alignItems: 'center', background: activeProject ? COLORS.panel3 : 'transparent' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <TreeRow depth={0} arrow={open ? '▾' : '▸'} icon={open ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />} label={candidate.config.name} active={activeProject} count={String(versions.length)} onClick={onProject} />
+        <TreeRow depth={0} expanded={open} icon={open ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />} label={candidate.config.name} active={activeProject} count={String(versions.length)} onClick={onProject} />
       </div>
-      <span className="loom-row-actions" style={{ display: 'flex', alignItems: 'center', gap: 0, flex: 'none' }}>
+      <span className="loom-row-actions" style={{ display: 'flex', alignItems: 'center', gap: 0, flex: 'none', alignSelf: 'stretch' }}>
         <TreeIconAction label={t('version.new')} icon={<IconPlusOutlineRegular size={13} />} onClick={onNewVersion} />
         <TreeIconAction label={t('project.edit')} icon={<IconEditOutlineRegular size={13} />} onClick={onEditProject} />
         <TreeIconAction label={t('project.delete')} icon={<IconTrashOutlineRegular size={13} />} onClick={onDeleteProject} danger />
@@ -248,7 +255,7 @@ function ProjectItem({ candidate, versions, tasks, activeProject, activeVersionI
       const versionTasks = tasks.filter(candidateTask => candidateTask.versionId === item.id)
       const openVersion = openVersions.has(item.id)
       return <div key={item.id}>
-        <TreeRow depth={1} arrow={openVersion ? '▾' : '▸'} badge={item.name} label="" count={String(versionTasks.length)} active={activeVersionId === item.id} onClick={() => onVersion(item)} />
+        <TreeRow depth={1} expanded={openVersion} label={<span style={versionChip}>{item.name}</span>} count={String(versionTasks.length)} active={activeVersionId === item.id} onClick={() => onVersion(item)} />
         {openVersion && versionTasks.map(itemTask => <ProjectTaskRow key={itemTask.id} task={itemTask} active={activeTaskId === itemTask.id} t={t} onClick={() => onTask(itemTask)} />)}
         {openVersion && versionTasks.length === 0 && <p style={{ ...metaLine, padding: '2px 14px 2px 40px' }}>{t('task.empty')}</p>}
       </div>
@@ -304,15 +311,15 @@ function NextStepCard({ t, projects, project, versions, version, locks, tasks, o
         {projects.slice(0, 4).map(record => <Button key={record.id} size="sm" variant="outline" onClick={() => onSelectProject(record)}>{record.config.name}</Button>)}
         <Button size="sm" variant="ghost" icon={<IconPlusOutlineRegular />} onClick={onCreateProject}>{t('project.new')}</Button>
       </>}
-      {project === undefined && projects.length === 0 && <Button variant="primary" icon={<IconPlusOutlineRegular />} onClick={onCreateProject}>{t('project.new')}</Button>}
-      {project !== undefined && versions.length === 0 && <Button variant="primary" icon={<IconPlusOutlineRegular />} onClick={onCreateVersion}>{t('version.new')}</Button>}
+      {project === undefined && projects.length === 0 && <Button variant="primary" className="loom-primary" icon={<IconPlusOutlineRegular />} onClick={onCreateProject}>{t('project.new')}</Button>}
+      {project !== undefined && versions.length === 0 && <Button variant="primary" className="loom-primary" icon={<IconPlusOutlineRegular />} onClick={onCreateVersion}>{t('version.new')}</Button>}
       {project !== undefined && versions.length > 0 && version === undefined && <>
         <span style={{ color: COLORS.dim, fontSize: 12 }}>{t('onboard.selectVersion')}</span>
         {versions.map(record => <Button key={record.id} size="sm" variant="outline" onClick={() => onSelectVersion(record)}>{record.name}</Button>)}
         <Button size="sm" variant="ghost" icon={<IconPlusOutlineRegular />} onClick={onCreateVersion}>{t('version.new')}</Button>
       </>}
       {version !== undefined && locks.length === 0 && <LockButton t={t} version={version} generate={generateLock} onCreated={onLockChanged} />}
-      {version !== undefined && locks.length > 0 && tasks.length === 0 && <Button variant="primary" icon={<IconPlusOutlineRegular />} onClick={onCreateTask}>{t('task.new')}</Button>}
+      {version !== undefined && locks.length > 0 && tasks.length === 0 && <Button variant="primary" className="loom-primary" icon={<IconPlusOutlineRegular />} onClick={onCreateTask}>{t('task.new')}</Button>}
       {version !== undefined && locks.length > 0 && tasks.length > 0 && <>
         <span style={{ color: COLORS.dim, fontSize: 12 }}>{t('onboard.chooseTask')}</span>
         {tasks.slice(-3).reverse().map(record => <Button key={record.id} size="sm" variant="outline" onClick={() => onSelectTask(record)}>{record.title}</Button>)}
@@ -348,7 +355,6 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [version, setVersion] = useState<VersionRecord['id']>()
   const [task, setTask] = useState<TaskRecord>()
   const [selected, setSelected] = useState<SessionId>()
-  const [dismissed, setDismissed] = useState<TaskRecord['id']>()
   const [pinnedProjects, setPinnedProjects] = useState<ProjectRecord['id'][]>(readPinnedProjects)
   const [held, setHeld] = useState<{ id: SessionId; reference: SessionReference }>()
   const [pendingDraft, setPendingDraft] = useState<{ sessionId: SessionId; prompt: string }>()
@@ -379,6 +385,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [expandedVersions, setExpandedVersions] = useState<ReadonlySet<string>>(new Set())
   const [create, setCreate] = useState<CreateKind>()
   const [edit, setEdit] = useState<EditKind>()
+  const [versionStep, setVersionStep] = useState<VersionStep>('name')
+  const [modalBusy, setModalBusy] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [treeDelete, setTreeDelete] = useState<ProjectRecord>()
   const [treeDeleting, setTreeDeleting] = useState(false)
@@ -406,6 +414,13 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [settingsOpen])
+  useEffect(() => { setModalBusy(false) }, [create, edit])
+  useEffect(() => {
+    if (create === undefined && edit === undefined) return
+    const close = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !modalBusy) { setCreate(undefined); setEdit(undefined) } }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [create, edit, modalBusy])
   useEffect(() => {
     const resize = (): void => {
       setNarrow(window.innerWidth <= 940)
@@ -415,6 +430,10 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     return () => window.removeEventListener('resize', resize)
   }, [])
   useEffect(() => { setSidebarOpen(false) }, [project, version, task])
+  useEffect(() => {
+    if (project !== undefined) setExpandedProjects(current => current.has(project) ? current : new Set(current).add(project))
+    if (version !== undefined) setExpandedVersions(current => current.has(version) ? current : new Set(current).add(version))
+  }, [project, version])
   useEffect(() => { if (preview !== undefined || review !== undefined) setAsideOpen(true) }, [preview, review])
   useEffect(() => { workspacePreview.close(); workspaceReviewPreview.close() }, [task?.id])
   useEffect(() => {
@@ -430,6 +449,31 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     }, () => { if (active) setCatalog({ status: 'error' }) })
     return () => { active = false }
   }, [loadSnapshot, attempt])
+  const treeInitialized = useRef(false)
+  const initialSelection = useRef(false)
+  useEffect(() => {
+    if (treeInitialized.current || catalog.status !== 'ready') return
+    treeInitialized.current = true
+    setExpandedProjects(new Set(catalog.snapshot.projects.map(candidate => candidate.id)))
+    setExpandedVersions(new Set(catalog.snapshot.versions.map(candidate => candidate.id)))
+  }, [catalog])
+  useEffect(() => {
+    if (initialSelection.current || catalog.status !== 'ready') return
+    if (project !== undefined || version !== undefined || task !== undefined) { initialSelection.current = true; return }
+    const running = catalog.snapshot.tasks.find(candidate => candidate.status === 'running')
+    const runningVersion = running === undefined ? undefined : catalog.snapshot.versions.find(candidate => candidate.id === running.versionId)
+    if (running !== undefined && runningVersion !== undefined) {
+      initialSelection.current = true
+      setProject(runningVersion.projectId); setVersion(runningVersion.id); setTask(running)
+      return
+    }
+    const first = catalog.snapshot.projects[0]
+    if (first === undefined) return
+    initialSelection.current = true
+    setProject(first.id)
+    const latest = catalog.snapshot.versions.filter(candidate => candidate.projectId === first.id).at(-1)
+    if (latest !== undefined) setVersion(latest.id)
+  }, [catalog, project, version, task])
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
@@ -455,12 +499,6 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       reference.release()
     }
   }, [selected, retainSession])
-  useEffect(() => {
-    if (task === undefined || selected !== undefined || dismissed === task.id || catalog.status !== 'ready') return
-    const record = catalog.snapshot.tasks.find(candidate => candidate.id === task.id)
-    const bound = record?.attempts.at(-1)?.sessionIds.at(-1)
-    if (bound !== undefined) setSelected(bound)
-  }, [task, selected, dismissed, catalog])
   const snapshot = catalog.status === 'ready' ? catalog.snapshot : undefined
   const currentProject = snapshot?.projects.find(candidate => candidate.id === project)
   const currentVersion = snapshot?.versions.find(candidate => candidate.id === version)
@@ -500,14 +538,14 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const detailModules = (detailTask?.moduleIds ?? []).map(moduleId => displayProject?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
   const anyPreviewOpen = preview !== undefined || review !== undefined
-  const asideMin = anyPreviewOpen ? 300 : 220
+  const asideMin = anyPreviewOpen ? 300 : 320
   const asideCssMax = viewport.width <= 940 ? (anyPreviewOpen ? 380 : 300)
     : viewport.width <= 1180 ? (anyPreviewOpen ? 460 : 380)
-      : anyPreviewOpen ? 960 : 720
+      : anyPreviewOpen ? 720 : 460
   const asideMax = Math.min(asideCssMax, Math.max(asideMin, viewport.width - (narrow ? 180 : 460)))
   const asideWidth = Math.min(Math.max(anyPreviewOpen ? preferences.previewWidth : preferences.asideWidth, asideMin), asideMax)
   const setAsideWidth = (width: number): void => setPreferences(current => ({ ...current, [anyPreviewOpen ? 'previewWidth' : 'asideWidth']: width }))
-  const bottomMax = Math.max(120, viewport.height - 220)
+  const bottomMax = Math.max(120, Math.min(320, viewport.height - 220))
   const bottomHeight = Math.min(Math.max(preferences.bottomHeight, 80), bottomMax)
   const previewSessionId: SessionId | undefined = preview?.sessionId === undefined
     ? selected ?? boundRows.find(row => row.task?.id === detailTask?.id)?.sessionId as SessionId | undefined
@@ -574,9 +612,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       const owner = snapshot.versions.find(candidate => candidate.id === record.versionId)
       if (owner !== undefined) { setProject(owner.projectId); setVersion(owner.id) }
     }
-    setDismissed(undefined)
     setTask(record)
-    setSelected(record.attempts.at(-1)?.sessionIds.at(-1))
+    setSelected(undefined)
     setView('workbench')
   }
   const selectSession = (id: SessionId, owner?: TaskRecord): void => {
@@ -605,7 +642,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       const registered = await registerTemporarySession({ sessionId: id, workspacePath: temporaryWorkspace.path })
       if (registered.ok) setAttempt(current => current + 1)
       else setTemporaryFailure(registered.error.message)
-      setDismissed(undefined); setTask(undefined); setSelected(id); setView('workbench')
+      setTask(undefined); setSelected(id); setView('workbench')
     } catch (error) { setTemporaryFailure(error instanceof Error ? error.message : t('state.error')) }
   }
   async function moveTask(record: TaskRecord, target: TaskRecord['status']): Promise<void> {
@@ -620,7 +657,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       setPinnedProjects(current => current.filter(id => id !== target.id))
       if (filterProject === target.id) setFilterProject('')
       setFilterVersion('')
-      setProject(undefined); setVersion(undefined); setTask(undefined); setSelected(undefined); setDismissed(undefined)
+      setProject(undefined); setVersion(undefined); setTask(undefined); setSelected(undefined)
       setAttempt(current => current + 1)
     }
     return result
@@ -629,7 +666,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     const result = await deleteVersion({ versionId: target.id })
     if (result.ok) {
       if (filterVersion === target.id) setFilterVersion('')
-      setVersion(undefined); setTask(undefined); setSelected(undefined); setDismissed(undefined)
+      setVersion(undefined); setTask(undefined); setSelected(undefined)
       setAttempt(current => current + 1)
     }
     return result
@@ -637,7 +674,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   async function removeTask(target: TaskRecord): Promise<RemoteResult<void>> {
     const result = await deleteTask({ taskId: target.id })
     if (result.ok) {
-      setTask(undefined); setSelected(undefined); setDismissed(undefined)
+      setTask(undefined); setSelected(undefined)
       setAttempt(current => current + 1)
     }
     return result
@@ -653,7 +690,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       setTreeDeleteFailure(thrownFailureReport(error))
     } finally { setTreeDeleting(false) }
   }
-  function openCreate(kind: CreateKind): void { setCreate(kind); setEdit(undefined); setMenuOpen(false) }
+  function openCreate(kind: CreateKind): void { if (kind === 'version') setVersionStep('name'); setCreate(kind); setEdit(undefined); setMenuOpen(false) }
   function openEdit(kind: EditKind): void { setEdit(kind); setCreate(undefined); setMenuOpen(false) }
   function updatePreferences(next: LoomPreferences): void {
     setPreferences(next)
@@ -676,23 +713,60 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const createDisabledTask = currentVersion === undefined
   return <div style={frame}>
     <style>{`
+      :root {
+        --loom-canvas: #f3f4f6;
+        --loom-surface: #ffffff;
+        --loom-surface-2: #fbfbfc;
+        --loom-surface-3: #f0f2f5;
+        --loom-selected: #f0f5fd;
+        --loom-accent: #4176e6;
+        --loom-accent-hover: #3568d4;
+        --loom-accent-active: #2d5cc2;
+        --loom-on-accent: #ffffff;
+        --loom-border: rgba(15, 17, 21, .10);
+        --loom-border-strong: rgba(15, 17, 21, .16);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --loom-canvas: #151517;
+          --loom-surface: #232324;
+          --loom-surface-2: #2c2c2e;
+          --loom-surface-3: #353638;
+          --loom-selected: #263247;
+          --loom-accent: #5686fe;
+          --loom-accent-hover: #6b98ff;
+          --loom-accent-active: #4a79ea;
+          --loom-on-accent: #0f1115;
+          --loom-border: rgba(255, 255, 255, .20);
+          --loom-border-strong: rgba(255, 255, 255, .28);
+        }
+      }
+      .loom-branch-menu { --dsw-menu-surface-fill: var(--loom-surface); --dsw-menu-backdrop-filter: none; width: var(--loom-branch-menu-width, 320px) !important; max-width: none !important; background: var(--loom-surface) !important; border: 0.5px solid var(--loom-border) !important; box-shadow: 0 12px 32px rgba(15, 17, 21, .16) !important; }
+      .loom-workspace-switch { align-self: flex-start; }
+      .loom-primary { background: var(--loom-accent) !important; color: var(--loom-on-accent) !important; border: 0.5px solid transparent !important; border-radius: 8px !important; font-size: 12.5px !important; font-weight: 500 !important; box-shadow: 0 1px 2px rgba(15, 17, 21, .12); transition: background-color .12s ease, box-shadow .12s ease; }
+      .loom-primary:hover:not(:disabled) { background: var(--loom-accent-hover) !important; }
+      .loom-primary:active:not(:disabled) { background: var(--loom-accent-active) !important; box-shadow: none; }
+      .loom-primary:focus-visible { outline: 2px solid color-mix(in srgb, var(--loom-accent) 55%, transparent); outline-offset: 2px; }
+      .loom-primary:disabled { opacity: .55; }
       .loom-top-context { max-width: 190px; }
       .loom-top-select { max-width: 132px; }
-      .loom-top-context:hover { border-color: var(--dsw-alias-border-l3); }
+      .loom-top-context:hover { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
       .loom-top-action:hover { border-color: var(--dsw-alias-border-l3); color: var(--dsw-alias-label-primary); }
       .loom-top-new:hover { filter: brightness(1.08); }
       .loom-view-switch button:hover:not([aria-pressed='true']) { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
       .loom-menu-item:hover { background: var(--dsw-alias-bg-layer-3); }
-      .loom-row-action:hover { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary) !important; }
-      .loom-row-actions { opacity: .62; transition: opacity .12s ease; }
-      .loom-tree-row:hover .loom-row-actions, .loom-row-actions:focus-within { opacity: 1; }
+      div.loom-modal-delete { width: min(480px, calc(100vw - 32px)); }
+      div.loom-modal-takeover { width: min(440px, calc(100vw - 32px)); }
+      .loom-row-action:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent); color: var(--dsw-alias-label-primary) !important; }
+      .loom-tree-row .loom-row-actions { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s ease; }
+      .loom-tree-row:hover .loom-row-actions, .loom-tree-row:focus-within .loom-row-actions, .loom-tree-row-active .loom-row-actions { opacity: 1; visibility: visible; pointer-events: auto; }
       .loom-top-action:focus-visible, .loom-top-new:focus-visible, .loom-view-switch button:focus-visible, .loom-menu-item:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
       .loom-top-select:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 3px; }
-      @media (hover: none) { .loom-row-actions { opacity: 1; } }
-      @media (max-width: 1180px) { .loom-sidebar { width: 196px !important; } .loom-aside { max-width: 380px !important; } .loom-aside.loom-aside-preview { max-width: 460px !important; } .loom-top-label, .loom-top-divider, .loom-top-activity-label, .loom-top-action-label { display: none; } .loom-top-context { max-width: 140px; } .loom-top-select { max-width: 100px; } .loom-top-activity { padding: 0 7px; } .loom-top-new { width: 30px; padding: 0 !important; } .loom-view-switch button { padding: 0 9px; } }
-      @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-sidebar.loom-sidebar-open { display: block !important; position: absolute; top: 44px; bottom: 0; left: 0; z-index: 70; width: 240px !important; box-shadow: 12px 0 28px rgba(0,0,0,.35); } .loom-aside { max-width: 300px !important; } .loom-aside.loom-aside-preview { max-width: 380px !important; } }
-      @media (max-width: 760px) { .loom-aside, .loom-aside-handle { display: none !important; } .loom-brand-name { display: none; } .loom-top-context { max-width: 128px; } .loom-top-select { max-width: 76px; } }
-      @media (max-width: 560px) { .loom-topbar { column-gap: 6px !important; } .loom-top-context { flex: 1 1 0; max-width: none; padding: 0 8px; } .loom-top-select { flex: 1; max-width: none; width: 100%; } .loom-view-switch button { padding: 0 8px; } }
+      @media (hover: none) { .loom-tree-row .loom-row-actions { opacity: 1; visibility: visible; pointer-events: auto; } }
+      @media (max-width: 1180px) { .loom-sidebar { width: 280px !important; } .loom-aside { max-width: 380px !important; } .loom-aside.loom-aside-preview { max-width: 460px !important; } .loom-top-label, .loom-top-divider, .loom-top-activity-label, .loom-top-action-label { display: none; } .loom-top-context { max-width: 140px; } .loom-top-select { max-width: 100px; } .loom-top-activity { padding: 0 7px; } .loom-top-new { width: 30px; padding: 0 !important; } .loom-view-switch button { padding: 0 9px; } .loom-aside.loom-aside-kanban, .loom-aside-handle.loom-aside-handle-kanban, .loom-aside-toggle-kb { display: none !important; } .loom-kb-columns { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } }
+      @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-sidebar.loom-sidebar-open { display: block !important; position: absolute; top: 48px; bottom: 0; left: 0; z-index: 70; width: 240px !important; box-shadow: 12px 0 28px rgba(0,0,0,.35); } .loom-aside { max-width: 300px !important; } .loom-aside.loom-aside-preview { max-width: 380px !important; } .loom-aside.loom-aside-kanban, .loom-aside-handle.loom-aside-handle-kanban, .loom-aside-toggle-kb { display: none !important; } }
+      @media (max-width: 760px) { .loom-kb-columns { grid-template-columns: repeat(5, minmax(140px, 1fr)) !important; } .loom-aside, .loom-aside-handle, .loom-aside-toggle { display: none !important; } .loom-brand-name { display: none; } .loom-top-context { max-width: 128px; } .loom-top-select { max-width: 76px; } }
+      @media (max-width: 560px) { .loom-topbar { flex-wrap: wrap !important; height: auto !important; min-height: 48px; padding: 6px 8px !important; column-gap: 4px !important; row-gap: 4px; } .loom-top-spacer { display: none !important; } .loom-top-context { flex: 1 1 140px; max-width: none; padding: 0 6px; order: 5; } .loom-top-select { flex: 1; max-width: none; width: 100%; } .loom-view-switch { margin-left: auto; } .loom-view-switch button { padding: 0 7px; } .loom-top-activity { display: none !important; } .loom-sidebar.loom-sidebar-open { top: 85px !important; } .loom-sidebar-backdrop { top: 85px !important; } .loom-wizard-steps li > span[aria-hidden='true'] { display: none !important; } .loom-wizard-steps button { flex-direction: column; align-items: center; gap: 5px; } .loom-wizard-steps button > span:last-child { justify-content: center; text-align: center; } .loom-wizard-steps button > span:last-child > span:first-child { overflow: visible; white-space: normal; font-size: 11px; line-height: 1.25; } }
     `}</style>
     <header className="loom-topbar" style={topbar}>
       {narrow && <button type="button" aria-label={t('side.projects')} aria-expanded={sidebarOpen} title={t('side.projects')} onClick={() => setSidebarOpen(value => !value)} style={{ ...topAction, width: 28, height: 28 }} className="loom-top-action"><IconFolderOpenRegular size={14} /></button>}
@@ -727,8 +801,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
         <span className="loom-top-activity-label">{t('top.activeWorkspaces')}</span>
       </span>
       <div className="loom-view-switch" style={topViewSwitch}>
-        <button type="button" aria-pressed={view === 'workbench'} onClick={() => { setView('workbench'); setPreferences(current => ({ ...current, view: 'workbench' })) }} style={{ ...topViewButton, ...view === 'workbench' ? { background: COLORS.panel3, color: COLORS.text, fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,.12)' } : {} }}>{t('workbench')}</button>
-        <button type="button" aria-pressed={view === 'kanban'} onClick={() => { setView('kanban'); setPreferences(current => ({ ...current, view: 'kanban' })) }} style={{ ...topViewButton, ...view === 'kanban' ? { background: COLORS.panel3, color: COLORS.text, fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,.12)' } : {} }}>{t('view.kanban')}</button>
+        <button type="button" aria-pressed={view === 'workbench'} onClick={() => { setView('workbench'); setPreferences(current => ({ ...current, view: 'workbench' })) }} style={{ ...topViewButton, ...view === 'workbench' ? { background: COLORS.panel, color: COLORS.text, fontWeight: 500, boxShadow: '0 1px 2px rgba(15,17,21,.08)' } : {} }}>{t('workbench')}</button>
+        <button type="button" aria-pressed={view === 'kanban'} onClick={() => { setView('kanban'); setPreferences(current => ({ ...current, view: 'kanban' })) }} style={{ ...topViewButton, ...view === 'kanban' ? { background: COLORS.panel, color: COLORS.text, fontWeight: 500, boxShadow: '0 1px 2px rgba(15,17,21,.08)' } : {} }}>{t('view.kanban')}</button>
       </div>
       <span className="loom-top-spacer" style={topSpacer} />
       <div style={topActions}>
@@ -742,7 +816,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           </div>}
         </div>
         <Tooltip label={t('ctx.project')} side="bottom" delayMs={300}>
-          <button type="button" aria-label={t('ctx.project')} aria-pressed={asideOpen} onClick={() => setAsideOpen(value => { const next = !value; setPreferences(current => ({ ...current, contextOpen: next })); return next })} className="loom-top-action" style={{ ...topAction, ...asideOpen ? topActionActive : {} }}><span aria-hidden style={{ display: 'inline-flex', transform: 'scaleX(-1)' }}><IconPanelLeftOutlineRegular size={14} /></span></button>
+          <button type="button" aria-label={t('ctx.project')} aria-pressed={asideOpen} onClick={() => setAsideOpen(value => { const next = !value; setPreferences(current => ({ ...current, contextOpen: next })); return next })} className={`loom-top-action loom-aside-toggle${view === 'kanban' ? ' loom-aside-toggle-kb' : ''}`} style={{ ...topAction, ...asideOpen ? topActionActive : {} }}><span aria-hidden style={{ display: 'inline-flex', transform: 'scaleX(-1)' }}><IconPanelLeftOutlineRegular size={14} /></span></button>
         </Tooltip>
         <Tooltip label={t('top.settings')} side="bottom" delayMs={300}>
           <button type="button" aria-label={t('top.settings')} onClick={() => setSettingsOpen(true)} className="loom-top-action" style={topAction}><IconSettingsOutlineRegular size={14} /></button>
@@ -750,7 +824,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       </div>
     </header>
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-      {narrow && sidebarOpen && <div aria-hidden style={{ position: 'absolute', inset: 0, top: 44, background: 'rgba(0,0,0,.35)', zIndex: 65 }} onClick={() => setSidebarOpen(false)} />}
+      {narrow && sidebarOpen && <div aria-hidden className="loom-sidebar-backdrop" style={{ position: 'absolute', inset: 0, top: 48, background: 'rgba(0,0,0,.35)', zIndex: 65 }} onClick={() => setSidebarOpen(false)} />}
       <aside className={sidebarOpen && narrow ? 'loom-sidebar loom-sidebar-open' : 'loom-sidebar'} style={sidebar}>
         <section style={{ marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}><IconPinFillRegular size={13} /> {t('side.pinned')}</div>
@@ -777,7 +851,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           />)}
         </section>
         <section style={{ marginBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 600 }}>{t('side.projects')} <span style={{ marginLeft: 'auto', fontWeight: 400 }}>{String(snapshot?.projects.length ?? 0)}</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px 4px', ...metaLine, fontWeight: 500 }}>{t('side.projects')} <span style={{ marginLeft: 'auto', fontWeight: 400 }}>{String(snapshot?.projects.length ?? 0)}</span></div>
           {(snapshot?.projects ?? []).map(candidate => <ProjectItem
             key={candidate.id}
             candidate={candidate}
@@ -810,13 +884,13 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
           {taskSessionList.map(row => {
             const owner = boundRows.find(candidate => candidate.sessionId === row.id)?.task
             return <SidebarSessionRow key={row.id} t={t} row={row} projectName={taskProjectBySession.get(row.id)} taskTitle={taskTitleBySession.get(row.id)} temporary={false} active={selected === row.id}
-              onSelect={() => { setSelected(row.id as SessionId); setDismissed(undefined); setTask(owner); setView('workbench') }} />
+              onSelect={() => { setSelected(row.id as SessionId); setTask(owner); setView('workbench') }} />
           })}
           {temporarySessionList.length > 0 && <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4, padding: '4px 12px 3px', borderTop: `0.5px solid ${COLORS.border}`, ...metaLine }}>
             <span>{t('side.temporarySessions')}</span><span style={{ marginLeft: 'auto' }}>{temporarySessionList.length}</span>
           </div>}
           {temporarySessionList.map(row => <SidebarSessionRow key={row.id} t={t} row={row} projectName={temporaryProjectBySession.get(row.id)} temporary active={selected === row.id}
-            onSelect={() => { setSelected(row.id as SessionId); setDismissed(undefined); setTask(undefined); setView('workbench') }} />)}
+            onSelect={() => { setSelected(row.id as SessionId); setTask(undefined); setView('workbench') }} />)}
           {temporaryFailure !== undefined && <p role="alert" style={{ ...metaLine, margin: '2px 12px 6px', color: COLORS.error, overflowWrap: 'anywhere' }}>{temporaryFailure}</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 12px 8px' }}>
             <Button variant="outline" icon={<IconPlusOutlineRegular />} disabled={createDisabledTask} onClick={() => openCreate('task')} style={{ width: '100%', justifyContent: 'center' }}>{t('side.newTask')}</Button>
@@ -850,7 +924,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
             }}
           />
         : <main style={center}>
-            <div style={convHeader}>
+            {selected !== undefined && <div style={convHeader}>
               <span style={{ fontWeight: 700, fontSize: 13, overflowWrap: 'anywhere' }}>{headerTitle}</span>
               {displayProject !== undefined && <span style={{ ...pill, color: '#7db3ff', borderColor: 'rgba(47,129,247,.45)' }}>{displayProject.config.name}</span>}
               {displayVersion !== undefined && <span style={{ ...pill, color: COLORS.cyan, borderColor: 'rgba(57,197,207,.4)' }}>{displayVersion.name}</span>}
@@ -868,23 +942,30 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                   <Button size="sm" variant="outline" onClick={() => { void transition('running', 'human') }}>{t('task.continue')}</Button>
                   <Button size="sm" variant="ghost" onClick={() => { void transition('failed', 'human') }}>{t('task.fail')}</Button>
                 </>}
-                {selected !== undefined && detailTask !== undefined && <Button size="sm" variant="ghost" onClick={() => { setDismissed(detailTask.id); setSelected(undefined) }}>{t('task.details')}</Button>}
-                {selected !== undefined && <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} onClick={() => { setDismissed(detailTask?.id); setSelected(undefined) }}>{t('session.close')}</Button>}
+                {selected !== undefined && detailTask !== undefined && <Button size="sm" variant="ghost" onClick={() => setSelected(undefined)}>{t('task.details')}</Button>}
+                {selected !== undefined && <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} onClick={() => setSelected(undefined)}>{t('session.close')}</Button>}
               </span>
-            </div>
+            </div>}
             {selected !== undefined
               ? (available
                   ? <SessionProvider key={held.id} session={held.reference}>{renderSlot('loom.conversation', {})}</SessionProvider>
                   : failure === selected
                     ? <p role="alert" style={{ ...note, margin: 20 }}>{t('session.unavailable')}</p>
                     : <p style={{ ...note, margin: 20 }}>{t('session.loading')}</p>)
-              : detailTask !== undefined
-                ? <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
-                    <div style={{ maxWidth: 720, margin: '0 auto', background: COLORS.panel2, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 16 }}>
-                      <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>{detailTask.title}</h3>
-                      {snapshot !== undefined && <ExecutionPanel t={t} task={detailTask} snapshot={snapshot} selectedSession={selected} actions={execution} loadChanges={workspaceChanges} renderFactorySlot={renderFactorySlot} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} />}
-                    </div>
-                  </div>
+              : detailTask !== undefined && snapshot !== undefined
+                ? <LoomTaskWorkbench
+                    t={t}
+                    task={detailTask}
+                    project={displayProject}
+                    version={displayVersion}
+                    snapshot={snapshot}
+                    audit={auditRows}
+                    actions={execution}
+                    loadChanges={workspaceChanges}
+                    renderFactorySlot={renderFactorySlot}
+                    wrap={preferences.previewWrap}
+                    onToggleWrap={togglePreviewWrap}
+                  />
                 : <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
                     <NextStepCard
                       t={t}
@@ -905,8 +986,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                     />
                   </div>}
           </main>}
-      {asideOpen && <LoomResizeHandle label={t('layout.resizeAside')} orientation="vertical" value={asideWidth} min={asideMin} max={asideMax} invert onChange={setAsideWidth} className="loom-aside-handle" />}
-      {asideOpen && <aside className={preview === undefined && review === undefined ? 'loom-aside' : 'loom-aside loom-aside-preview'} style={{ ...aside, width: asideWidth }}>
+      {asideOpen && <LoomResizeHandle label={t('layout.resizeAside')} orientation="vertical" value={asideWidth} min={asideMin} max={asideMax} invert onChange={setAsideWidth} className={view === 'kanban' ? 'loom-aside-handle loom-aside-handle-kanban' : 'loom-aside-handle'} />}
+      {asideOpen && <aside className={`${preview === undefined && review === undefined ? 'loom-aside' : 'loom-aside loom-aside-preview'}${view === 'kanban' ? ' loom-aside-kanban' : ''}`} style={{ ...aside, width: asideWidth }}>
         {review !== undefined
           ? <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none' }}>
@@ -957,30 +1038,37 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       onUnpin={id => setPinnedProjects(current => current.filter(candidate => candidate !== id))}
       onClose={() => setSettingsOpen(false)}
     />
-    {create !== undefined && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 60 }} onClick={() => setCreate(undefined)}>
-      <div role="dialog" aria-modal="true" aria-label={create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')} style={drawer} onClick={event => event.stopPropagation()}>
-        <div style={drawerHeader}>
-          <strong style={drawerTitle}>{create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
-          <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setCreate(undefined)} style={{ marginLeft: 'auto', width: 26, height: 26, padding: 0, justifyContent: 'center' }} />
+    {create !== undefined && <div style={modalOverlay}>
+      <div role="dialog" aria-modal="true" aria-label={create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')} style={{ ...modalCard, maxWidth: MODAL_WIDTH[create] }} onClick={event => event.stopPropagation()}>
+        <div style={modalHeader}>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            {create === 'version' && <span style={modalMeta}>{t('version.metaCreate')}</span>}
+            <strong style={modalTitle}>{create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
+            {create === 'version' && <span style={modalSub}>{t(versionStep === 'name' ? 'version.sub.name' : versionStep === 'refs' ? 'version.sub.refs' : 'version.sub.preview')}</span>}
+          </div>
+          <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setCreate(undefined)} style={{ marginLeft: 'auto', width: 28, height: 28, padding: 0, justifyContent: 'center' }} />
         </div>
-        <p style={drawerHint}>{create === 'project' ? t('flow.project') : create === 'version' ? t('flow.version') : create === 'task' ? t('flow.task') : t('flow.import')}</p>
-        {create === 'project' && <ProjectForm t={t} open agentPresets={agentPresets} pickDirectory={chooseDirectory} onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
-        {create === 'import' && <ImportProjectForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
-        {create === 'version' && currentProject !== undefined && <VersionForm t={t} open listBranches={repositoryBranches} onOpenChange={value => { if (!value) setCreate(undefined) }} project={currentProject} create={createVersion} onCreated={created => { setVersion(created.id); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
-        {create === 'task' && currentVersion !== undefined && currentVersionProject !== undefined && <TaskForm t={t} open onOpenChange={value => { if (!value) setCreate(undefined) }} version={currentVersion} project={currentVersionProject} create={createTask} onCreated={created => { setTask(created); setSelected(undefined); setDismissed(undefined); setView('workbench'); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create !== 'version' && <p style={modalHint}>{create === 'project' ? t('flow.project') : create === 'task' ? t('flow.task') : t('flow.import')}</p>}
+        {create === 'project' && <ProjectForm t={t} open onBusyChange={setModalBusy} agentPresets={agentPresets} pickDirectory={chooseDirectory} onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'import' && <ImportProjectForm t={t} open onBusyChange={setModalBusy} onOpenChange={value => { if (!value) setCreate(undefined) }} create={createProject} onCreated={created => { setProject(created.id); setVersion(undefined); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'version' && currentProject !== undefined && <VersionForm t={t} open onBusyChange={setModalBusy} onStepChange={setVersionStep} listBranches={repositoryBranches} onOpenChange={value => { if (!value) setCreate(undefined) }} project={currentProject} create={createVersion} onCreated={created => { setVersion(created.id); setTask(undefined); setSelected(undefined); setCreate(undefined); setAttempt(current => current + 1) }} />}
+        {create === 'task' && currentVersion !== undefined && currentVersionProject !== undefined && <TaskForm t={t} open onBusyChange={setModalBusy} onOpenChange={value => { if (!value) setCreate(undefined) }} version={currentVersion} project={currentVersionProject} create={createTask} onCreated={created => { setTask(created); setSelected(undefined); setView('workbench'); setCreate(undefined); setAttempt(current => current + 1) }} />}
         {create === 'version' && currentProject === undefined && <p style={note}>{t('project.select')}</p>}
         {create === 'task' && currentVersion === undefined && <p style={note}>{t('version.select')}</p>}
       </div>
     </div>}
-    {edit !== undefined && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 60 }} onClick={() => setEdit(undefined)}>
-      <div role="dialog" aria-modal="true" aria-label={edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')} style={drawer} onClick={event => event.stopPropagation()}>
-        <div style={drawerHeader}>
-          <strong style={drawerTitle}>{edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')}</strong>
-          <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setEdit(undefined)} style={{ marginLeft: 'auto', width: 26, height: 26, padding: 0, justifyContent: 'center' }} />
+    {edit !== undefined && <div style={modalOverlay}>
+      <div role="dialog" aria-modal="true" aria-label={edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')} style={{ ...modalCard, maxWidth: MODAL_WIDTH[edit] }} onClick={event => event.stopPropagation()}>
+        <div style={modalHeader}>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            {edit === 'version' && <span style={modalMeta}>{t('version.metaEdit')}</span>}
+            <strong style={modalTitle}>{edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')}</strong>
+          </div>
+          <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setEdit(undefined)} style={{ marginLeft: 'auto', width: 28, height: 28, padding: 0, justifyContent: 'center' }} />
         </div>
-        {edit === 'project' && displayProject !== undefined && <ProjectForm t={t} open project={displayProject} agentPresets={agentPresets} pickDirectory={chooseDirectory} create={createProject} update={updateProject} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setProject(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
-        {edit === 'version' && displayVersion !== undefined && displayVersionProject !== undefined && <VersionForm t={t} open version={displayVersion} project={displayVersionProject} listBranches={repositoryBranches} create={createVersion} update={updateVersion} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setVersion(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
-        {edit === 'task' && detailTask !== undefined && displayVersion !== undefined && displayVersionProject !== undefined && <TaskForm t={t} open task={detailTask} version={displayVersion} project={displayVersionProject} create={createTask} update={updateTask} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setTask(updated); setView('workbench'); setEdit(undefined); setAttempt(current => current + 1) }} />}
+        {edit === 'project' && displayProject !== undefined && <ProjectForm t={t} open onBusyChange={setModalBusy} project={displayProject} agentPresets={agentPresets} pickDirectory={chooseDirectory} create={createProject} update={updateProject} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setProject(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
+        {edit === 'version' && displayVersion !== undefined && displayVersionProject !== undefined && <VersionForm t={t} open onBusyChange={setModalBusy} version={displayVersion} project={displayVersionProject} listBranches={repositoryBranches} create={createVersion} update={updateVersion} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setVersion(updated.id); setEdit(undefined); setAttempt(current => current + 1) }} />}
+        {edit === 'task' && detailTask !== undefined && displayVersion !== undefined && displayVersionProject !== undefined && <TaskForm t={t} open onBusyChange={setModalBusy} task={detailTask} version={displayVersion} project={displayVersionProject} create={createTask} update={updateTask} onOpenChange={value => { if (!value) setEdit(undefined) }} onCreated={updated => { setTask(updated); setView('workbench'); setEdit(undefined); setAttempt(current => current + 1) }} />}
       </div>
     </div>}
     {directoryRequest !== undefined && <LoomDirectoryBrowser t={t}

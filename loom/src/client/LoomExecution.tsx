@@ -1,6 +1,6 @@
 /** Execution controls for the selected task: workspaces, sessions and business status. */
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
-import { Button, IconFolderOpenRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconFolderOpenRegular, SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, ExecutionRequest, ExecutionState, Lock, PrepareWorkspaceRequest,
@@ -20,6 +20,10 @@ type Translate = (key: LoomKey) => string
 
 const button: CSSProperties = { color: 'inherit', background: 'transparent', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', font: 'inherit' }
 const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, padding: 12, borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)' }
+const summaryGrid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, margin: '2px 0 4px' }
+const summaryCell: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }
+const summaryLabel: CSSProperties = { color: 'var(--dsw-alias-label-caption)', fontSize: 9.5, letterSpacing: '.04em', textTransform: 'uppercase' }
+const summaryValue: CSSProperties = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--dsw-alias-label-primary)', fontFamily: 'ui-monospace, monospace', fontSize: 11.5 }
 const input: CSSProperties = { ...button, cursor: 'text', width: '100%', boxSizing: 'border-box' }
 const alert: CSSProperties = { margin: 0, color: 'var(--dsw-alias-label-secondary)', fontSize: 12 }
 
@@ -149,9 +153,11 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, lo
   }
   const history = [...task.attempts].reverse()
   return <div>
-    <p style={{ margin: '0 0 4px' }}>{t('attempt.current')}: {task.attempts.length}</p>
-    {workspace !== undefined && <p style={{ margin: 0, overflowWrap: 'anywhere' }}>{t('workspace.path')}: {workspace.path}</p>}
-    {current !== undefined && current.sessionIds.length > 0 && <p style={{ margin: 0, overflowWrap: 'anywhere' }}>{t('session.title')}: {current.sessionIds.length}</p>}
+    <div style={summaryGrid}>
+      <div style={summaryCell}><span style={summaryLabel}>{t('attempt.current')}</span><span style={summaryValue}>{String(task.attempts.length)}</span></div>
+      <div style={summaryCell}><span style={summaryLabel}>{t('workspace.title')}</span><span style={summaryValue} title={workspace?.path}>{workspace?.path ?? '—'}</span></div>
+      <div style={summaryCell}><span style={summaryLabel}>{t('session.title')}</span><span style={summaryValue}>{String(current?.sessionIds.length ?? 0)}</span></div>
+    </div>
     {history.length > 0 && <div style={box}>
       <p style={{ ...alert, margin: 0, fontWeight: 600, color: 'var(--dsw-alias-label-secondary)' }}>{t('task.history')}</p>
       {history.map((attempt) => {
@@ -161,7 +167,7 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, lo
           <span style={{ fontFamily: 'ui-monospace, monospace' }}>#{number}</span>
           <span style={{ color: STATUS_META[attempt.status].color }}>{t(STATUS_META[attempt.status].key)}</span>
           <span style={{ fontFamily: 'ui-monospace, monospace' }}>{shortCommit(attempt.lock) ?? '—'}</span>
-          <span style={{ overflowWrap: 'anywhere' }}>{attemptWorkspace?.path ?? '—'}</span>
+          <span style={{ minWidth: 0, flex: '1 1 180px', overflowWrap: 'anywhere' }}>{attemptWorkspace?.path ?? '—'}</span>
           <span>{t('sessions')}: {attempt.sessionIds.length}</span>
         </div>
       })}
@@ -344,22 +350,24 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
     </label>
     <div style={field}>
       <span>{t('workspace.source')}</span>
-      <div role="tablist" aria-label={t('workspace.source')} style={{ display: 'flex', gap: 6 }}>
-        <Button type="button" size="sm" variant={mode === 'new' ? 'primary' : 'outline'} aria-pressed={mode === 'new'} onClick={() => { setMode('new'); setFailure(undefined) }}>{t('workspace.auto')}</Button>
-        <Button type="button" size="sm" variant={mode === 'existing' ? 'primary' : 'outline'} aria-pressed={mode === 'existing'} onClick={() => { setMode('existing'); setFailure(undefined) }}>{t('workspace.existing')}</Button>
-      </div>
+      <SegmentedControl<WorkspaceMode> id="loom-workspace-mode" className="loom-workspace-switch" value={mode} label={t('workspace.source')}
+        options={[
+          { value: 'new', label: t('workspace.auto') },
+          { value: 'existing', label: t('workspace.existing') },
+        ]}
+        onChange={next => { setMode(next); setFailure(undefined) }} />
     </div>
-    {mode === 'new' && <>
+    {mode === 'new' && <div id="loom-workspace-mode-new-panel" role="tabpanel" aria-labelledby="loom-workspace-mode-new" style={{ display: 'contents' }}>
       <p style={{ ...hint, margin: 0 }}>{t('workspace.autoHint')}</p>
       {project?.config.sources.map((source, index) => <div key={source.id} style={field}>
         <span style={fieldLabelText}>{sourceLabel(source.path, source.repo)}</span>
         <BranchPicker t={t} source={source} value={branches[source.id] ?? ''} listBranches={actions.repositoryBranches} onChange={value => setBranches(current => ({ ...current, [source.id]: value }))} />
         {index === 0 && <span style={hint}>{t('workspace.branchHint')}</span>}
       </div>)}
-    </>}
-    {mode === 'existing' && <>
-      <label style={field}>{t('workspace.existing')}
-        <select aria-label={t('workspace.existing')} value={existingId} onChange={event => {
+    </div>}
+    {mode === 'existing' && <div id="loom-workspace-mode-existing-panel" role="tabpanel" aria-labelledby="loom-workspace-mode-existing" style={{ display: 'contents' }}>
+      {available.length > 0 && <label style={field}>{t('workspace.select')}
+        <select aria-label={t('workspace.select')} value={existingId} onChange={event => {
           const next = event.target.value as WorkspaceRecord['id'] | 'custom'
           setExistingId(next); setInspection(undefined); setFailure(undefined)
           if (next !== 'custom') {
@@ -370,7 +378,7 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
           <option value="custom">{t('workspace.pickFolder')}</option>
           {available.map(workspace => <option key={workspace.id} value={workspace.id} disabled={workspaceBusy(workspace)}>{workspace.path} · {workspaceBaseline(workspace)}{workspaceBusy(workspace) ? ` · ${t('workspace.busy')}` : ''}</option>)}
         </select>
-      </label>
+      </label>}
       {selected === undefined && <>
         <div style={{ display: 'flex', gap: 6 }}>
           <input aria-label={t('workspace.path')} placeholder={t('workspace.pathHint')} value={path}
@@ -406,11 +414,11 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
         </div>}
       </>}
       {failure === undefined && !canStart && path.trim() === '' && <p style={{ ...hint, margin: 0 }}>{t('workspace.pickFolderHint')}</p>}
-    </>}
+    </div>}
     {mode === 'new' && <p style={{ ...hint, margin: 0 }}>{t('workspace.autoPathHint')}</p>}
     <p style={{ ...hint, margin: 0 }}>{t('task.draftHint')}</p>
     {failure !== undefined && <Failure t={t} failure={failure} />}
-    <Button type="submit" variant="primary" disabled={busy || (mode === 'existing' && !canStart)} style={{ alignSelf: 'flex-start' }}>
+    <Button type="submit" variant="primary" className="loom-primary" disabled={busy || (mode === 'existing' && !canStart)} style={{ alignSelf: 'flex-start' }}>
       {busy ? t('form.submitPending') : t('task.start')}
     </Button>
   </form>

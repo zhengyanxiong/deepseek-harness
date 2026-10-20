@@ -104,12 +104,12 @@ export function LoomResizeHandle({ label, orientation, value, min, max, invert, 
     onKeyDown={(event) => {
       const step = event.shiftKey ? 40 : 12
       let delta: number | undefined
+      if (event.key === 'Home') { event.preventDefault(); onChange(min); return }
+      if (event.key === 'End') { event.preventDefault(); onChange(max); return }
       if (vertical && event.key === 'ArrowLeft') delta = -step
       else if (vertical && event.key === 'ArrowRight') delta = step
       else if (!vertical && event.key === 'ArrowUp') delta = -step
       else if (!vertical && event.key === 'ArrowDown') delta = step
-      else if (event.key === 'Home') delta = min - value
-      else if (event.key === 'End') delta = max - value
       if (delta === undefined) return
       event.preventDefault()
       onChange(nextSize(value, delta, invert, min, max))

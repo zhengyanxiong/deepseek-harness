@@ -3,9 +3,9 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { ProjectForm } from '../src/client/LoomForms.tsx'
+import { ProjectForm, TaskForm, VersionForm } from '../src/client/LoomForms.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
-import type { ProjectRecord } from 'dsh-workloom/types'
+import type { ProjectRecord, TaskRecord, VersionRecord } from 'dsh-workloom/types'
 
 const t = (key: LoomKey) => en[key]
 let root: Root | undefined
@@ -43,7 +43,7 @@ it('advances from the name step with only a name before repositories are filled'
   expect(container.querySelector('input[aria-label="Project name"]')).toBeNull()
 })
 
-it('walks an edited project through every step and saves only from the preview', async () => {
+it('edits a project on one page and saves without a wizard', async () => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   const project: ProjectRecord = {
     id: brandString<ProjectRecord['id']>('p1'),
@@ -63,21 +63,13 @@ it('walks an edited project through every step and saves only from the preview',
     }))
   })
   const find = (label: string) => [...(container?.querySelectorAll('button') ?? [])].find(button => button.textContent === label)
-  const click = async (label: string) => {
-    const target = find(label)
-    expect(target).toBeDefined()
-    await act(async () => { target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
-  }
-  expect(find(en['form.save'])).toBeUndefined()
-  await click(en['form.next'])
-  expect(container.textContent).toContain(en['source.hint'])
-  await click(en['form.next'])
-  expect(container.textContent).toContain(en['module.optional'])
-  await click(en['form.next'])
-  expect(container.textContent).toContain(en['project.previewHint'])
-  expect(find(en['form.save'])).toBeDefined()
+  expect(find(en['form.next'])).toBeUndefined()
+  expect(container?.textContent).toContain(en['source.hint'])
+  expect(container?.textContent).toContain(en['module.optional'])
   expect(updates).toBe(0)
-  await click(en['form.save'])
+  const save = find(en['form.save'])
+  expect(save).toBeDefined()
+  await act(async () => { save?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
   expect(updates).toBe(1)
   expect(savedName).toBe('Shop')
 })
@@ -117,10 +109,94 @@ it('picks a localized Agent preset with its description and saves the id', async
   await click(option)
   expect(trigger?.textContent).toContain(en['preset.ptcName'])
   const next = () => [...(container?.querySelectorAll('button') ?? [])].find(button => button.textContent === en['form.next'])
-  await click(next())
-  await click(next())
-  await click(next())
   const save = [...(container?.querySelectorAll('button') ?? [])].find(button => button.textContent === en['form.save'])
   await click(save)
   expect(savedPreset).toBe('ptc')
+})
+
+it('walks a new version from name through refs to preview before creating', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  const project: ProjectRecord = {
+    id: brandString<ProjectRecord['id']>('p1'),
+    config: { name: 'Shop', sources: [{ id: brandString<'loom.source'>('web'), repo: '/repo/shop', path: 'shop' }], modules: [] },
+  }
+  const version: VersionRecord = { id: brandString<VersionRecord['id']>('v1'), projectId: project.id, name: 'v1', sources: [] }
+  let created: unknown
+  container = document.createElement('div')
+  document.body.append(container)
+  root = createRoot(container)
+  await act(async () => {
+    root?.render(createElement(VersionForm, {
+      t, open: true, project,
+      create: async request => { created = request; return { ok: true, value: version } },
+      onCreated: () => undefined,
+    }))
+  })
+  const setValue = async (input: HTMLInputElement | HTMLTextAreaElement | null, value: string) => {
+    expect(input).not.toBeNull()
+    const setter = Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value')?.set
+    await act(async () => {
+      setter?.call(input, value)
+      input?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+  const click = async (label: string) => {
+    const target = [...(container?.querySelectorAll('button') ?? [])].find(button => button.textContent === label)
+    expect(target).toBeDefined()
+    await act(async () => { target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  }
+  await setValue(container.querySelector<HTMLInputElement>(`input[aria-label="${en['version.name']}"]`), 'v2')
+  expect(container.textContent).toContain(en['version.step.refs'])
+  await click(en['form.next'])
+  await setValue(container.querySelector<HTMLInputElement>(`input[aria-label^="${en['source.branch']}"]`), 'main')
+  expect(container.textContent).toContain(en['version.allRequired'])
+  expect(container.textContent).toContain(en['version.lockHelperTitle'])
+  await click(en['form.next'])
+  expect(container.textContent).toContain(en['version.previewHint'])
+  expect(created).toBeUndefined()
+  await click(en['form.create'])
+  expect(created).toMatchObject({ name: 'v2', sources: [{ sourceId: 'web', ref: 'main' }] })
+})
+
+it('walks a new task from content through optional scope to preview before creating', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  const project: ProjectRecord = {
+    id: brandString<ProjectRecord['id']>('p1'),
+    config: { name: 'Shop', sources: [{ id: brandString<'loom.source'>('web'), repo: '/repo/shop', path: 'shop' }], modules: [] },
+  }
+  const version: VersionRecord = { id: brandString<VersionRecord['id']>('v1'), projectId: project.id, name: 'v1', sources: [] }
+  const task: TaskRecord = { id: brandString<TaskRecord['id']>('t1'), projectId: project.id, versionId: version.id, title: 'Ship', status: 'pending' }
+  let created: unknown
+  container = document.createElement('div')
+  document.body.append(container)
+  root = createRoot(container)
+  await act(async () => {
+    root?.render(createElement(TaskForm, {
+      t, open: true, project, version,
+      create: async request => { created = request; return { ok: true, value: task } },
+      onCreated: () => undefined,
+    }))
+  })
+  const setValue = async (input: HTMLInputElement | null, value: string) => {
+    expect(input).not.toBeNull()
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    await act(async () => {
+      setter?.call(input, value)
+      input?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+  const click = async (label: string) => {
+    const target = [...(container?.querySelectorAll('button') ?? [])].find(button => button.textContent === label)
+    expect(target).toBeDefined()
+    await act(async () => { target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  }
+  await setValue(container.querySelector<HTMLInputElement>(`input[aria-label="${en['task.name']}"]`), 'Ship')
+  expect(container.textContent).toContain(en['task.step.scope'])
+  await click(en['form.next'])
+  expect(container.textContent).toContain(en['task.priority'])
+  expect(container.textContent).toContain(en['form.skip'])
+  await click(en['form.next'])
+  expect(container.textContent).toContain(en['task.step.preview'])
+  await click(en['form.create'])
+  expect(created).toMatchObject({ title: 'Ship', versionId: 'v1' })
 })

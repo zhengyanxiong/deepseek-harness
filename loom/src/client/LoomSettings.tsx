@@ -25,7 +25,7 @@ export interface LoomPreferences {
 }
 
 /** Defaults used when storage is empty or malformed. */
-export const DEFAULT_PREFERENCES: LoomPreferences = { view: 'workbench', kanbanMode: 'grouped', contextOpen: true, asideWidth: 272, previewWidth: 560, bottomHeight: 170, sessionLimit: 5, previewWrap: true }
+export const DEFAULT_PREFERENCES: LoomPreferences = { view: 'workbench', kanbanMode: 'grouped', contextOpen: true, asideWidth: 344, previewWidth: 560, bottomHeight: 220, sessionLimit: 5, previewWrap: true }
 const STORAGE_KEY = 'loom.preferences'
 
 /**
@@ -48,9 +48,9 @@ export function readPreferences(): LoomPreferences {
     }
     return {
       view, kanbanMode, contextOpen, previewWrap,
-      asideWidth: size('asideWidth', DEFAULT_PREFERENCES.asideWidth, 220, 720),
-      previewWidth: size('previewWidth', DEFAULT_PREFERENCES.previewWidth, 300, 960),
-      bottomHeight: size('bottomHeight', DEFAULT_PREFERENCES.bottomHeight, 80, 900),
+      asideWidth: size('asideWidth', DEFAULT_PREFERENCES.asideWidth, 320, 460),
+      previewWidth: size('previewWidth', DEFAULT_PREFERENCES.previewWidth, 300, 720),
+      bottomHeight: size('bottomHeight', DEFAULT_PREFERENCES.bottomHeight, 80, 320),
       sessionLimit: size('sessionLimit', DEFAULT_PREFERENCES.sessionLimit, 1, 20),
     }
   } catch { return DEFAULT_PREFERENCES }

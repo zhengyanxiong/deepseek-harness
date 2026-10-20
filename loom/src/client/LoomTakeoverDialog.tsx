@@ -30,6 +30,7 @@ export function LoomTakeoverDialog({ t, open, busy, failed, onCancel, onConfirm 
     open={open}
     title={t('execution.takeover')}
     closeLabel={t('form.close')}
+    className="loom-modal-takeover"
     onClose={() => { if (!busy) onCancel() }}
     footer={<>
       <Button variant="ghost" disabled={busy} data-modal-autofocus onClick={onCancel}>{t('form.cancel')}</Button>

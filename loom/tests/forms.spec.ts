@@ -34,10 +34,11 @@ it('renders an existing project in the edit form instead of a creation trigger',
     t, open: true, project, create: async () => ({ ok: true, value: project }), update: async () => ({ ok: true, value: project }), onCreated: () => undefined,
   }))
   expect(markup).toContain('value="Shop"')
-  expect(markup).toContain(`>${en['form.next']}<`)
-  expect(markup).not.toContain(`>${en['form.save']}<`)
-  expect(markup).toContain(en['project.step.sources'])
-  expect(markup).toContain(en['project.step.preview'])
+  expect(markup).toContain(`>${en['form.save']}<`)
+  expect(markup).not.toContain(`>${en['form.next']}<`)
+  expect(markup).toContain(en['source.hint'])
+  expect(markup).toContain(en['module.optional'])
+  expect(markup).not.toContain(en['project.step.sources'])
   expect(markup).not.toContain(en['project.new'])
 })
 
@@ -109,7 +110,8 @@ it('renders creation entry points with locale-owned labels', () => {
 })
 
 it('renders free-text branch refs with a local branch picker and no default branch', () => {
-  const html = renderToStaticMarkup(createElement(VersionForm, { t, open: true, project, listBranches: async () => ({ ok: true, value: { topLevel: '/repo/shop', current: 'main', branches: ['main'] } }), create: () => Promise.reject(new Error('unused')), onCreated: () => {} }))
+  const editable: VersionRecord = { ...version, sources: [{ sourceId: version.sources[0].sourceId, ref: '' }] }
+  const html = renderToStaticMarkup(createElement(VersionForm, { t, open: true, project, version: editable, listBranches: async () => ({ ok: true, value: { topLevel: '/repo/shop', current: 'main', branches: ['main'] } }), create: () => Promise.reject(new Error('unused')), update: async () => ({ ok: false, error: { code: 'unused', message: 'unused' } }), onCreated: () => {} }))
   expect(html).toContain(en['source.branch'])
   expect(html).toContain(en['source.branchPlaceholder'])
   expect(html).toContain(en['branch.load'])

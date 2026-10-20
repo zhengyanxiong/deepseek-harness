@@ -6,22 +6,25 @@ import type { LoomKey } from './locales.ts'
 
 /** Theme aliases shared by every Loom shell region. */
 export const COLORS = {
-  bg: 'var(--dsw-alias-bg-base)',
-  panel: 'var(--dsw-alias-bg-layer-1)',
-  panel2: 'var(--dsw-alias-bg-layer-2)',
-  panel3: 'var(--dsw-alias-bg-layer-3)',
-  border: 'var(--dsw-alias-border-l4)',
-  borderStrong: 'var(--dsw-alias-border-l3)',
+  /** Workloom canvas; DSH's light layers are all white, so the shell owns the paper/panel split. */
+  bg: 'var(--loom-canvas)',
+  panel: 'var(--loom-surface)',
+  panel2: 'var(--loom-surface-2)',
+  panel3: 'var(--loom-surface-3)',
+  selected: 'var(--loom-selected)',
+  border: 'var(--loom-border)',
+  borderStrong: 'var(--loom-border-strong)',
   text: 'var(--dsw-alias-label-primary)',
   dim: 'var(--dsw-alias-label-secondary)',
   faint: 'var(--dsw-alias-label-caption)',
-  accent: 'var(--dsw-alias-brand-primary)',
+  /** Design brand blue; DSH's brand alias is monochrome, so accents use this token. */
+  accent: 'var(--loom-accent)',
   business: 'var(--dsw-alias-state-business-primary)',
   green: 'var(--dsw-alias-state-success-primary)',
   warn: 'var(--dsw-alias-state-warn-primary)',
-  error: 'var(--dsw-alias-label-error)',
+  error: 'var(--dsw-alias-state-error-primary)',
   cyan: '#39c5cf',
-  purple: '#ab7df8',
+  purple: '#8B6FD6',
 } as const
 
 /** Business-state presentation shared by the board, cards and header. */
@@ -171,7 +174,7 @@ export const diffViewport: CSSProperties = { display: 'flex', flexDirection: 'co
 
 export const pill: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, border: `0.5px solid ${COLORS.border}`, borderRadius: 999, padding: '1px 8px', fontSize: 11, color: COLORS.dim, whiteSpace: 'nowrap' }
 export const button: CSSProperties = { color: 'inherit', background: 'transparent', border: `0.5px solid ${COLORS.border}`, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', font: 'inherit' }
-export const select: CSSProperties = { ...button, background: COLORS.panel2, cursor: 'pointer' }
+export const select: CSSProperties = { ...button, background: COLORS.panel, cursor: 'pointer' }
 export const sectionTitle: CSSProperties = { margin: '0 0 8px', fontSize: 11, fontWeight: 600, letterSpacing: 0.4, color: COLORS.faint, textTransform: 'uppercase' as const }
 export const metaLine: CSSProperties = { color: COLORS.faint, fontSize: 11 }
 

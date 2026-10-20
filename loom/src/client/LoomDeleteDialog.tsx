@@ -44,6 +44,7 @@ export function LoomDeleteDialog({ t, kind, subject, busy, failure, onCancel, on
     open
     title={t(DELETE_COPY[kind].label)}
     closeLabel={t('form.close')}
+    className="loom-modal-delete"
     onClose={() => { if (!busy) onCancel() }}
     footer={<>
       <Button variant="ghost" disabled={busy} data-modal-autofocus onClick={onCancel}>{t('form.cancel')}</Button>

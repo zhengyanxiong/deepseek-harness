@@ -9,7 +9,7 @@ import type { LoomKey } from './locales.ts'
 type Translate = (key: LoomKey) => string
 
 const backdrop: CSSProperties = { position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }
-const panel: CSSProperties = { width: 1080, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box', background: 'var(--dsw-alias-bg-layer-1)', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 12, padding: 18, boxShadow: '0 24px 64px rgba(0,0,0,.5)' }
+const panel: CSSProperties = { width: 880, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box', background: 'var(--dsw-alias-bg-layer-1)', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 12, padding: 18, boxShadow: '0 24px 64px rgba(0,0,0,.5)' }
 const button: CSSProperties = { color: 'inherit', background: 'transparent', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', font: 'inherit' }
 const alert: CSSProperties = { margin: 0, color: 'var(--dsw-alias-label-secondary)', fontSize: 12, lineHeight: 1.6 }
 const diffBox: CSSProperties = { marginTop: 12, display: 'flex', flexDirection: 'column', minHeight: 0, border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 8, overflow: 'hidden', background: 'var(--dsw-alias-bg-layer-2)' }

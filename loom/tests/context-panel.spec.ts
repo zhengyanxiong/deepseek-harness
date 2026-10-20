@@ -26,7 +26,7 @@ const task: TaskRecord = {
 }
 const snapshot: CatalogSnapshot = { projects: [project], versions: [version], locks: [], tasks: [task], workspaces: [], temporarySessions: [], audit: [], executions: [] }
 
-it('renders project, version and task actions as labeled outline actions', () => {
+it('renders version, Git, task and cost context with actions in the header', () => {
   const html = renderToStaticMarkup(createElement(LoomContextPanel, {
     t, snapshot, project, version, task, usage: undefined,
     generateLock: () => Promise.reject(new Error('unused')),
@@ -38,12 +38,13 @@ it('renders project, version and task actions as labeled outline actions', () =>
     onDeleteVersion: () => Promise.resolve({ ok: true, value: undefined }),
     onDeleteTask: () => Promise.resolve({ ok: true, value: undefined }),
   }))
-  expect(html).toContain(en['project.edit'])
+  expect(html).toContain(en['ctx.version'])
+  expect(html).toContain('v1')
+  expect(html).toContain(en['ctx.git'])
+  expect(html).toContain(en['ctx.lockRepos'].replace('{count}', '1'))
   expect(html).toContain(en['task.edit'])
-  expect(html).toContain(en['project.delete'])
-  expect(html).toContain(en['version.delete'])
-  expect(html).toContain(en['task.delete'])
   expect(html).toContain(en['version.edit'])
+  expect(html).toContain(en['ctx.more'])
   expect(html).toContain(en['lock.new'])
-  expect(html).toMatch(/_outline_/u)
+  expect(html).not.toContain(en['task.delete'])
 })

@@ -81,7 +81,7 @@ export function LoomDirectoryBrowser({ t, startPath, loadListing, onCancel, onPi
     onClose={onCancel}
     footer={<>
       <Button variant="ghost" onClick={onCancel}>{t('form.cancel')}</Button>
-      <Button variant="primary" disabled={listing === undefined || loading} onClick={() => { if (listing !== undefined) onPick(listing.path) }}>{t('directory.select')}</Button>
+      <Button variant="primary" className="loom-primary" disabled={listing === undefined || loading} onClick={() => { if (listing !== undefined) onPick(listing.path) }}>{t('directory.select')}</Button>
     </>}
   >
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
