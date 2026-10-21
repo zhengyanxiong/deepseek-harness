@@ -1,6 +1,6 @@
 {
   "name": "dsh-workloom",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Workloom (织) — a multi-project workbench for DeepSeek Harness with Git-backed versions, Locks, task workspaces and native Agent sessions.",
   "type": "module",
   "main": "lib/index.js",
