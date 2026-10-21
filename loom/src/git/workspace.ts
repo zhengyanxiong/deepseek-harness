@@ -461,6 +461,20 @@ export async function ensureWorktreeBranch(directory: string, branch: string): P
   }
 }
 
+/** Report whether any worktree has uncommitted or untracked files.
+ * @param directories - prepared repository directories.
+ * @returns true when Git status reports at least one entry.
+ */
+export async function workingTreeDirty(directories: readonly string[]): Promise<boolean> {
+  for (const directory of directories) {
+    try {
+      const status = (await execFile('git', ['-C', directory, 'status', '--porcelain=v1', '-z', '--untracked-files=all'], { windowsHide: true })).stdout
+      if (status !== '') return true
+    } catch (error) { throw new WorkspacePreparationError('diff_failed', [], error) }
+  }
+  return false
+}
+
 /**
  * Read every repository's changes against the Lock baseline.
  * @param worktrees - prepared repository directories and their pinned commits.

@@ -7,7 +7,7 @@ import { resolveLock } from '../domain/version.ts'
 import { isAbsolute, normalize, resolve, win32 } from 'node:path'
 import { createTask as pendingTask, startAttempt, attachSession, transitionTask, type Task, type Lock, type Workspace, type TaskStatus } from '../domain/task.ts'
 import { createJsonStore, JsonStoreError } from '../storage/json-store.ts'
-import { commitsSince, createLinkedWorkspace, ensureWorktreeBranch, linkWorkspaceSkills, prepareWorkspace as materializeWorkspace, removeLinkedWorkspace, removeWorkspace, resolveHead, workingTreeChanges, WorkspacePreparationError, type WorkspaceRepositoryChanges } from '../git/workspace.ts'
+import { commitsSince, createLinkedWorkspace, ensureWorktreeBranch, linkWorkspaceSkills, prepareWorkspace as materializeWorkspace, removeLinkedWorkspace, removeWorkspace, resolveHead, workingTreeChanges, workingTreeDirty, WorkspacePreparationError, type WorkspaceRepositoryChanges } from '../git/workspace.ts'
 import { admitWorkspaceLayout, WorkspaceLayoutError, type WorkspaceLayout, type WorkspaceMode, type WorkspaceRepositoryBinding, type WorkspaceRepositoryKind } from '../domain/workspace.ts'
 import type { AuditEntry, AuditEvent } from '../domain/audit.ts'
 import {
@@ -297,6 +297,7 @@ export interface Catalog {
   prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id']; branches?: Readonly<Record<string, string>>; mode?: 'managed' | 'linked'; repositories?: readonly { sourceId: Branded<'loom.source'>; path: string; targetPath: string }[] }): Promise<WorkspaceRecord>
   workspaceChanges(workspaceId: WorkspaceRecord['id'], attemptId?: Branded<'loom.attempt'>): Promise<{ repositories: WorkspaceRepositoryChanges[] }>
   workspaceStatus(workspaceId: WorkspaceRecord['id'], attemptId?: Branded<'loom.attempt'>): Promise<{ running: boolean; repositories: WorkspaceRepositoryChanges[] }>
+  workspaceDirty(workspaceId: WorkspaceRecord['id']): Promise<boolean>
   cleanupWorkspace(workspaceId: WorkspaceRecord['id'], discardChanges: boolean): Promise<void>
   ensureWorkspaceBranches(workspaceId: WorkspaceRecord['id']): Promise<WorkspaceRecord>
   registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id']; branches?: Readonly<Record<string, string>>; projectId?: Branded<'loom.project'>; mode?: WorkspaceMode; rootPath?: string; rootOwner?: 'loom' | 'user'; repositories?: readonly Omit<WorkspaceRepositoryBinding, 'kind'>[] }): Promise<WorkspaceRecord>
@@ -511,6 +512,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       if (attemptId !== undefined && lockId === undefined) throw new CatalogError('missing_task')
       return { running, repositories: await workingTreeChanges(workspaceWorktrees(state, workspaceId, lockId)) }
     },
+    workspaceDirty: workspaceId => workingTreeDirty(workspaceWorktrees(state, workspaceId).map(worktree => worktree.directory)),
     cleanupWorkspace: async (workspaceId, discardChanges) => {
       const worktrees = workspaceWorktrees(state, workspaceId)
       const workspace = workspaceIn(state, workspaceId)

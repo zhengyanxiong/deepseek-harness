@@ -289,15 +289,32 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
   const [crossVersionConfirmed, setCrossVersionConfirmed] = useState(false)
+  const sourceSignature = (project?.config.sources ?? []).map(source => `${source.id}\u0000${source.path}\u0000${source.repo}`).join('\u0001')
   useEffect(() => {
     if (lockId === undefined && locks.length > 0) setLockId(locks.at(-1)?.id)
   }, [lockId, locks])
+  // A catalog refresh must not discard typed paths; reset only when the form's project or version changes.
   useEffect(() => {
+    setLockId(locks.at(-1)?.id)
     setRows(mappingRows(snapshot, projectId))
     setBranches({})
     setRootPath('')
     setFailure(undefined)
-  }, [projectId, snapshot])
+    setCrossVersionConfirmed(false)
+  }, [projectId, versionId])
+  // Reconcile rows when the project source list changes, keeping user-entered targets for known sources.
+  useEffect(() => {
+    const sources = project?.config.sources ?? []
+    setRows(current => {
+      const existing = new Map(current.map(row => [row.sourceId, row]))
+      return sources.map(source => {
+        const row = existing.get(source.id)
+        return row === undefined
+          ? { sourceId: source.id, path: source.path, targetPath: '' }
+          : row.path === source.path ? row : { ...row, path: source.path }
+      })
+    })
+  }, [sourceSignature])
   const selected = mode === 'reuse' ? pool.find(workspace => workspace.id === existingId) : undefined
   const crossVersion = selected !== undefined && selected.versionId !== versionId
   const sharingTasks = selected === undefined ? [] : snapshot.tasks.filter(candidate => candidate.id !== task.id && candidate.attempts.at(-1)?.workspaceId === selected.id)
@@ -352,9 +369,16 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
         if (lockId === undefined) { setFailure('missing_lock'); return }
         const single = project?.config.sources.length === 1
         const repositories = currentRows.map(row => ({ sourceId: row.sourceId, path: single ? '.' : (row.path.trim() === '' ? '.' : row.path.trim()), targetPath: single ? rootPath.trim() : row.targetPath.trim() }))
-        const registered = await actions.registerWorkspace({ path: rootPath.trim(), versionId, lockId, mode: 'direct', rootOwner: 'user', repositories })
-        if (!registered.ok) { setFailure(registered.error.message); return }
-        target = registered.value
+        const existing = snapshot.workspaces.find(candidate => candidate.cleaned !== true
+          && (candidate.rootPath ?? candidate.path) === rootPath.trim()
+          && (candidate.mode ?? 'direct') === 'direct')
+        if (existing !== undefined) {
+          target = existing
+        } else {
+          const registered = await actions.registerWorkspace({ path: rootPath.trim(), versionId, lockId, mode: 'direct', rootOwner: 'user', repositories })
+          if (!registered.ok) { setFailure(registered.error.message); return }
+          target = registered.value
+        }
       } else if (mode === 'linked') {
         if (lockId === undefined) { setFailure('missing_lock'); return }
         const repositories = currentRows.map(row => {

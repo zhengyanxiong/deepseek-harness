@@ -60,6 +60,18 @@ const executionRequest = z.strictObject({ workspaceId: nonempty, sessionId: none
 const releaseExecutionRequest = z.strictObject({ workspaceId: nonempty, sessionId: nonempty, generation: z.number().int().nonnegative() })
 
 
+/** Compare client-requested direct bindings with the persisted workspace before reusing it. */
+function sameRepositoryMappings(
+  requested: readonly { readonly sourceId: string; readonly path: string; readonly targetPath: string }[] | undefined,
+  existing: readonly WorkspaceRepositoryBinding[] | undefined,
+): boolean {
+  if (requested === undefined || existing === undefined) return true
+  return requested.length === existing.length
+    && requested.every(repository => existing.some(binding => binding.sourceId === repository.sourceId
+      && binding.path === repository.path && binding.targetPath === repository.targetPath))
+}
+
+
 /** Inspect each version repository inside an existing workspace root. */
 async function inspectWorkspace(snapshot: CatalogSnapshot, path: string, versionId: string): Promise<WorkspaceInspection> {
   const version = snapshot.versions.find(candidate => candidate.id === versionId)
@@ -416,6 +428,16 @@ export default class LoomService extends TypertRemoteService {
   registerWorkspace(request: RegisterWorkspaceRequest): Promise<WorkspaceRecord> {
     return this.run(async catalog => {
       const parsed = registerWorkspaceRequest.parse(request)
+      const snapshot = catalog.snapshot()
+      const registered = parsed.mode === 'linked' ? undefined : snapshot.workspaces.find(candidate => candidate.cleaned !== true
+        && (candidate.rootPath ?? candidate.path) === (parsed.rootPath ?? parsed.path)
+        && (candidate.mode ?? 'direct') === 'direct'
+        && sameRepositoryMappings(parsed.repositories, candidate.repositories))
+      if (registered !== undefined) {
+        const version = snapshot.versions.find(candidate => candidate.id === parsed.versionId)
+        const projectId = registered.projectId ?? snapshot.versions.find(candidate => candidate.id === registered.versionId)?.projectId
+        if (version !== undefined && projectId === version.projectId) return catalog.ensureWorkspaceBranches(registered.id)
+      }
       const branches = { ...parsed.branches }
       let repositories: { sourceId: Branded<'loom.source'>; path: string; targetPath: string }[] | undefined
       if (parsed.repositories !== undefined) {
@@ -458,8 +480,7 @@ export default class LoomService extends TypertRemoteService {
       const workspaceId = brandString<WorkspaceRecord['id']>(parsed.workspaceId)
       const workspace = await catalog.ensureWorkspaceBranches(workspaceId)
       if (workspace.cleaned === true) throw new Error('workspace_cleaned')
-      const status = await catalog.workspaceStatus(workspaceId)
-      if (status.repositories.some(repository => repository.files.length > 0)) throw new Error('workspace_changes')
+      if (await catalog.workspaceDirty(workspaceId)) throw new Error('workspace_changes')
       return catalog.startAttempt(brandString<TaskRecord['id']>(parsed.taskId), workspaceId)
     })
   }

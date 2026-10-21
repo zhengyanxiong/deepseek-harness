@@ -162,9 +162,20 @@ it('inspects an existing Git workspace, lists branches and registers it without 
   expect(await call('repositoryBranches', { request: { repo } })).toMatchObject({ branches: expect.arrayContaining(['feature/start']), current: expect.any(String) })
   const inspection = await call('inspectWorkspace', { request: { path: existing, versionId: version.id } }) as { repositories: { sourceId: string; current?: string; error?: string }[] }
   expect(inspection.repositories[0]).toMatchObject({ sourceId: 'web', current: 'feature/start' })
-  const workspace = await call('registerWorkspace', { request: { path: existing, versionId: version.id, lockId: lock.id } }) as { path: string; branches?: Record<string, string> }
+  const workspace = await call('registerWorkspace', { request: { path: existing, versionId: version.id, lockId: lock.id } }) as { id: string; path: string; branches?: Record<string, string> }
   expect(workspace.path).toBe(existing)
   expect(workspace.branches).toEqual({ web: 'feature/start' })
+  const again = await call('registerWorkspace', { request: { path: existing, versionId: version.id, lockId: lock.id } }) as { id: string }
+  expect(again.id).toBe(workspace.id)
+  const task = await call('createTask', { request: { versionId: version.id, title: 'Existing' } }) as { id: string }
+  await writeFile(join(existing, 'web', 'dirty.txt'), 'dirty\n')
+  await expect(call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } })).rejects.toThrow('workspace_changes')
+  await rm(join(existing, 'web', 'dirty.txt'))
+  await writeFile(join(existing, 'web', 'committed.txt'), 'committed\n')
+  await exec('git', ['-C', join(existing, 'web'), 'add', 'committed.txt'])
+  await exec('git', ['-C', join(existing, 'web'), '-c', 'user.name=Loom Test', '-c', 'user.email=loom@example.invalid', 'commit', '-qm', 'committed'])
+  const started = await call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } }) as { attempts: unknown[] }
+  expect(started.attempts).toHaveLength(1)
   const notGit = join(dir, 'not-git'); await mkdir(notGit)
   await expect(call('registerWorkspace', { request: { path: notGit, versionId: version.id, lockId: lock.id } })).rejects.toThrow('invalid_workspace_path')
 })

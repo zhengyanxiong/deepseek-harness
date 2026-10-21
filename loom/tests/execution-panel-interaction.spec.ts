@@ -65,3 +65,55 @@ it('opens the takeover warning as a modal and closes it without taking over', as
   await act(async () => { button(en['form.cancel']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
   expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull()
 })
+
+it('keeps the chosen direct root when the catalog snapshot refreshes', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  const project = {
+    id: brandString<'loom.project'>('p1'),
+    config: { name: 'Shop', sources: [{ id: lock.repositories[0]!.sourceId, repo: brandString<'loom.repo'>('/repo'), path: 'web' }], modules: [] },
+  }
+  const pendingTask: TaskRecord = { ...task, status: 'pending', attempts: [] }
+  const pendingSnapshot: CatalogSnapshot = {
+    ...snapshot,
+    projects: [project],
+    tasks: [pendingTask],
+    workspaces: [],
+    executions: [],
+  }
+  const startActions = {
+    ...actions,
+    registerWorkspace: unused,
+    repositoryBranches: unused,
+    inspectWorkspace: unused,
+    pickDirectory: unused,
+  }
+  container = document.createElement('div')
+  document.body.append(container)
+  root = createRoot(container)
+  const render = async (nextSnapshot: CatalogSnapshot): Promise<void> => {
+    await act(async () => {
+      root?.render(createElement(ExecutionPanel, {
+        t, task: pendingTask, snapshot: nextSnapshot, selectedSession: undefined, actions: startActions,
+        loadChanges: unused, wrap: false, onToggleWrap: () => {},
+      }))
+    })
+  }
+  await render(pendingSnapshot)
+  const direct = document.querySelectorAll<HTMLButtonElement>('button[role="radio"]')[2]
+  if (direct === undefined) throw new Error('direct mode radio is missing')
+  await act(async () => { direct.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+
+  const directRoot = (): HTMLInputElement => {
+    const found = document.querySelector<HTMLInputElement>(`input[aria-label="${en['workspace.directRoot']}"]`)
+    if (found === null) throw new Error('direct root input is missing')
+    return found
+  }
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(directRoot(), '/tmp/direct-repo')
+    directRoot().dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(directRoot().value).toBe('/tmp/direct-repo')
+
+  await render({ ...pendingSnapshot })
+  expect(directRoot().value).toBe('/tmp/direct-repo')
+})
