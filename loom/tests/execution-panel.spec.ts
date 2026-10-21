@@ -71,6 +71,18 @@ it('offers the start form only for a startable task with a Lock', () => {
   expect(html).toContain(en['workspace.mode.direct'])
   expect(html).not.toContain(en['task.accept'])
 })
+it('highlights the selected workspace mode instead of the others', () => {
+  const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot, selectedSession: undefined, actions, ...diffProps }))
+  const styles = [...html.matchAll(/<button[^>]*role="radio"[^>]*style="([^"]*)"/gu)].map(match => match[1])
+  expect(styles).toHaveLength(4)
+  const selected = styles.filter(style => style.includes('border-color:var(--loom-accent)'))
+  expect(selected).toHaveLength(1)
+  expect(selected[0]).toContain('background:var(--loom-selected)')
+  expect(styles.filter(style => style.includes('1px solid var(--loom-border)'))).toHaveLength(4)
+  expect(styles.filter(style => style.includes('border-color:'))).toHaveLength(4)
+  expect(html.match(/aria-checked="true"/gu)).toHaveLength(1)
+  expect(html).toContain('<svg')
+})
 it('explains a missing Lock instead of offering an unusable start button', () => {
   const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot: { ...snapshot, locks: [] }, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['lock.empty'])

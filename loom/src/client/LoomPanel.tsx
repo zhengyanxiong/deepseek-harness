@@ -116,7 +116,7 @@ const topViewSwitch: CSSProperties = { display: 'inline-flex', alignItems: 'cent
 const topViewButton: CSSProperties = { height: 26, padding: '0 12px', border: 'none', borderRadius: 6, background: 'transparent', color: COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: 11.5, fontWeight: 400 }
 const topAction: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, padding: 0,
-  border: `0.5px solid ${COLORS.border}`, borderRadius: 7, background: COLORS.panel, color: COLORS.dim, cursor: 'pointer',
+  border: `0.5px solid ${COLORS.border}`, borderColor: COLORS.border, borderRadius: 7, background: COLORS.panel, color: COLORS.dim, cursor: 'pointer',
 }
 const topActionActive: CSSProperties = { background: COLORS.panel3, borderColor: COLORS.borderStrong, color: COLORS.text }
 const topNew: CSSProperties = {
@@ -753,7 +753,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       .loom-top-context { max-width: 190px; }
       .loom-top-select { max-width: 132px; }
       .loom-top-context:hover { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
-      .loom-top-action:hover { border-color: var(--dsw-alias-border-l3); color: var(--dsw-alias-label-primary); }
+      .loom-top-action:hover { border-color: var(--loom-border-strong); color: var(--dsw-alias-label-primary); }
       .loom-top-new:hover { filter: brightness(1.08); }
       .loom-view-switch button:hover:not([aria-pressed='true']) { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); }
       .loom-menu-item:hover { background: var(--dsw-alias-bg-layer-3); }

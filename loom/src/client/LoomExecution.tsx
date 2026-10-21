@@ -1,6 +1,6 @@
 /** Execution controls for the selected task: workspaces, sessions and business status. */
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
-import { Button, IconFolderOpenRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconCheckOutlineRegular, IconFolderOpenRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, ExecutionRequest, ExecutionState, Lock, PrepareWorkspaceRequest,
@@ -10,7 +10,7 @@ import type {
 import type { LoomKey } from './locales.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { currentExecution } from './projection.ts'
-import { failureKey, shortCommit, STATUS_META } from './shell.ts'
+import { COLORS, failureKey, shortCommit, STATUS_META } from './shell.ts'
 import { LoomCleanupDialog } from './LoomCleanupDialog.tsx'
 import { LoomTakeoverDialog } from './LoomTakeoverDialog.tsx'
 import { BranchPicker } from './LoomForms.tsx'
@@ -386,12 +386,18 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
     <div style={field}>
       <span>{t('workspace.mode')}</span>
       <div role="radiogroup" aria-label={t('workspace.mode')} style={modeGrid}>
-        {(['reuse', 'managed', 'direct', 'linked'] as const).map(candidate => <button key={candidate} type="button" role="radio" aria-checked={mode === candidate}
-          style={{ ...modeCard, ...(mode === candidate ? modeCardActive : {}) }}
-          onClick={() => { setMode(candidate); setFailure(undefined) }}>
-          <span style={modeTitle}>{t(modeLabel[candidate])}</span>
-          <span style={modeHint}>{candidate === 'reuse' ? t('workspace.poolHint') : t(`workspace.mode.${candidate}Hint` as LoomKey)}</span>
-        </button>)}
+        {(['reuse', 'managed', 'direct', 'linked'] as const).map(candidate => {
+          const checked = mode === candidate
+          return <button key={candidate} type="button" role="radio" aria-checked={checked}
+            style={{ ...modeCard, ...(checked ? modeCardActive : {}) }}
+            onClick={() => { setMode(candidate); setFailure(undefined) }}>
+            <span style={modeTitleRow}>
+              <span style={modeTitle}>{t(modeLabel[candidate])}</span>
+              {checked && <span style={modeCheck}><IconCheckOutlineRegular size={12} /></span>}
+            </span>
+            <span style={modeHint}>{candidate === 'reuse' ? t('workspace.poolHint') : t(`workspace.mode.${candidate}Hint` as LoomKey)}</span>
+          </button>
+        })}
       </div>
     </div>
     {mode === 'reuse' && <>
@@ -503,13 +509,15 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
 }
 
 const modeGrid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6 }
-const modeCard: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: '8px 9px', textAlign: 'left', color: 'var(--dsw-alias-label-secondary)', background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 7, cursor: 'pointer', font: 'inherit' }
-const modeCardActive: CSSProperties = { borderColor: 'var(--dsw-alias-border-l3)', background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)' }
+const modeCard: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: '8px 9px', textAlign: 'left', color: COLORS.dim, background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderColor: COLORS.border, borderRadius: 7, cursor: 'pointer', font: 'inherit', transition: 'border-color .12s ease, background-color .12s ease' }
+const modeCardActive: CSSProperties = { borderColor: COLORS.accent, background: COLORS.selected, color: COLORS.text }
+const modeTitleRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, width: '100%' }
+const modeCheck: CSSProperties = { display: 'inline-flex', flex: 'none', marginLeft: 'auto', color: COLORS.accent }
 const modeTitle: CSSProperties = { fontSize: 11.5, fontWeight: 500 }
-const modeHint: CSSProperties = { color: 'var(--dsw-alias-label-caption)', fontSize: 10, lineHeight: 1.4 }
+const modeHint: CSSProperties = { color: COLORS.faint, fontSize: 10, lineHeight: 1.4 }
 const poolList: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
-const poolRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 8px', textAlign: 'left', color: 'inherit', background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 6, cursor: 'pointer', font: 'inherit' }
-const poolRowActive: CSSProperties = { borderColor: 'var(--dsw-alias-border-l3)', background: 'var(--dsw-alias-bg-layer-1)' }
+const poolRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 8px', textAlign: 'left', color: 'inherit', background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderColor: COLORS.border, borderRadius: 6, cursor: 'pointer', font: 'inherit' }
+const poolRowActive: CSSProperties = { borderColor: COLORS.accent, background: COLORS.selected }
 const poolState: CSSProperties = { flex: 'none', marginLeft: 'auto', fontSize: 10 }
 const mappingRow: CSSProperties = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, minWidth: 0 }
 const monoText: CSSProperties = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace', fontSize: 11 }
