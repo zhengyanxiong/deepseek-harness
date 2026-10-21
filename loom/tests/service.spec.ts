@@ -118,12 +118,17 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   const status = await call('workspaceStatus', { request: { workspaceId: workspace.id } }) as { running: boolean; repositories: { files: unknown[] }[] }
   expect(status.running).toBe(false)
   expect(status.repositories[0]!.files).toHaveLength(2)
+  await exec('git', ['-C', join(root, 'web'), 'checkout', '--', 'file'])
+  await rm(join(root, 'web', 'new.txt'), { force: true })
   const task = await call('createTask', { request: { versionId: version.id, title: 'Clean' } }) as { id: string }
   await call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } })
+  const execution = await call('acquireExecution', { request: { workspaceId: workspace.id, sessionId: 'session-owner' } }) as { owner: { generation: number } }
   await expect(call('cleanupWorkspace', { request: { workspaceId: workspace.id } })).rejects.toThrow('workspace_busy')
+  await call('releaseExecution', { request: { workspaceId: workspace.id, sessionId: 'session-owner', generation: execution.owner.generation } })
+  await writeFile(join(root, 'web', 'file'), 'changed again\n')
   await call('transitionTask', { request: { taskId: task.id, target: 'failed', actor: 'human' } })
   await expect(call('cleanupWorkspace', { request: { workspaceId: workspace.id } })).rejects.toThrow('workspace_changes')
-  await rm(join(root, 'web', 'new.txt'))
+  await rm(join(root, 'web', 'new.txt'), { force: true })
   await writeFile(join(root, 'web', 'file'), 'unpushed\n')
   await exec('git', ['-C', join(root, 'web'), 'add', 'file'])
   await exec('git', ['-C', join(root, 'web'), '-c', 'user.name=Loom Test', '-c', 'user.email=loom@example.invalid', 'commit', '-qm', 'unpushed'])
@@ -132,7 +137,8 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   expect(await call('snapshot')).toMatchObject({ workspaces: [{ id: workspace.id, cleaned: true }] })
   await expect(call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } })).rejects.toThrow('workspace_cleaned')
   await expect(readFile(join(root, 'web', 'file'), 'utf8')).rejects.toThrow()
-  await expect(call('prepareWorkspace', { request: { path: root, versionId: version.id, lockId: lock.id } })).rejects.toThrow('workspace_path_registered')
+  const recreated = await call('prepareWorkspace', { request: { path: root, versionId: version.id, lockId: lock.id } }) as { id: string }
+  await call('cleanupWorkspace', { request: { workspaceId: recreated.id, discardChanges: true } })
   await call('deleteTask', { request: { taskId: task.id } })
   expect(await call('snapshot')).toMatchObject({ tasks: [], workspaces: [] })
   await call('deleteVersion', { request: { versionId: version.id } })
@@ -251,4 +257,25 @@ it('exposes execution acquisition, blocked handoff and release through the gatew
   expect(takeover.owner.sessionId).toBe('session-b')
   expect(takeover.takeover.stopStatus).toBe('unknown')
   expect((await call('snapshot') as { audit: { event: string }[] }).audit.map(entry => entry.event)).toEqual(expect.arrayContaining(['execution.acquired', 'execution.queued', 'execution.takeover-requested', 'execution.takeover-blocked', 'execution.released']))
+})
+
+it('marks linked sessions with full access and gives the Agent the repository map', async () => {
+  const { ctx, call, dir } = await setup()
+  const exec = promisify(execFile)
+  const repo = join(dir, 'repo'); await mkdir(repo)
+  await exec('git', ['init', '--quiet', repo])
+  await writeFile(join(repo, 'file'), 'content')
+  await exec('git', ['-C', repo, 'add', 'file'])
+  await exec('git', ['-C', repo, '-c', 'user.name=Loom Test', '-c', 'user.email=loom@example.invalid', 'commit', '-qm', 'initial'])
+  const project = await call('createProject', { request: { name: 'Linked', sources: [{ id: 'back', repo, path: 'back' }], modules: [] } }) as { id: string }
+  const version = await call('createVersion', { request: { projectId: project.id, name: 'v', sources: [{ sourceId: 'back', ref: 'HEAD' }] } }) as { id: string }
+  const lock = await call('generateLock', { request: { versionId: version.id } }) as { id: string }
+  const workspace = await call('prepareWorkspace', { request: { path: join(dir, 'linked'), versionId: version.id, lockId: lock.id, mode: 'linked', repositories: [{ sourceId: 'back', path: 'back', targetPath: repo }] } }) as { path: string }
+  const events: unknown[] = []
+  ctx.emit('session/created', { header: { cwd: workspace.path }, append: (type: string, data: unknown) => { events.push([type, data]) } } as never)
+  expect(events).toEqual([['sandbox/mode', { mode: 'danger-full-access' }]])
+  const contexts: { text: string }[] = []
+  ctx.emit('agent/created', { agent: { session: { header: { cwd: workspace.path } }, ctx: { get: (name: string) => name === 'systemPrompt' ? { context: (context: { text: string }) => { contexts.push(context) } } : undefined } } } as never)
+  expect(contexts[0]?.text).toContain(repo)
+  expect(contexts[0]?.text).toContain('back')
 })

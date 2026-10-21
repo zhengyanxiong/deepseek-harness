@@ -1,6 +1,6 @@
 /** Execution controls for the selected task: workspaces, sessions and business status. */
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
-import { Button, IconFolderOpenRegular, SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconFolderOpenRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, ExecutionRequest, ExecutionState, Lock, PrepareWorkspaceRequest,
@@ -14,7 +14,7 @@ import { failureKey, shortCommit, STATUS_META } from './shell.ts'
 import { LoomCleanupDialog } from './LoomCleanupDialog.tsx'
 import { LoomTakeoverDialog } from './LoomTakeoverDialog.tsx'
 import { BranchPicker } from './LoomForms.tsx'
-import type { LoadWorkspaceChanges, RenderFileDiffSlot } from './LoomDiff.tsx'
+import type { LoadWorkspaceChanges } from './LoomDiff.tsx'
 
 type Translate = (key: LoomKey) => string
 
@@ -53,7 +53,6 @@ interface ExecutionPanelProps {
   selectedSession: SessionId | undefined
   actions: ExecutionActions
   loadChanges: LoadWorkspaceChanges
-  renderFactorySlot: RenderFileDiffSlot
   /** Whether comparisons wrap wide lines instead of scrolling sideways. */
   wrap: boolean
   onToggleWrap: () => void
@@ -64,7 +63,7 @@ interface ExecutionPanelProps {
  * @param props - Selected task, catalog records, the active Loom session, and Host actions.
  * @returns business controls without pretending a Session state is a task state.
  */
-export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, loadChanges, renderFactorySlot, wrap, onToggleWrap }: ExecutionPanelProps) {
+export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, loadChanges, wrap, onToggleWrap }: ExecutionPanelProps) {
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [cleanOpen, setCleanOpen] = useState(false)
@@ -207,7 +206,6 @@ export function ExecutionPanel({ t, task, snapshot, selectedSession, actions, lo
         failure={cleanFailure}
         discardAllowed={discardAllowed}
         loadChanges={loadChanges}
-        renderFactorySlot={renderFactorySlot}
         wrap={wrap}
         onToggleWrap={onToggleWrap}
         onConfirm={() => { void clean(false) }}
@@ -249,87 +247,124 @@ export function taskDraftPrompt(t: Translate, task: TaskRecord): string {
   return description === '' ? title : `${title}\n\n${t('task.draftDescription')}\n${description}`
 }
 
-type WorkspaceMode = 'new' | 'existing'
+type WorkspaceMode = 'reuse' | 'managed' | 'direct' | 'linked'
+
+interface RepositoryMapping {
+  readonly sourceId: string
+  path: string
+  targetPath: string
+}
 
 function sourceLabel(path: string, repo: string): string {
   return path.trim() === '' ? repo : path
 }
 
-/** Choose a Lock, a workspace origin and optional branches, then start the task in a native Session. */
+/** Join a user-selected root and a workspace-relative path without assuming the Host separator. */
+function joinPath(root: string, path: string): string {
+  if (path === '.') return root
+  return `${root.replace(/[\\/]+$/u, '')}/${path.replace(/^[\\/]+/u, '')}`
+}
+
+function mappingRows(snapshot: CatalogSnapshot, projectId: string | undefined): RepositoryMapping[] {
+  const project = snapshot.projects.find(candidate => candidate.id === projectId)
+  return (project?.config.sources ?? []).map(source => ({ sourceId: source.id, path: source.path, targetPath: '' }))
+}
+
+/** Choose a project workspace or create one in managed, direct or linked mode, then start the task. */
 function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
   const version = snapshot.versions.find(candidate => candidate.id === versionId)
   const project = version === undefined ? undefined : snapshot.projects.find(candidate => candidate.id === version.projectId)
+  const projectId = project?.id
   const locks = snapshot.locks.filter(lock => lock.versionId === versionId)
   const agentPreset = project?.config.agentPreset
-  const [lockId, setLockId] = useState<Lock['id'] | undefined>(locks.at(-1)?.id)
-  const reusable = snapshot.workspaces.filter(workspace => workspace.versionId === versionId && workspace.cleaned !== true)
+  const pool = snapshot.workspaces.filter(workspace => (workspace.projectId ?? snapshot.versions.find(candidate => candidate.id === workspace.versionId)?.projectId) === projectId && workspace.cleaned !== true)
   const priorWorkspace = task.attempts.at(-1)?.workspaceId
-  const priorReusable = priorWorkspace !== undefined && reusable.some(workspace => workspace.id === priorWorkspace)
-  const [mode, setMode] = useState<WorkspaceMode>(priorReusable || reusable.length > 0 ? 'existing' : 'new')
-  const [existingId, setExistingId] = useState<WorkspaceRecord['id'] | 'custom'>(priorReusable ? priorWorkspace : reusable[0]?.id ?? 'custom')
-  const [path, setPath] = useState('')
+  const priorReusable = priorWorkspace !== undefined && pool.some(workspace => workspace.id === priorWorkspace)
+  const [lockId, setLockId] = useState<Lock['id'] | undefined>(locks.at(-1)?.id)
+  const [mode, setMode] = useState<WorkspaceMode>(priorReusable || pool.length > 0 ? 'reuse' : 'managed')
+  const [existingId, setExistingId] = useState<WorkspaceRecord['id']>(priorWorkspace !== undefined && priorReusable ? priorWorkspace : pool[0]?.id ?? '' as WorkspaceRecord['id'])
+  const [rootPath, setRootPath] = useState('')
+  const [rows, setRows] = useState<RepositoryMapping[]>(() => mappingRows(snapshot, projectId))
   const [branches, setBranches] = useState<Record<string, string>>({})
-  const [inspection, setInspection] = useState<WorkspaceInspection>()
-  const [inspecting, setInspecting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
+  const [crossVersionConfirmed, setCrossVersionConfirmed] = useState(false)
   useEffect(() => {
     if (lockId === undefined && locks.length > 0) setLockId(locks.at(-1)?.id)
   }, [lockId, locks])
-  const available = reusable
-  const selected = mode === 'existing' && existingId !== 'custom' ? available.find(workspace => workspace.id === existingId) : undefined
+  useEffect(() => {
+    setRows(mappingRows(snapshot, projectId))
+    setBranches({})
+    setRootPath('')
+    setFailure(undefined)
+  }, [projectId, snapshot])
+  const selected = mode === 'reuse' ? pool.find(workspace => workspace.id === existingId) : undefined
+  const crossVersion = selected !== undefined && selected.versionId !== versionId
   const sharingTasks = selected === undefined ? [] : snapshot.tasks.filter(candidate => candidate.id !== task.id && candidate.attempts.at(-1)?.workspaceId === selected.id)
-  const workspaceBusy = (workspace: WorkspaceRecord): boolean => snapshot.tasks.some(candidate => candidate.id !== task.id && candidate.status === 'running' && candidate.attempts.at(-1)?.workspaceId === workspace.id)
-    || snapshot.executions.some(execution => execution.workspaceId === workspace.id && execution.owner !== null)
+  const workspaceBusy = (workspace: WorkspaceRecord): boolean => snapshot.executions.some(execution => execution.workspaceId === workspace.id && execution.owner !== null)
   const workspaceBaseline = (workspace: WorkspaceRecord): string => shortCommit(snapshot.locks.find(candidate => candidate.id === workspace.lockId)) ?? workspace.lockId
-  const inspectedReady = inspection !== undefined && inspection.repositories.length > 0 && inspection.repositories.every(repository => repository.error === undefined)
-  const canStart = mode === 'new' || selected !== undefined || (path.trim() !== '' && inspectedReady && !inspecting)
+  const currentRows = rows.length === project?.config.sources.length ? rows : mappingRows(snapshot, projectId)
+  const targetsReady = currentRows.length > 0 && currentRows.every(row => /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(row.targetPath.trim()))
+  const directRootReady = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(rootPath.trim())
+  const canStart = mode === 'reuse'
+    ? selected !== undefined && !workspaceBusy(selected) && (!crossVersion || crossVersionConfirmed)
+    : mode === 'managed'
+      ? lockId !== undefined
+      : mode === 'direct'
+        ? lockId !== undefined && directRootReady && targetsReady
+        : lockId !== undefined && targetsReady
   if (locks.length === 0) return <div style={{ ...box, marginTop: 8 }}>
     <p style={{ ...alert, margin: 0 }}>{t('lock.empty')}</p>
     <p style={{ ...alert, margin: 0 }}>{t('lock.generateFirst')}</p>
   </div>
-  const absolute = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/u.test(path.trim())
-  async function browse(): Promise<void> {
-    const picked = await actions.pickDirectory(path.trim() === '' ? undefined : path.trim())
+  function updateRow(sourceId: string, patch: Partial<RepositoryMapping>): void {
+    setRows(current => current.map(row => row.sourceId === sourceId ? { ...row, ...patch } : row))
+    setFailure(undefined)
+  }
+  async function browseTarget(sourceId: string, directRoot: boolean): Promise<void> {
+    const row = currentRows.find(candidate => candidate.sourceId === sourceId)
+    const picked = await actions.pickDirectory(row === undefined || row.targetPath.trim() === '' ? undefined : row.targetPath.trim())
     if (picked === null) return
-    setPath(picked); setInspection(undefined); setFailure(undefined)
-    await inspect(picked)
+    if (directRoot) {
+      setRootPath(picked)
+      setRows(current => current.map(candidate => {
+        const source = project?.config.sources.find(item => item.id === candidate.sourceId)
+        return { ...candidate, path: source?.path ?? candidate.path, targetPath: project !== undefined && project.config.sources.length === 1 ? picked : joinPath(picked, source?.path ?? candidate.path) }
+      }))
+    } else {
+      updateRow(sourceId, { targetPath: picked })
+    }
   }
-  async function inspect(target: string): Promise<void> {
-    if (target.trim() === '') return
-    setInspecting(true)
-    try {
-      const result = await actions.inspectWorkspace({ path: target.trim(), versionId })
-      if (!result.ok) { setFailure(result.error.message); return }
-      setInspection(result.value)
-      const current: Record<string, string> = {}
-      for (const repository of result.value.repositories) {
-        if (repository.current !== undefined) current[repository.sourceId] = repository.current
-      }
-      setBranches(current)
-    } catch (error) { setFailure(error instanceof Error ? error.message : t('state.error')) } finally { setInspecting(false) }
-  }
-  async function start(event: FormEvent): Promise<void> {
+  async function begin(event: FormEvent): Promise<void> {
     event.preventDefault()
-    if (lockId === undefined) { setFailure('missing_lock'); return }
-    if (mode === 'existing' && selected === undefined && !absolute) { setFailure('invalid_path'); return }
-    if (mode === 'existing' && selected === undefined && !inspectedReady) { setFailure('invalid_workspace_path'); return }
+    if (!canStart) { setFailure('invalid_workspace_path'); return }
     setBusy(true); setFailure(undefined)
     try {
       let target: WorkspaceRecord | undefined = selected
-      if (target === undefined && mode === 'new') {
+      if (mode === 'managed') {
+        if (lockId === undefined) { setFailure('missing_lock'); return }
         const requested = Object.fromEntries(Object.entries(branches).filter(([, branch]) => branch.trim() !== '').map(([sourceId, branch]) => [sourceId, branch.trim()]))
-        const prepared = await actions.prepareWorkspace({ versionId, lockId, ...(Object.keys(requested).length === 0 ? {} : { branches: requested }) })
+        const repositories = currentRows.map(row => ({ sourceId: row.sourceId, path: project?.config.sources.length === 1 ? '.' : (row.path.trim() === '' ? '.' : row.path.trim()), targetPath: row.targetPath.trim() }))
+        const prepared = await actions.prepareWorkspace({ versionId, lockId, mode: 'managed', repositories, ...(Object.keys(requested).length === 0 ? {} : { branches: requested }) })
         if (!prepared.ok) { setFailure(prepared.error.message); return }
         target = prepared.value
-      } else if (target === undefined) {
-        const current = Object.fromEntries((inspection?.repositories ?? []).flatMap(repository => repository.current === undefined ? [] : [[repository.sourceId, repository.current] as const]))
-        const registered = await actions.registerWorkspace({
-          path: path.trim(), versionId, lockId,
-          ...(Object.keys(current).length === 0 ? {} : { branches: current }),
-        })
+      } else if (mode === 'direct') {
+        if (lockId === undefined) { setFailure('missing_lock'); return }
+        const single = project?.config.sources.length === 1
+        const repositories = currentRows.map(row => ({ sourceId: row.sourceId, path: single ? '.' : (row.path.trim() === '' ? '.' : row.path.trim()), targetPath: single ? rootPath.trim() : row.targetPath.trim() }))
+        const registered = await actions.registerWorkspace({ path: rootPath.trim(), versionId, lockId, mode: 'direct', rootOwner: 'user', repositories })
         if (!registered.ok) { setFailure(registered.error.message); return }
         target = registered.value
+      } else if (mode === 'linked') {
+        if (lockId === undefined) { setFailure('missing_lock'); return }
+        const repositories = currentRows.map(row => {
+          const trimmed = row.path.trim()
+          const fallback = row.targetPath.trim().split(/[\\/]/u).filter(Boolean).at(-1) ?? 'repo'
+          return { sourceId: row.sourceId, path: trimmed === '' || trimmed === '.' ? fallback : trimmed, targetPath: row.targetPath.trim() }
+        })
+        const prepared = await actions.prepareWorkspace({ versionId, lockId, mode: 'linked', ...(rootPath.trim() === '' ? {} : { path: rootPath.trim() }), repositories })
+        if (!prepared.ok) { setFailure(prepared.error.message); return }
+        target = prepared.value
       }
       if (target === undefined) { setFailure(t('state.error')); return }
       const started = await actions.startAttempt({ taskId: task.id, workspaceId: target.id })
@@ -337,96 +372,149 @@ function StartForm({ t, task, snapshot, versionId, actions }: StartFormProps) {
       const sessionId = await actions.createSessionInWorkspace(target.path, agentPreset)
       const attached = await actions.attachSession({ taskId: task.id, sessionId })
       if (!attached.ok) { setFailure(attached.error.message); return }
+      const acquired = await actions.acquireExecution({ workspaceId: target.id, sessionId })
+      if (!acquired.ok) { setFailure(acquired.error.message); return }
       actions.onSession(sessionId, taskDraftPrompt(t, task))
       actions.onChanged()
     } catch (error) { setFailure(error instanceof Error ? error.message : t('state.error')) } finally { setBusy(false) }
   }
-  return <form style={box} onSubmit={event => { void start(event) }}>
+  const modeLabel: Readonly<Record<WorkspaceMode, LoomKey>> = {
+    reuse: 'workspace.reuse', managed: 'workspace.mode.managed', direct: 'workspace.mode.direct', linked: 'workspace.mode.linked',
+  }
+  return <form style={box} onSubmit={event => { void begin(event) }}>
     <div style={formHeading}>{t('task.start')}</div>
-    <label style={field}>{t('lock.select')}
-      <select aria-label={t('lock.select')} value={lockId ?? ''} disabled={selected !== undefined} onChange={event => setLockId(event.target.value === '' ? undefined : event.target.value as Lock['id'])} style={input}>
-        {locks.map(lock => <option key={lock.id} value={lock.id}>{lock.repositories.map(repository => repository.commit.slice(0, 7)).join(' + ')}</option>)}
-      </select>
-    </label>
     <div style={field}>
-      <span>{t('workspace.source')}</span>
-      <SegmentedControl<WorkspaceMode> id="loom-workspace-mode" className="loom-workspace-switch" value={mode} label={t('workspace.source')}
-        options={[
-          { value: 'new', label: t('workspace.auto') },
-          { value: 'existing', label: t('workspace.existing') },
-        ]}
-        onChange={next => { setMode(next); setFailure(undefined) }} />
+      <span>{t('workspace.mode')}</span>
+      <div role="radiogroup" aria-label={t('workspace.mode')} style={modeGrid}>
+        {(['reuse', 'managed', 'direct', 'linked'] as const).map(candidate => <button key={candidate} type="button" role="radio" aria-checked={mode === candidate}
+          style={{ ...modeCard, ...(mode === candidate ? modeCardActive : {}) }}
+          onClick={() => { setMode(candidate); setFailure(undefined) }}>
+          <span style={modeTitle}>{t(modeLabel[candidate])}</span>
+          <span style={modeHint}>{candidate === 'reuse' ? t('workspace.poolHint') : t(`workspace.mode.${candidate}Hint` as LoomKey)}</span>
+        </button>)}
+      </div>
     </div>
-    {mode === 'new' && <div id="loom-workspace-mode-new-panel" role="tabpanel" aria-labelledby="loom-workspace-mode-new" style={{ display: 'contents' }}>
+    {mode === 'reuse' && <>
+      <div style={field}>
+        <span>{t('workspace.pool')}</span>
+        {pool.length === 0 ? <p style={{ ...hint, margin: 0 }}>{t('workspace.poolEmpty')}</p> : <div style={poolList}>
+          {pool.map(workspace => {
+            const owner = snapshot.executions.find(execution => execution.workspaceId === workspace.id)?.owner
+            const busy = owner !== null && owner !== undefined
+            return <button key={workspace.id} type="button" aria-pressed={workspace.id === existingId}
+              disabled={busy && workspace.id !== priorWorkspace}
+              style={{ ...poolRow, ...(workspace.id === existingId ? poolRowActive : {}) }}
+              onClick={() => { setExistingId(workspace.id); setCrossVersionConfirmed(false); setFailure(undefined) }}>
+              <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3, textAlign: 'left' }}>
+                <span style={{ ...monoText, color: 'var(--dsw-alias-label-primary)' }}>{workspace.path}</span>
+                <span style={{ ...hint, margin: 0 }}>{t(workspace.mode === 'linked' ? 'workspace.linked' : workspace.mode === 'managed' ? 'workspace.managed' : 'workspace.direct')} · {t('workspace.reuseVersion')} {snapshot.versions.find(candidate => candidate.id === workspace.versionId)?.name ?? '—'} · {workspaceBaseline(workspace)}</span>
+              </span>
+              <span style={{ ...poolState, color: busy ? 'var(--dsw-alias-label-warning)' : 'var(--dsw-alias-label-caption)' }}>{busy ? t('workspace.busy') : t('ctx.ready')}</span>
+            </button>
+          })}
+        </div>}
+      </div>
+      {selected !== undefined && <>
+        {crossVersion && <>
+          <p role="alert" style={{ ...alert, margin: 0 }}>{t('workspace.crossVersionWarning')}</p>
+          <label style={{ ...hint, margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+            <input type="checkbox" checked={crossVersionConfirmed} onChange={event => setCrossVersionConfirmed(event.target.checked)} />
+            {t('workspace.crossVersionConfirm')}
+          </label>
+        </>}
+        <p style={{ ...alert, margin: 0 }}>{t('lock.workspaceBaseline')}</p>
+        <p style={{ ...alert, margin: 0 }}>{t('workspace.shareWarning')}</p>
+        <p style={{ ...hint, margin: 0 }}>{t('workspace.cleanRequired')}</p>
+        {sharingTasks.length > 0 && <p style={{ ...alert, margin: 0 }}>{t('workspace.associations')}: {sharingTasks.map(candidate => candidate.title).join(', ')}</p>}
+      </>}
+    </>}
+    {mode === 'managed' && <>
       <p style={{ ...hint, margin: 0 }}>{t('workspace.autoHint')}</p>
+      <label style={field}>{t('lock.select')}
+        <select aria-label={t('lock.select')} value={lockId ?? ''} onChange={event => setLockId(event.target.value === '' ? undefined : event.target.value as Lock['id'])} style={input}>
+          {locks.map(lock => <option key={lock.id} value={lock.id}>{lock.repositories.map(repository => repository.commit.slice(0, 7)).join(' + ')}</option>)}
+        </select>
+      </label>
       {project?.config.sources.map((source, index) => <div key={source.id} style={field}>
         <span style={fieldLabelText}>{sourceLabel(source.path, source.repo)}</span>
         <BranchPicker t={t} source={source} value={branches[source.id] ?? ''} listBranches={actions.repositoryBranches} onChange={value => setBranches(current => ({ ...current, [source.id]: value }))} />
         {index === 0 && <span style={hint}>{t('workspace.branchHint')}</span>}
       </div>)}
-    </div>}
-    {mode === 'existing' && <div id="loom-workspace-mode-existing-panel" role="tabpanel" aria-labelledby="loom-workspace-mode-existing" style={{ display: 'contents' }}>
-      {available.length > 0 && <label style={field}>{t('workspace.select')}
-        <select aria-label={t('workspace.select')} value={existingId} onChange={event => {
-          const next = event.target.value as WorkspaceRecord['id'] | 'custom'
-          setExistingId(next); setInspection(undefined); setFailure(undefined)
-          if (next !== 'custom') {
-            const workspace = available.find(candidate => candidate.id === next)
-            if (workspace !== undefined) setLockId(workspace.lockId)
-          }
-        }} style={input}>
-          <option value="custom">{t('workspace.pickFolder')}</option>
-          {available.map(workspace => <option key={workspace.id} value={workspace.id} disabled={workspaceBusy(workspace)}>{workspace.path} · {workspaceBaseline(workspace)}{workspaceBusy(workspace) ? ` · ${t('workspace.busy')}` : ''}</option>)}
-        </select>
-      </label>}
-      {selected === undefined && <>
+      <p style={{ ...hint, margin: 0 }}>{t('workspace.autoPathHint')}</p>
+    </>}
+    {mode === 'direct' && <>
+      <p style={{ ...hint, margin: 0 }}>{t('workspace.mode.directHint')}</p>
+      {(project?.config.sources.length ?? 0) > 1 && <p role="alert" style={{ ...alert, margin: 0 }}>{t('workspace.mode.directMultiWarning')}</p>}
+      <label style={field}>{t('workspace.directRoot')}
         <div style={{ display: 'flex', gap: 6 }}>
-          <input aria-label={t('workspace.path')} placeholder={t('workspace.pathHint')} value={path}
-            onChange={event => { setPath(event.target.value); setInspection(undefined); setFailure(undefined) }}
-            onBlur={() => { if (path.trim() !== '' && inspection === undefined) void inspect(path) }} style={{ ...input, flex: 1 }} />
-          <Button type="button" variant="outline" icon={<IconFolderOpenRegular />} onClick={() => { void browse() }}>{t('workspace.browse')}</Button>
+          <input aria-label={t('workspace.directRoot')} placeholder={t('workspace.pathHint')} value={rootPath}
+            onChange={event => {
+              const value = event.target.value
+              setRootPath(value); setFailure(undefined)
+              if (project?.config.sources.length === 1) setRows(current => current.map(row => ({ ...row, path: '.', targetPath: value })))
+            }} style={{ ...input, flex: 1 }} />
+          <Button type="button" variant="outline" icon={<IconFolderOpenRegular />} onClick={() => { void browseTarget(project?.config.sources[0]?.id ?? '', true) }}>{t('workspace.browse')}</Button>
         </div>
-        <p style={{ ...hint, margin: 0 }}>{t('workspace.gitOnly')}</p>
-        {inspecting && <p style={{ ...alert, margin: 0 }}>{t('workspace.inspecting')}</p>}
-        {inspection !== undefined && !inspecting && !inspectedReady && <>
-          <p role="alert" style={alert}>{t('error.invalidWorkspacePath')}</p>
-          <p style={{ ...hint, margin: 0 }}>{t('workspace.rootHint')}</p>
-        </>}
-        {inspection !== undefined && !inspecting && <div style={repoList}>
-          {inspection.repositories.map(repository => <div key={repository.sourceId} style={repoRow}>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repository.directory}</span>
-            {repository.error === undefined
-              ? <span style={{ color: 'var(--dsw-alias-state-success-primary)', flex: 'none' }}>{repository.current ?? t('workspace.detached')}</span>
-              : <span style={{ color: 'var(--dsw-alias-label-error)', flex: 'none' }}>{t('workspace.notGit')}</span>}
-          </div>)}
-        </div>}
-      </>}
-      {selected !== undefined && <>
-        <p style={{ ...alert, margin: 0 }}>{t('lock.workspaceBaseline')}</p>
-        <p style={{ ...alert, margin: 0 }}>{t('workspace.shareWarning')}</p>
-        {sharingTasks.length > 0 && <p style={{ ...alert, margin: 0 }}>{t('workspace.associations')}: {sharingTasks.map(candidate => candidate.title).join(', ')}</p>}
-        <p style={{ ...hint, margin: 0 }}>{t('workspace.existingBranchHint')}</p>
-        {project !== undefined && <div style={repoList}>
-          {project.config.sources.map(source => <div key={source.id} style={repoRow}>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sourceLabel(source.path, source.repo)}</span>
-            <span style={{ color: 'var(--dsw-alias-label-caption)', flex: 'none' }}>{selected.branches?.[source.id] ?? t('workspace.detached')}</span>
-          </div>)}
-        </div>}
-      </>}
-      {failure === undefined && !canStart && path.trim() === '' && <p style={{ ...hint, margin: 0 }}>{t('workspace.pickFolderHint')}</p>}
-    </div>}
-    {mode === 'new' && <p style={{ ...hint, margin: 0 }}>{t('workspace.autoPathHint')}</p>}
+      </label>
+      <p style={{ ...hint, margin: 0 }}>{t('workspace.directRootHint')}</p>
+      <div style={field}>
+        <span>{t('workspace.mapping')}</span>
+        <p style={{ ...hint, margin: 0 }}>{t('workspace.mappingHint')}</p>
+        {project?.config.sources.map(source => {
+          const row = currentRows.find(candidate => candidate.sourceId === source.id) ?? { sourceId: source.id, path: source.path, targetPath: '' }
+          return <div key={source.id} style={mappingRow}>
+            <span style={{ ...hint, margin: 0, flex: '1 1 120px', minWidth: 0 }}>{sourceLabel(source.path, source.repo)}</span>
+            <input aria-label={`${t('workspace.logicalPath')} ${source.id}`} value={row.path} onChange={event => updateRow(source.id, { path: event.target.value })} style={{ ...input, flex: '0 1 110px' }} />
+            <input aria-label={`${t('workspace.target')} ${source.id}`} value={row.targetPath} onChange={event => updateRow(source.id, { targetPath: event.target.value })} style={{ ...input, flex: '1 1 220px' }} />
+            <Button type="button" variant="outline" icon={<IconFolderOpenRegular />} onClick={() => { void browseTarget(source.id, false) }}>{t('workspace.browse')}</Button>
+          </div>
+        })}
+      </div>
+      <p style={{ ...hint, margin: 0 }}>{t('workspace.cleanRequired')}</p>
+    </>}
+    {mode === 'linked' && <>
+      <p style={{ ...hint, margin: 0 }}>{t('workspace.mode.linkedHint')}</p>
+      <p role="alert" style={{ ...alert, margin: 0 }}>{t('workspace.mode.fullAccessWarning')}</p>
+      <label style={field}>{t('workspace.linkRoot')}
+        <input aria-label={t('workspace.linkRoot')} placeholder={t('workspace.autoPathHint')} value={rootPath} onChange={event => { setRootPath(event.target.value); setFailure(undefined) }} style={input} />
+      </label>
+      <p style={{ ...hint, margin: 0 }}>{t('workspace.linkRootHint')}</p>
+      <div style={field}>
+        <span>{t('workspace.mapping')}</span>
+        <p style={{ ...hint, margin: 0 }}>{t('workspace.mappingHint')}</p>
+        {project?.config.sources.map(source => {
+          const row = currentRows.find(candidate => candidate.sourceId === source.id) ?? { sourceId: source.id, path: source.path, targetPath: '' }
+          return <div key={source.id} style={mappingRow}>
+            <span style={{ ...hint, margin: 0, flex: '1 1 120px', minWidth: 0 }}>{sourceLabel(source.path, source.repo)}</span>
+            <input aria-label={`${t('workspace.logicalPath')} ${source.id}`} value={row.path} onChange={event => updateRow(source.id, { path: event.target.value })} style={{ ...input, flex: '0 1 110px' }} />
+            <input aria-label={`${t('workspace.target')} ${source.id}`} placeholder={t('workspace.targetHint')} value={row.targetPath} onChange={event => updateRow(source.id, { targetPath: event.target.value })} style={{ ...input, flex: '1 1 220px' }} />
+            <Button type="button" variant="outline" icon={<IconFolderOpenRegular />} onClick={() => { void browseTarget(source.id, false) }}>{t('workspace.browse')}</Button>
+          </div>
+        })}
+      </div>
+      <p style={{ ...hint, margin: 0 }}>{t('workspace.cleanRequired')}</p>
+    </>}
     <p style={{ ...hint, margin: 0 }}>{t('task.draftHint')}</p>
     {failure !== undefined && <Failure t={t} failure={failure} />}
-    <Button type="submit" variant="primary" className="loom-primary" disabled={busy || (mode === 'existing' && !canStart)} style={{ alignSelf: 'flex-start' }}>
+    <Button type="submit" variant="primary" className="loom-primary" disabled={busy || !canStart} style={{ alignSelf: 'flex-start' }}>
       {busy ? t('form.submitPending') : t('task.start')}
     </Button>
   </form>
 }
 
+const modeGrid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6 }
+const modeCard: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: '8px 9px', textAlign: 'left', color: 'var(--dsw-alias-label-secondary)', background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 7, cursor: 'pointer', font: 'inherit' }
+const modeCardActive: CSSProperties = { borderColor: 'var(--dsw-alias-border-l3)', background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)' }
+const modeTitle: CSSProperties = { fontSize: 11.5, fontWeight: 500 }
+const modeHint: CSSProperties = { color: 'var(--dsw-alias-label-caption)', fontSize: 10, lineHeight: 1.4 }
+const poolList: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
+const poolRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 8px', textAlign: 'left', color: 'inherit', background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 6, cursor: 'pointer', font: 'inherit' }
+const poolRowActive: CSSProperties = { borderColor: 'var(--dsw-alias-border-l3)', background: 'var(--dsw-alias-bg-layer-1)' }
+const poolState: CSSProperties = { flex: 'none', marginLeft: 'auto', fontSize: 10 }
+const mappingRow: CSSProperties = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, minWidth: 0 }
+const monoText: CSSProperties = { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace', fontSize: 11 }
+
 const formHeading: CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--dsw-alias-label-primary)' }
 const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' }
 const fieldLabelText: CSSProperties = { overflowWrap: 'anywhere' }
 const hint: CSSProperties = { color: 'var(--dsw-alias-label-caption)', fontSize: 11.5, lineHeight: 1.5 }
-const repoList: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, padding: '7px 8px', borderRadius: 6, background: 'var(--dsw-alias-bg-layer-2)', border: '0.5px solid var(--dsw-alias-border-l4)' }
-const repoRow: CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 10, minWidth: 0, fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' }

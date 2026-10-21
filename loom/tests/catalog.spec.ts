@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
-import { createCatalog, type ProjectRecord } from '../src/host/catalog.ts'
+import { createCatalog, migrateCatalog, type ProjectRecord } from '../src/host/catalog.ts'
 const exec = promisify(execFile)
 const dirs: string[] = []
 afterEach(async () => { for (const dir of dirs.splice(0)) { if (!resolve(dir).startsWith(join(tmpdir(), 'loom-catalog-'))) throw Error('unsafe cleanup'); await rm(dir, { recursive: true, force: true }) } })
@@ -275,7 +275,7 @@ it('tracks temporary Sessions until they attach to a task or are forgotten', asy
   expect(catalog.snapshot().temporarySessions).toEqual([])
 })
 
-it('shares an idle workspace between tasks in one version and refuses while another task runs', async () => {
+it('shares an idle workspace between tasks in one version and refuses while another Session owns execution', async () => {
   const { catalog } = await fixture()
   const project = await catalog.createProject(config())
   const version = await catalog.createVersion(project.id, 'v', [{ sourceId: project.config.sources[0]!.id, ref: 'main' }])
@@ -285,7 +285,9 @@ it('shares an idle workspace between tasks in one version and refuses while anot
   const workspace = await catalog.registerPreparedWorkspace({ path: '/tmp/loom-shared', versionId: version.id, lockId: lock.id })
   const running = await catalog.startAttempt(first.id, workspace.id)
   expect(running.attempts[0]?.workspaceId).toBe(workspace.id)
+  const execution = await catalog.acquireExecution(workspace.id, brandString<Branded<'SessionId'>>('session-owner'))
   await expect(catalog.startAttempt(second.id, workspace.id)).rejects.toThrow('workspace_task_running')
+  await catalog.releaseExecution(workspace.id, execution.owner!)
   await catalog.transitionTask(first.id, 'failed', 'human')
   const shared = await catalog.startAttempt(second.id, workspace.id)
   expect(shared.status).toBe('running')
@@ -341,4 +343,145 @@ it('keeps a detached workspace detached when no branch was recorded', async () =
   const reconciled = await catalog.ensureWorkspaceBranches(workspace.id)
   expect(reconciled.branches).toBeUndefined()
   await expect(exec('git', ['-C', join(root, 'web'), 'symbolic-ref', '--short', 'HEAD'])).rejects.toThrow()
+})
+
+it('starts a task from a workspace created for another version of the same project', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
+  const repo = join(dir, 'repo'); await mkdir(repo)
+  await exec('git', ['init', '--quiet', repo])
+  await exec('git', ['-C', repo, 'config', 'user.name', 'Loom Test'])
+  await exec('git', ['-C', repo, 'config', 'user.email', 'loom@example.invalid'])
+  await writeFile(join(repo, 'file.txt'), 'one\n')
+  await exec('git', ['-C', repo, 'add', 'file.txt'])
+  await exec('git', ['-C', repo, 'commit', '--quiet', '-m', 'one'])
+  const head = async (): Promise<string> => (await exec('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim()
+  const catalog = await createCatalog(join(dir, 'state.json'), head)
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo, path: 'web' }], modules: [] })
+  const first = await catalog.createVersion(project.id, 'v1', [{ sourceId: project.config.sources[0]!.id, ref: 'HEAD' }])
+  const firstLock = await catalog.generateLock(first.id)
+  const workspace = await catalog.prepareWorkspace({ path: join(dir, 'ws'), versionId: first.id, lockId: firstLock.id })
+  const worktree = join(workspace.path, 'web')
+  await writeFile(join(worktree, 'file.txt'), 'two\n')
+  await exec('git', ['-C', worktree, 'commit', '--quiet', '-am', 'two'])
+  const actual = (await exec('git', ['-C', worktree, 'rev-parse', 'HEAD'])).stdout.trim()
+  const second = await catalog.createVersion(project.id, 'v2', [{ sourceId: project.config.sources[0]!.id, ref: 'HEAD' }])
+  const secondLock = await catalog.generateLock(second.id)
+  const task = await catalog.createTask(second.id, 'cross-version')
+  const started = await catalog.startAttempt(task.id, workspace.id)
+  expect(started.attempts[0]?.lock.id).not.toBe(secondLock.id)
+  expect(started.attempts[0]?.lock.repositories[0]?.commit).toBe(actual)
+  expect(started.attempts[0]?.lock.versionId).toBe(second.id)
+  await catalog.cleanupWorkspace(workspace.id, true)
+})
+
+it('creates and cleans a linked workspace without deleting the real repositories', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
+  const repo = join(dir, 'repo'); await mkdir(repo)
+  await exec('git', ['init', '--quiet', repo])
+  await exec('git', ['-C', repo, 'config', 'user.name', 'Loom Test'])
+  await exec('git', ['-C', repo, 'config', 'user.email', 'loom@example.invalid'])
+  await writeFile(join(repo, 'file.txt'), 'linked\n')
+  await mkdir(join(repo, '.dsh', 'skills', 'demo'), { recursive: true })
+  await writeFile(join(repo, '.dsh', 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\n')
+  await exec('git', ['-C', repo, 'add', 'file.txt', '.dsh'])
+  await exec('git', ['-C', repo, 'commit', '--quiet', '-m', 'initial'])
+  const catalog = await createCatalog(join(dir, 'state.json'), async () => (await exec('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim())
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'back', repo, path: 'back' }], modules: [] })
+  const version = await catalog.createVersion(project.id, 'v', [{ sourceId: project.config.sources[0]!.id, ref: 'HEAD' }])
+  const lock = await catalog.generateLock(version.id)
+  const workspace = await catalog.prepareWorkspace({
+    path: join(dir, 'linked'), versionId: version.id, lockId: lock.id, mode: 'linked',
+    repositories: [{ sourceId: project.config.sources[0]!.id, path: 'back', targetPath: repo }],
+  })
+  expect(workspace).toMatchObject({ mode: 'linked', rootOwner: 'loom' })
+  expect((await lstat(join(workspace.path, 'back'))).isSymbolicLink()).toBe(true)
+  expect(await readFile(join(workspace.path, 'back', 'file.txt'), 'utf8')).toBe('linked\n')
+  expect((await lstat(join(workspace.path, '.dsh', 'skills', 'repo--demo'))).isSymbolicLink()).toBe(true)
+  await catalog.cleanupWorkspace(workspace.id, true)
+  await expect(lstat(join(workspace.path, 'back'))).rejects.toThrow()
+  await expect(lstat(workspace.path)).rejects.toThrow()
+  expect(await readFile(join(repo, 'file.txt'), 'utf8')).toBe('linked\n')
+})
+
+it('records a direct single-repository workspace and keeps the real folder after cleanup', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
+  const repo = join(dir, 'repo'); await mkdir(repo)
+  await exec('git', ['init', '--quiet', repo])
+  await exec('git', ['-C', repo, 'config', 'user.name', 'Loom Test'])
+  await exec('git', ['-C', repo, 'config', 'user.email', 'loom@example.invalid'])
+  await writeFile(join(repo, 'file.txt'), 'direct\n')
+  await exec('git', ['-C', repo, 'add', 'file.txt'])
+  await exec('git', ['-C', repo, 'commit', '--quiet', '-m', 'initial'])
+  const catalog = await createCatalog(join(dir, 'state.json'), async () => (await exec('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim())
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo, path: '.' }], modules: [] })
+  const version = await catalog.createVersion(project.id, 'v', [{ sourceId: project.config.sources[0]!.id, ref: 'HEAD' }])
+  const lock = await catalog.generateLock(version.id)
+  const workspace = await catalog.registerPreparedWorkspace({
+    path: repo, versionId: version.id, lockId: lock.id, mode: 'direct', rootOwner: 'user',
+    repositories: [{ sourceId: project.config.sources[0]!.id, path: '.', targetPath: repo }],
+  })
+  expect(workspace).toMatchObject({ mode: 'direct', rootOwner: 'user' })
+  await catalog.cleanupWorkspace(workspace.id, true)
+  expect(await readFile(join(repo, 'file.txt'), 'utf8')).toBe('direct\n')
+  expect(catalog.snapshot().workspaces).toEqual([])
+})
+
+it('materializes a single-repository managed workspace at its root without an extra directory layer', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
+  const repo = join(dir, 'repo'); await mkdir(repo)
+  await exec('git', ['init', '--quiet', repo])
+  await exec('git', ['-C', repo, 'config', 'user.name', 'Loom Test'])
+  await exec('git', ['-C', repo, 'config', 'user.email', 'loom@example.invalid'])
+  await writeFile(join(repo, 'file.txt'), 'flat\n')
+  await exec('git', ['-C', repo, 'add', 'file.txt'])
+  await exec('git', ['-C', repo, 'commit', '--quiet', '-m', 'initial'])
+  const catalog = await createCatalog(join(dir, 'state.json'), async () => (await exec('git', ['-C', repo, 'rev-parse', 'HEAD'])).stdout.trim())
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo, path: 'back' }], modules: [] })
+  const version = await catalog.createVersion(project.id, 'v', [{ sourceId: project.config.sources[0]!.id, ref: 'HEAD' }])
+  const lock = await catalog.generateLock(version.id)
+  const root = join(dir, 'flat-workspace')
+  const workspace = await catalog.prepareWorkspace({ path: root, versionId: version.id, lockId: lock.id, mode: 'managed', repositories: [{ sourceId: project.config.sources[0]!.id, path: '.', targetPath: root }] })
+  expect(workspace.repositories?.[0]?.path).toBe('.')
+  expect(await lstat(join(root, '.git'))).toBeDefined()
+  expect(await readFile(join(root, 'file.txt'), 'utf8')).toBe('flat\n')
+  await catalog.cleanupWorkspace(workspace.id, true)
+  await expect(lstat(root)).rejects.toThrow()
+})
+
+it('loads a version-1 catalog and enriches workspaces with layout fields', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
+  const file = join(dir, 'state.json')
+  await writeFile(file, JSON.stringify({
+    schema: 'loom-json-store', version: 1,
+    data: {
+      projects: [{ id: 'p1', config: { name: 'Legacy', sources: [{ id: 'web', repo: '/repos/web', path: 'web' }], modules: [] } }],
+      versions: [{ id: 'v1', projectId: 'p1', name: 'v1', sources: [{ sourceId: 'web', ref: 'main' }] }],
+      locks: [{ id: 'l1', versionId: 'v1', repositories: [{ sourceId: 'web', commit: 'a'.repeat(40) }] }],
+      tasks: [], audit: [], executions: [],
+      workspaces: [{ id: 'w1', path: '/tmp/legacy-ws', versionId: 'v1', lockId: 'l1', managed: true }],
+    },
+  }))
+  const catalog = await createCatalog(file, async () => 'a'.repeat(40))
+  expect(catalog.snapshot().workspaces[0]).toMatchObject({
+    mode: 'managed', rootPath: '/tmp/legacy-ws', rootOwner: 'loom', projectId: 'p1',
+    repositories: [{ sourceId: 'web', path: 'web', targetPath: '/tmp/legacy-ws/web', kind: 'worktree' }],
+  })
+})
+
+it('migrates a Windows catalog path without relying on the host path style', () => {
+  const migrated = migrateCatalog({
+    projects: [{ id: 'p1', config: { name: 'Legacy', sources: [{ id: 'back', repo: 'E:\\repo\\logistics-iems', path: 'back' }], modules: [] } }],
+    versions: [{ id: 'v1', projectId: 'p1', name: 'v', sources: [{ sourceId: 'back', ref: 'main' }] }],
+    workspaces: [{ id: 'w1', path: 'E:\\repo\\logistics-worktree\\v', versionId: 'v1', lockId: 'l1', managed: true }],
+  }) as { workspaces: { repositories: { targetPath: string }[] }[] }
+  expect(migrated.workspaces[0]?.repositories[0]?.targetPath).toBe('E:\\repo\\logistics-worktree\\v\\back')
+})
+
+it('maps a direct workspace that points at the repository root back onto the root binding', () => {
+  const migrated = migrateCatalog({
+    projects: [{ id: 'p1', config: { name: 'Legacy', sources: [{ id: 'back', repo: 'E:\\repo\\logistics-iems', path: 'back' }], modules: [] } }],
+    versions: [{ id: 'v1', projectId: 'p1', name: 'v', sources: [{ sourceId: 'back', ref: 'main' }] }],
+    workspaces: [{ id: 'w1', path: 'E:\\repo\\logistics-iems', versionId: 'v1', lockId: 'l1', managed: false }],
+  }) as { workspaces: { repositories: { path: string; targetPath: string }[] }[] }
+  expect(migrated.workspaces[0]?.repositories[0]).toMatchObject({ path: '.', targetPath: 'E:\\repo\\logistics-iems' })
 })

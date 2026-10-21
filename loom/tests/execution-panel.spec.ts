@@ -5,7 +5,7 @@ import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
 import { ExecutionPanel, taskDraftPrompt, type ExecutionActions } from '../src/client/LoomExecution.tsx'
 import { en, type LoomKey } from '../src/client/locales.ts'
 import { failureKey } from '../src/client/shell.ts'
-import type { CatalogSnapshot, Lock, TaskRecord, VersionRecord, WorkspaceRecord } from 'dsh-workloom/types'
+import type { CatalogSnapshot, Lock, ProjectRecord, TaskRecord, VersionRecord, WorkspaceRecord } from 'dsh-workloom/types'
 const t = (key: LoomKey) => en[key]
 const versionId = brandString<VersionRecord['id']>('v1')
 const lock: Lock = {
@@ -19,8 +19,12 @@ const workspace: WorkspaceRecord = {
   lockId: lock.id,
   path: '/tmp/loom/workspace',
 }
+const project: ProjectRecord = {
+  id: brandString<'loom.project'>('p1'),
+  config: { name: 'Shop', sources: [{ id: brandString<'loom.source'>('web'), repo: brandString<'loom.repo'>('/repo'), path: 'web' }], modules: [] },
+}
 const snapshot: CatalogSnapshot = {
-  projects: [],
+  projects: [project],
   versions: [{ id: versionId, projectId: brandString<'loom.project'>('p1'), name: 'v1', sources: [{ sourceId: lock.repositories[0]!.sourceId, ref: 'main' }] }],
   locks: [lock],
   tasks: [],
@@ -57,15 +61,14 @@ const actions: ExecutionActions = {
 }
 const diffProps = {
   loadChanges: () => Promise.reject(new Error('unused')),
-  renderFactorySlot: () => null,
   wrap: false,
   onToggleWrap: () => {},
 }
 it('offers the start form only for a startable task with a Lock', () => {
   const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: pending, snapshot, selectedSession: undefined, actions, ...diffProps }))
   expect(html).toContain(en['task.start'])
-  expect(html).toContain(en['workspace.auto'])
-  expect(html).toContain(en['workspace.existing'])
+  expect(html).toContain(en['workspace.mode.managed'])
+  expect(html).toContain(en['workspace.mode.direct'])
   expect(html).not.toContain(en['task.accept'])
 })
 it('explains a missing Lock instead of offering an unusable start button', () => {
@@ -118,7 +121,7 @@ it('offers a failed task its retained matching workspace for a new attempt', () 
     attempts: [{ id: brandString<'loom.attempt'>('a1'), lock, workspaceId: workspace.id, sessionIds: [], status: 'failed' }],
   }
   const html = renderToStaticMarkup(createElement(ExecutionPanel, { t, task: failed, snapshot, selectedSession: undefined, actions, ...diffProps }))
-  expect(html).toContain(en['workspace.existing'])
+  expect(html).toContain(en['workspace.reuse'])
   expect(html).toContain(workspace.path)
   expect(html).toContain(en['task.start'])
 })
@@ -150,7 +153,7 @@ it('offers an idle workspace owned by another task in the same version', () => {
   expect(html).toContain(workspace.path)
   expect(html).not.toContain(en['workspace.busy'])
 })
-it('disables a workspace while another task in the same version runs on it', () => {
+it('disables a workspace while another Session owns execution on it', () => {
   const other: TaskRecord = {
     ...pending,
     id: brandString<TaskRecord['id']>('t2'),
@@ -158,9 +161,10 @@ it('disables a workspace while another task in the same version runs on it', () 
     title: 'Other',
     attempts: [{ id: brandString<'loom.attempt'>('a2'), lock, workspaceId: workspace.id, sessionIds: [], status: 'running' }],
   }
+  const owner = { workspaceId: workspace.id, sessionId: brandString<'SessionId'>('s2'), generation: brandNumber<'loom.execution-generation'>(1) }
   const html = renderToStaticMarkup(createElement(ExecutionPanel, {
     t, task: pending, selectedSession: undefined, actions, ...diffProps,
-    snapshot: { ...snapshot, tasks: [pending, other] },
+    snapshot: { ...snapshot, tasks: [pending, other], executions: [{ workspaceId: workspace.id, generation: brandNumber<'loom.execution-generation'>(1), owner, waiting: [], takeover: null }] },
   }))
   expect(html).toContain(workspace.path)
   expect(html).toContain(en['workspace.busy'])
@@ -204,7 +208,7 @@ it('offers a branch picker and draft hint when a new workspace will be created',
   }))
   expect(html).toContain(en['source.branch'])
   expect(html).toContain(en['branch.load'])
-  expect(html).toContain(en['workspace.autoHint'])
+  expect(html).toContain(en['workspace.mode.managedHint'])
   expect(html).toContain(en['workspace.branchHint'])
   expect(html).toContain(en['task.draftHint'])
 })

@@ -4,7 +4,7 @@ import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AuditEntry, CatalogSnapshot, ProjectRecord, TaskRecord, VersionRecord } from 'dsh-workloom/types'
 import { ACTOR_LABEL, AUDIT_LABEL, COLORS, metaLine, PRIORITY_META, STATUS_META } from './shell.ts'
 import type { LoomKey } from './locales.ts'
-import type { LoadWorkspaceChanges, RenderFileDiffSlot } from './LoomDiff.tsx'
+import type { LoadWorkspaceChanges } from './LoomDiff.tsx'
 import { ExecutionPanel, type ExecutionActions } from './LoomExecution.tsx'
 
 type Translate = (key: LoomKey) => string
@@ -42,7 +42,7 @@ function acceptanceItems(description: string): readonly { readonly text: string;
 }
 
 /** One task header plus its description, acceptance, execution controls and recent audit slice. */
-export function LoomTaskWorkbench({ t, task, project, version, snapshot, audit, actions, loadChanges, renderFactorySlot, wrap, onToggleWrap }: {
+export function LoomTaskWorkbench({ t, task, project, version, snapshot, audit, actions, loadChanges, wrap, onToggleWrap }: {
   t: Translate
   task: TaskRecord
   project: ProjectRecord | undefined
@@ -51,7 +51,6 @@ export function LoomTaskWorkbench({ t, task, project, version, snapshot, audit, 
   audit: readonly AuditEntry[]
   actions: ExecutionActions
   loadChanges: LoadWorkspaceChanges
-  renderFactorySlot: RenderFileDiffSlot
   wrap: boolean
   onToggleWrap: () => void
 }): ReactNode {
@@ -95,7 +94,7 @@ export function LoomTaskWorkbench({ t, task, project, version, snapshot, audit, 
       <section style={card} aria-label={t('workbench.execution')}>
         <h3 style={sectionHeading}>{t('workbench.execution')} <span style={{ ...chip, height: 19, color: status.color }}>{t(status.key)}</span></h3>
         {task.attempts.at(-1)?.sessionIds.at(-1) !== undefined && <Button variant="primary" className="loom-primary" onClick={() => actions.onSession(task.attempts.at(-1)?.sessionIds.at(-1) as Parameters<ExecutionActions['onSession']>[0])} style={{ alignSelf: 'flex-start' }}>{t('session.open')}</Button>}
-        <ExecutionPanel t={t} task={task} snapshot={snapshot} selectedSession={undefined} actions={actions} loadChanges={loadChanges} renderFactorySlot={renderFactorySlot} wrap={wrap} onToggleWrap={onToggleWrap} />
+        <ExecutionPanel t={t} task={task} snapshot={snapshot} selectedSession={undefined} actions={actions} loadChanges={loadChanges} wrap={wrap} onToggleWrap={onToggleWrap} />
       </section>
 
       <section style={{ padding: '2px 2px 0' }} aria-label={t('workbench.activity')}>

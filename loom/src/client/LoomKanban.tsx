@@ -60,7 +60,8 @@ function Card({ task, versionName, sessions, versionProjects, moduleNamesByProje
   const commit = shortCommit(task.attempts.at(-1)?.lock)
   const modules = (task.moduleIds ?? []).map(moduleId => moduleNamesByProject.get(versionProjects.get(task.versionId) ?? '')?.get(moduleId) ?? moduleId)
   const lastDragAt = useRef(0)
-  return <button type="button" draggable onDragStart={event => { lastDragAt.current = Date.now(); event.dataTransfer?.setData('text/plain', task.id); if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = 'move' }} onDragEnd={() => { lastDragAt.current = Date.now() }} style={{ ...card, borderLeftColor: meta.color }} onClick={() => { if (Date.now() - lastDragAt.current > 500) onSelect(task) }}>
+  const executing = sessions > 0
+  return <button type="button" className={executing ? 'loom-kb-card-running' : undefined} draggable onDragStart={event => { lastDragAt.current = Date.now(); event.dataTransfer?.setData('text/plain', task.id); if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = 'move' }} onDragEnd={() => { lastDragAt.current = Date.now() }} style={{ ...card, borderLeftColor: meta.color }} onClick={() => { if (Date.now() - lastDragAt.current > 500) onSelect(task) }}>
     <span style={cardTitle}>{task.title}</span>
     {task.description !== undefined && task.description !== '' && <span style={cardDescription}>{task.description}</span>}
     <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>

@@ -2,7 +2,7 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { IconFullscreenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkspaceRecord } from 'dsh-workloom/types'
-import { LoomDiff, type LoadWorkspaceChanges, type RenderFileDiffSlot } from './LoomDiff.tsx'
+import { LoomDiff, type LoadWorkspaceChanges } from './LoomDiff.tsx'
 import { failureKey } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
@@ -22,7 +22,6 @@ export interface LoomCleanupDialogProps {
   readonly failure: string | undefined
   readonly discardAllowed: boolean
   readonly loadChanges: LoadWorkspaceChanges
-  readonly renderFactorySlot: RenderFileDiffSlot
   /** Whether comparisons wrap wide lines instead of scrolling sideways. */
   readonly wrap: boolean
   readonly onToggleWrap: () => void
@@ -36,7 +35,7 @@ export interface LoomCleanupDialogProps {
  * @param props - workspace, cleanup outcome and native Diff wiring.
  * @returns the modal, or null when no workspace is selected.
  */
-export function LoomCleanupDialog({ t, workspace, busy, failure, discardAllowed, loadChanges, renderFactorySlot, wrap, onToggleWrap, onConfirm, onDiscard, onCancel }: LoomCleanupDialogProps) {
+export function LoomCleanupDialog({ t, workspace, busy, failure, discardAllowed, loadChanges, wrap, onToggleWrap, onConfirm, onDiscard, onCancel }: LoomCleanupDialogProps) {
   const [showDiff, setShowDiff] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const failureLabel = failure === undefined ? undefined : failureKey(failure)
@@ -56,7 +55,7 @@ export function LoomCleanupDialog({ t, workspace, busy, failure, discardAllowed,
         <button type="button" style={button} onClick={onCancel}>{t('form.close')}</button>
       </div>
       <div style={{ minHeight: 0, overflowY: 'auto', flexShrink: 0 }}>
-      <p style={alert}>{t('workspace.cleanupWarning')}</p>
+      <p style={alert}>{t(workspace.mode === 'direct' ? 'workspace.cleanupDirectWarning' : workspace.mode === 'linked' ? 'workspace.cleanupLinkedWarning' : 'workspace.cleanupWarning')}</p>
       {failure !== undefined && <p role="alert" style={{ ...alert, marginTop: 8 }}>{failureLabel === undefined ? t('state.error') : t(failureLabel)}{failureLabel === undefined ? `: ${failure}` : ''}</p>}
       {discardAllowed && <p role="alert" style={{ ...alert, marginTop: 8 }}>{t('workspace.cleanupDiscardHint')}</p>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
@@ -68,7 +67,7 @@ export function LoomCleanupDialog({ t, workspace, busy, failure, discardAllowed,
         <button type="button" style={button} disabled={busy} onClick={onCancel}>{t('form.cancel')}</button>
       </div>
       </div>
-      {showDiff && <div style={{ ...diffBox, ...(maximized ? { flex: 1 } : { height: 420 }) }}><LoomDiff t={t} workspaceId={workspace.id} loadChanges={loadChanges} renderFactorySlot={renderFactorySlot} wrap={wrap} onToggleWrap={onToggleWrap} /></div>}
+      {showDiff && <div style={{ ...diffBox, ...(maximized ? { flex: 1 } : { height: 420 }) }}><LoomDiff t={t} workspaceId={workspace.id} loadChanges={loadChanges} wrap={wrap} onToggleWrap={onToggleWrap} /></div>}
     </div>
   </div>
 }

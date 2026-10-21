@@ -219,3 +219,13 @@ it('lists local branches and the checked-out branch without changing the worktre
   expect(branches.branches).toEqual(['feature/alpha', 'feature/beta', 'master'].sort((a, b) => a.localeCompare(b)))
   expect((await exec('git', ['-C', f.first, 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe('feature/beta')
 })
+
+it('fetches a missing branch from the default remote before resolving a Lock', async () => {
+  const f = await fixture()
+  const remote = join(f.base, 'remote.git')
+  await exec('git', ['init', '--quiet', '--bare', remote])
+  await exec('git', ['-C', f.first, 'remote', 'add', 'origin', remote])
+  await exec('git', ['-C', f.first, 'push', '--quiet', 'origin', 'HEAD:refs/heads/release'])
+  const head = (await exec('git', ['-C', f.first, 'rev-parse', 'HEAD'])).stdout.trim()
+  expect(await resolveCommit(f.first, 'release')).toBe(head)
+})

@@ -1,7 +1,7 @@
 /** Native-Diff review of one turn's changed files, for the Loom right aside. */
 import { useEffect, useState, type ReactNode } from 'react'
 import { LoomFileCounts, LoomFileRow } from './LoomFileRow.tsx'
-import type { RenderFileDiffSlot } from './LoomDiff.tsx'
+import { LoomHunks } from './LoomHunks.tsx'
 import { LoomWrapToggle } from './LoomWrapToggle.tsx'
 import { diffViewport } from './shell.ts'
 import type { LoomKey } from './locales.ts'
@@ -45,8 +45,6 @@ export interface LoomReviewPreviewProps {
   readonly seq: number
   /** File index to select first, when the opening row named one. */
   readonly initialIndex?: number | undefined
-  /** Native comparison factory registered by ui-deliverables. */
-  readonly renderFactorySlot: RenderFileDiffSlot
   /** Opens one listed file as a whole-file preview. */
   readonly onOpenFile?: (path: string) => void
   /** Whether the comparison wraps wide lines instead of scrolling sideways. */
@@ -104,16 +102,15 @@ function readDiff(value: unknown): ReviewDiff {
 }
 
 /**
- * Draw one turn's changed files as a selector over the native comparison.
+ * Draw one turn's changed files as a selector over a unified comparison.
  * @param props - coordinates, native Diff factory, and the optional whole-file opener.
  * @returns the review, or the state that explains why it is unavailable.
  */
-export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderFactorySlot, onOpenFile, wrap, onToggleWrap }: LoomReviewPreviewProps): ReactNode {
+export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, onOpenFile, wrap, onToggleWrap }: LoomReviewPreviewProps): ReactNode {
   const [summaryState, setSummaryState] = useState<SummaryState>({ kind: 'loading' })
   const [diff, setDiff] = useState<ReviewDiff>({ kind: 'loading' })
   const [selected, setSelected] = useState(initialIndex)
   const [summaryAttempt, setSummaryAttempt] = useState(0)
-  const [diffAttempt, setDiffAttempt] = useState(0)
   useEffect(() => { setSelected(initialIndex) }, [initialIndex, sessionId, seq])
   useEffect(() => {
     if (sessionId === undefined) { setSummaryState({ kind: 'loading' }); return }
@@ -147,7 +144,7 @@ export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderF
       if (!controller.signal.aborted) setDiff(readDiff(value))
     }).catch(() => { if (!controller.signal.aborted) setDiff({ kind: 'error' }) })
     return () => controller.abort()
-  }, [sessionId, seq, file, index, diffAttempt])
+  }, [sessionId, seq, file, index])
   if (sessionId === undefined) return <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.noSession')}</p>
   const selectedFile = file
   return <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 210px) minmax(0, 1fr)', flex: 1, minHeight: 0 }}>
@@ -180,14 +177,7 @@ export function LoomReviewPreview({ t, sessionId, seq, initialIndex = 0, renderF
         {summaryState.kind === 'ready' && summaryState.summary.files.length === 0 && <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.empty')}</p>}
         {summaryState.kind === 'ready' && selectedFile !== undefined && (diff.kind === 'loading'
           ? <p role="status" style={{ margin: 0, padding: 12 }}>{t('diff.loading')}</p>
-          : <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '2px 4px' }}>{renderFactorySlot('deliverables.fileDiff', {
-              state: diff.kind === 'text' ? diff
-                : diff.kind === 'binary' ? { kind: 'binary' }
-                  : diff.kind === 'oversized' ? { kind: 'oversized' }
-                    : diff.kind,
-              split: true, wrap,
-              retry: () => { setDiffAttempt(current => current + 1) },
-            }, { fallback: <p style={{ margin: 0, padding: 12 }}>{t('integrationUnavailable')}</p> })}</div>)}
+          : <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '2px 4px' }}><LoomHunks state={diff.kind === 'text' ? diff : diff.kind === 'binary' ? { kind: 'binary' } : diff.kind === 'oversized' ? { kind: 'oversized' } : diff.kind} wrap={wrap} t={t} /></div>)}
       </div>
     </div>
   </div>

@@ -17,6 +17,8 @@ export interface JsonStoreOptions<T> {
   readonly version: number
   readonly parse: (value: unknown) => T
   readonly stringify?: (value: unknown) => string
+  /** Upgrade data from an older envelope before `parse` sees it. */
+  readonly migrate?: (value: unknown, fromVersion: number) => unknown
 }
 
 /** Snapshots are detached copies; unsuccessful operations never publish new state. */
@@ -51,10 +53,14 @@ export function createJsonStore<T>(options: JsonStoreOptions<T>): JsonStore<T> {
     const envelope: unknown = JSON.parse(text)
     if (typeof envelope !== 'object' || envelope === null || Array.isArray(envelope)
       || !('schema' in envelope) || envelope.schema !== 'loom-json-store'
-      || !('version' in envelope) || envelope.version !== options.version || !('data' in envelope)) {
+      || !('version' in envelope) || typeof envelope.version !== 'number'
+      || !Number.isSafeInteger(envelope.version) || envelope.version < 1 || envelope.version > options.version
+      || !('data' in envelope)) {
       throw new Error('invalid schema envelope')
     }
-    return structuredClone(options.parse(envelope.data))
+    if (envelope.version !== options.version && options.migrate === undefined) throw new Error('unsupported schema version')
+    const data = envelope.version === options.version ? envelope.data : options.migrate?.(envelope.data, envelope.version)
+    return structuredClone(options.parse(data))
   }
 
   return {

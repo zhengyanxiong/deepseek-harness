@@ -1,5 +1,5 @@
 /** Loom workbench shell: project tree, native conversation, context and kanban. */
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCloseOutlineRegular, IconEditOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconPanelLeftOutlineRegular, IconPinFillRegular, IconPinOutlineRegular,
   IconPlusOutlineRegular, IconSettingsOutlineRegular, IconTrashOutlineRegular, Button, Tag, Tooltip,
@@ -72,6 +72,7 @@ export interface LoomInjected {
   listDirectory(path: string | undefined, signal: AbortSignal): Promise<RemoteResult<DirectoryListing>>
   requestDraftInitialization(binding: SessionBinding, options: DraftInitializationOptions): DraftInitializationResult
   createSessionInWorkspace(path: string, agentPreset?: string): Promise<SessionId>
+  openPath(path: string, action?: 'open' | 'reveal'): Promise<boolean>
   workspaceChanges(request: WorkspaceChangesRequest): Promise<RemoteResult<{ repositories: WorkspaceRepositoryChangesRecord[] }>>
   readFile(sessionId: SessionId, path: string, offset: number, signal: AbortSignal): Promise<RemoteResult<WorkspaceFileText>>
   cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
@@ -134,7 +135,6 @@ const modalCard: CSSProperties = { display: 'flex', flexDirection: 'column', wid
 const modalHeader: CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 8, minHeight: 30, marginBottom: 6 }
 const modalTitle: CSSProperties = { fontSize: 18, fontWeight: 500, lineHeight: 1.3, letterSpacing: '-.015em' }
 const modalHint: CSSProperties = { margin: '0 0 12px', color: COLORS.dim, fontSize: 12, lineHeight: 1.55 }
-const modalMeta: CSSProperties = { marginBottom: 6, color: COLORS.faint, fontFamily: 'ui-monospace, monospace', fontSize: 10, lineHeight: 1.2, letterSpacing: '.09em', textTransform: 'uppercase' }
 const modalSub: CSSProperties = { marginTop: 7, color: COLORS.dim, fontSize: 12, lineHeight: 1.5 }
 const MODAL_WIDTH: Readonly<Record<CreateKind | EditKind, number>> = { project: 760, import: 640, version: 660, task: 660 }
 const convHeader: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '9px 16px', borderBottom: `0.5px solid ${COLORS.border}`, minHeight: 40, flex: 'none' }
@@ -343,7 +343,7 @@ function readPinnedProjects(): ProjectRecord['id'][] {
  * @param props - locale, native catalog, session acquisition, catalog actions, and renderer seats.
  * @returns the whole Loom page.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, updateProject, deleteProject, createVersion, updateVersion, deleteVersion, createTask, updateTask, deleteTask, generateLock, prepareWorkspace, registerWorkspace, repositoryBranches, inspectWorkspace, pickDirectory, listDirectory, requestDraftInitialization, startAttempt, attachSession, registerTemporarySession, listAgentPresets, transitionTask, createSessionInWorkspace, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot, renderFactorySlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, updateProject, deleteProject, createVersion, updateVersion, deleteVersion, createTask, updateTask, deleteTask, generateLock, prepareWorkspace, registerWorkspace, repositoryBranches, inspectWorkspace, pickDirectory, listDirectory, requestDraftInitialization, startAttempt, attachSession, registerTemporarySession, listAgentPresets, transitionTask, createSessionInWorkspace, openPath, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [preferences, setPreferences] = useState<LoomPreferences>(readPreferences)
   const [view, setView] = useState<View>(preferences.view)
@@ -537,6 +537,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const detailPriority = detailTask?.priority ?? 'normal'
   const detailModules = (detailTask?.moduleIds ?? []).map(moduleId => displayProject?.config.modules.find(module => module.id === moduleId)?.path ?? moduleId)
   const detailWorkspace = snapshot === undefined ? undefined : currentWorkspace(snapshot, detailTask)
+  const detailAttemptId = detailTask?.attempts.at(-1)?.id
+  const loadTaskChanges = useCallback((request: WorkspaceChangesRequest) => workspaceChanges(detailAttemptId === undefined ? request : { ...request, attemptId: detailAttemptId }), [detailAttemptId, workspaceChanges])
   const anyPreviewOpen = preview !== undefined || review !== undefined
   const asideMin = anyPreviewOpen ? 300 : 320
   const asideCssMax = viewport.width <= 940 ? (anyPreviewOpen ? 380 : 300)
@@ -556,11 +558,11 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   useEffect(() => {
     if (detailWorkspace?.id === undefined || detailWorkspace.cleaned === true) { setDiffCount(0); return }
     let active = true
-    workspaceChanges({ workspaceId: detailWorkspace.id }).then((result) => {
+    workspaceChanges({ workspaceId: detailWorkspace.id, ...(detailAttemptId === undefined ? {} : { attemptId: detailAttemptId }) }).then((result) => {
       if (active) setDiffCount(result.ok ? result.value.repositories.reduce((total, repository) => total + repository.files.length, 0) : 0)
     }, () => { if (active) setDiffCount(0) })
     return () => { active = false }
-  }, [detailWorkspace?.id, detailWorkspace?.cleaned, attempt, workspaceChanges])
+  }, [detailWorkspace?.id, detailWorkspace?.cleaned, detailAttemptId, attempt, workspaceChanges])
   const activeCount = snapshot === undefined ? 0 : activeWorkspaceCount(snapshot)
   const auditWorkspaceIds = new Set<string>((detailTask?.attempts ?? []).map(candidate => candidate.workspaceId))
   const auditRows = snapshot === undefined ? [] : snapshot.audit.filter(entry => detailTask === undefined
@@ -763,6 +765,9 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       .loom-top-action:focus-visible, .loom-top-new:focus-visible, .loom-view-switch button:focus-visible, .loom-menu-item:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
       .loom-top-select:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 3px; }
       @media (hover: none) { .loom-tree-row .loom-row-actions { opacity: 1; visibility: visible; pointer-events: auto; } }
+      @keyframes loom-kb-running { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--loom-accent) 0%, transparent); } 50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--loom-accent) 28%, transparent); } }
+      .loom-kb-card-running { animation: loom-kb-running 1.8s ease-in-out infinite; }
+      @media (prefers-reduced-motion: reduce) { .loom-kb-card-running { animation: none; } }
       @media (max-width: 1180px) { .loom-sidebar { width: 280px !important; } .loom-aside { max-width: 380px !important; } .loom-aside.loom-aside-preview { max-width: 460px !important; } .loom-top-label, .loom-top-divider, .loom-top-activity-label, .loom-top-action-label { display: none; } .loom-top-context { max-width: 140px; } .loom-top-select { max-width: 100px; } .loom-top-activity { padding: 0 7px; } .loom-top-new { width: 30px; padding: 0 !important; } .loom-view-switch button { padding: 0 9px; } .loom-aside.loom-aside-kanban, .loom-aside-handle.loom-aside-handle-kanban, .loom-aside-toggle-kb { display: none !important; } .loom-kb-columns { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } }
       @media (max-width: 940px) { .loom-sidebar { display: none !important; } .loom-sidebar.loom-sidebar-open { display: block !important; position: absolute; top: 48px; bottom: 0; left: 0; z-index: 70; width: 240px !important; box-shadow: 12px 0 28px rgba(0,0,0,.35); } .loom-aside { max-width: 300px !important; } .loom-aside.loom-aside-preview { max-width: 380px !important; } .loom-aside.loom-aside-kanban, .loom-aside-handle.loom-aside-handle-kanban, .loom-aside-toggle-kb { display: none !important; } }
       @media (max-width: 760px) { .loom-kb-columns { grid-template-columns: repeat(5, minmax(140px, 1fr)) !important; } .loom-aside, .loom-aside-handle, .loom-aside-toggle { display: none !important; } .loom-brand-name { display: none; } .loom-top-context { max-width: 128px; } .loom-top-select { max-width: 76px; } }
@@ -961,8 +966,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                     snapshot={snapshot}
                     audit={auditRows}
                     actions={execution}
-                    loadChanges={workspaceChanges}
-                    renderFactorySlot={renderFactorySlot}
+                    loadChanges={loadTaskChanges}
                     wrap={preferences.previewWrap}
                     onToggleWrap={togglePreviewWrap}
                   />
@@ -995,7 +999,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                 <span style={{ ...metaLine, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('review.title', { turn: String(review.turn) })}</span>
                 <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => { workspacePreview.close(); workspaceReviewPreview.close() }} style={{ marginLeft: 'auto', width: 26, height: 26, padding: 0, justifyContent: 'center' }} />
               </div>
-              <LoomReviewPreview t={t} sessionId={review.sessionId} seq={review.seq} initialIndex={review.index} renderFactorySlot={renderFactorySlot} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} onOpenFile={(path) => { openFilePreview({ sessionId: review.sessionId, path, mode: 'file' }) }} />
+              <LoomReviewPreview t={t} sessionId={review.sessionId} seq={review.seq} initialIndex={review.index} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} onOpenFile={(path) => { openFilePreview({ sessionId: review.sessionId, path, mode: 'file' }) }} />
             </div>
           : preview !== undefined
             ? <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
@@ -1004,11 +1008,11 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                 <span style={{ ...metaLine, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preview.path}</span>
                 <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => workspacePreview.close()}>{t('form.close')}</button>
               </div>
-              <LoomFilePreview t={t} workspaceId={detailWorkspace?.id} sessionId={previewSessionId} filePath={preview.path} initialMode={preview.mode ?? 'diff'} loadChanges={workspaceChanges} readFile={readFile} renderFactorySlot={renderFactorySlot} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} />
+              <LoomFilePreview t={t} workspaceId={detailWorkspace?.id} {...(detailAttemptId === undefined ? {} : { attemptId: detailAttemptId })} sessionId={previewSessionId} filePath={preview.path} initialMode={preview.mode ?? 'diff'} loadChanges={workspaceChanges} readFile={readFile} openPath={openPath} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} />
             </div>
             : view === 'kanban'
             ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
-            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], temporarySessions: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} presetName={displayPresetName} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onNewVersion={() => { if (displayProject !== undefined) setProject(displayProject.id); openCreate('version') }} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} onDeleteProject={displayProject === undefined ? undefined : () => removeProject(displayProject)} onDeleteVersion={displayVersion === undefined ? undefined : () => removeVersion(displayVersion)} onDeleteTask={detailTask === undefined ? undefined : () => removeTask(detailTask)} />}
+            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], temporarySessions: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} presetName={displayPresetName} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onNewVersion={() => { if (displayProject !== undefined) setProject(displayProject.id); openCreate('version') }} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} onDeleteProject={displayProject === undefined ? undefined : () => removeProject(displayProject)} onDeleteVersion={displayVersion === undefined ? undefined : () => removeVersion(displayVersion)} onDeleteTask={detailTask === undefined ? undefined : () => removeTask(detailTask)} openPath={openPath} />}
       </aside>}
     </div>
     {!bottomCollapsed && <LoomResizeHandle label={t('layout.resizeBottom')} orientation="horizontal" value={bottomHeight} min={80} max={bottomMax} invert onChange={(height) => setPreferences(current => ({ ...current, bottomHeight: height }))} />}
@@ -1021,8 +1025,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       diffCount={diffCount}
       usage={tokenUsage}
       workspaceId={detailWorkspace?.id}
+      {...(detailAttemptId === undefined ? {} : { attemptId: detailAttemptId })}
       loadChanges={workspaceChanges}
-      renderFactorySlot={renderFactorySlot}
       wrap={preferences.previewWrap}
       onToggleWrap={togglePreviewWrap}
       onOpenFile={(path) => { openFilePreview({ path }); setAsideOpen(true) }}
@@ -1042,7 +1046,6 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       <div role="dialog" aria-modal="true" aria-label={create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')} style={{ ...modalCard, maxWidth: MODAL_WIDTH[create] }} onClick={event => event.stopPropagation()}>
         <div style={modalHeader}>
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            {create === 'version' && <span style={modalMeta}>{t('version.metaCreate')}</span>}
             <strong style={modalTitle}>{create === 'project' ? t('top.newProject') : create === 'import' ? t('project.import') : create === 'version' ? t('top.newVersion') : t('top.newTask')}</strong>
             {create === 'version' && <span style={modalSub}>{t(versionStep === 'name' ? 'version.sub.name' : versionStep === 'refs' ? 'version.sub.refs' : 'version.sub.preview')}</span>}
           </div>
@@ -1061,7 +1064,6 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       <div role="dialog" aria-modal="true" aria-label={edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')} style={{ ...modalCard, maxWidth: MODAL_WIDTH[edit] }} onClick={event => event.stopPropagation()}>
         <div style={modalHeader}>
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            {edit === 'version' && <span style={modalMeta}>{t('version.metaEdit')}</span>}
             <strong style={modalTitle}>{edit === 'project' ? t('project.edit') : edit === 'version' ? t('version.edit') : t('task.edit')}</strong>
           </div>
           <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => setEdit(undefined)} style={{ marginLeft: 'auto', width: 28, height: 28, padding: 0, justifyContent: 'center' }} />

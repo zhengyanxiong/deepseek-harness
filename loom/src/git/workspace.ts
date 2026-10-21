@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from 'node:child_process'
-import { lstat, mkdir, rmdir, stat } from 'node:fs/promises'
+import { lstat, mkdir, readdir, rm, rmdir, stat, symlink, unlink } from 'node:fs/promises'
 import { promisify } from 'node:util'
-import { isAbsolute, normalize, relative, resolve, sep } from 'node:path'
+import { basename, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
 
 /** Quote one repository path for Git's `safe.directory`; Git paths use forward slashes on Windows. */
 function safeDirectory(path: string): string {
@@ -109,15 +109,42 @@ export async function resolveCommit(repo: string, ref: string): Promise<string> 
   const top = await localRepository(repo)
   if (ref.startsWith('-')) throw new WorkspacePreparationError('invalid_ref', [], undefined, ref)
   try {
-    const result = await execFile('git', ['-C', top, 'rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`], { windowsHide: true })
+    return await verifyCommit(top, ref)
+  } catch (error) {
+    if (error instanceof WorkspacePreparationError && error.code !== 'invalid_commit') throw error
+    const fetched = await fetchCommit(top, ref)
+    if (fetched !== undefined) return fetched
+    if (error instanceof WorkspacePreparationError) throw error
+    const detail = gitDetail(error)
+    throw new WorkspacePreparationError('invalid_commit', [], error, `${repo} @ ${ref}${detail === undefined ? '' : ` (${detail})`}`)
+  }
+}
+
+/** Verify an already-fetched ref expression without network access. */
+async function verifyCommit(repo: string, ref: string): Promise<string> {
+  try {
+    const result = await execFile('git', ['-C', repo, 'rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`], { windowsHide: true })
     const commit = result.stdout.trim()
     if (!COMMIT.test(commit)) throw new WorkspacePreparationError('invalid_commit', [], undefined, `${repo} @ ${ref}`)
     return commit
   } catch (error) {
     if (error instanceof WorkspacePreparationError) throw error
-    const detail = gitDetail(error)
-    throw new WorkspacePreparationError('invalid_commit', [], error, `${repo} @ ${ref}${detail === undefined ? '' : ` (${detail})`}`)
+    throw new WorkspacePreparationError('invalid_commit', [], error, `${repo} @ ${ref}`)
   }
+}
+
+/** Fetch one ref from the repository's default remote and resolve FETCH_HEAD. */
+async function fetchCommit(repo: string, ref: string): Promise<string | undefined> {
+  if (ref === '' || ref.includes(':') || ref.startsWith('refs/')) return undefined
+  let remotes: string
+  try { remotes = (await execFile('git', ['-C', repo, 'remote'], { windowsHide: true })).stdout } catch { return undefined }
+  const names = remotes.split(/\r?\n/u).map(name => name.trim()).filter(name => name !== '')
+  const remote = names.includes('origin') ? 'origin' : names[0]
+  if (remote === undefined) return undefined
+  try {
+    await execFile('git', ['-C', repo, 'fetch', '--no-tags', '--quiet', remote, ref], { windowsHide: true })
+    return await verifyCommit(repo, 'FETCH_HEAD')
+  } catch { return undefined }
 }
 
 /** Return porcelain status for one existing worktree without modifying it.
@@ -130,6 +157,93 @@ export async function workingTreeStatus(worktree: string): Promise<string> {
     const result = await execFile('git', ['-C', top, 'status', '--porcelain=v1', '--untracked-files=all'], { windowsHide: true })
     return result.stdout
   } catch (error) { throw new WorkspacePreparationError('status_failed', [], error) }
+}
+
+
+/** Resolve a worktree's current HEAD without changing it.
+ * @param directory - Existing repository directory or worktree.
+ * @returns the full current commit id.
+ */
+export async function resolveHead(directory: string): Promise<string> {
+  const top = await localRepository(directory)
+  try {
+    const commit = (await execFile('git', ['-C', top, 'rev-parse', '--verify', 'HEAD'], { windowsHide: true })).stdout.trim()
+    if (!COMMIT.test(commit)) throw new WorkspacePreparationError('invalid_commit', [], undefined, directory)
+    return commit
+  } catch (error) {
+    if (error instanceof WorkspacePreparationError) throw error
+    throw new WorkspacePreparationError('invalid_commit', [], error, directory)
+  }
+}
+
+/** One repository exposed through a link below a Loom-created workspace root. */
+export interface LinkedRepository {
+  readonly path: string
+  readonly target: string
+}
+
+/** Create a Loom-owned root and link existing repositories into it.
+ * @param root - New absolute workspace root; it must not already exist.
+ * @param repositories - Relative link path and existing repository target.
+ * @returns created root and link paths; removal only ever deletes the links.
+ */
+export async function createLinkedWorkspace(root: string, repositories: readonly LinkedRepository[]): Promise<PreparedWorkspace> {
+  const rootPath = resolve(root)
+  if (!isAbsolute(root)) throw new WorkspacePreparationError('invalid_root')
+  if (repositories.length === 0) throw new WorkspacePreparationError('empty_workspace')
+  const prepared: { path: string; target: string; link: string }[] = []
+  const seen = new Set<string>()
+  for (const repository of repositories) {
+    if (!isAbsolute(repository.target)) throw new WorkspacePreparationError('invalid_target')
+    const target = await localRepository(repository.target)
+    const path = safeRelativePath(repository.path)
+    if (path === '.') throw new WorkspacePreparationError('invalid_path')
+    const link = resolve(rootPath, path)
+    if (!inside(rootPath, link)) throw new WorkspacePreparationError('overlapping_paths')
+    if ([...seen].some(other => other.toLowerCase() === link.toLowerCase() || inside(other.toLowerCase(), link.toLowerCase()) || inside(link.toLowerCase(), other.toLowerCase()))) throw new WorkspacePreparationError('overlapping_paths')
+    seen.add(link)
+    if (await exists(link)) throw new WorkspacePreparationError('existing_target')
+    prepared.push({ path, target, link })
+  }
+  if (await exists(rootPath)) throw new WorkspacePreparationError('existing_root')
+  await mkdir(rootPath, { recursive: true, mode: 0o700 })
+  const created: string[] = []
+  try {
+    for (const item of prepared) {
+      const parent = resolve(item.link, '..')
+      await mkdir(parent, { recursive: true })
+      await symlink(item.target, item.link, process.platform === 'win32' ? 'junction' : 'dir')
+      created.push(item.link)
+    }
+    return { root: rootPath, worktrees: prepared.map(item => item.link) }
+  } catch (error) {
+    const rollbackErrors: string[] = []
+    for (const link of [...created].reverse()) {
+      try { await unlink(link) } catch (rollback) { rollbackErrors.push(`remove link ${link}: ${String(rollback)}`) }
+    }
+    try { await rm(rootPath, { recursive: true, force: true }) } catch (rollback) { rollbackErrors.push(`remove root ${rootPath}: ${String(rollback)}`) }
+    if (error instanceof WorkspacePreparationError) throw new WorkspacePreparationError(error.code, rollbackErrors, error, error.detail)
+    throw new WorkspacePreparationError('link_failed', rollbackErrors, error)
+  }
+}
+
+/** Remove only links created by {@link createLinkedWorkspace}, then the Loom-owned root.
+ * @param root - Loom-owned workspace root.
+ * @param links - Link paths recorded in the workspace bindings.
+ * @returns paths that could not be removed; empty when cleanup completed.
+ */
+export async function removeLinkedWorkspace(root: string, links: readonly string[]): Promise<string[]> {
+  const errors: string[] = []
+  for (const link of links) {
+    try { await unlink(link) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push(link)
+    }
+  }
+  try { await rm(join(root, '.dsh'), { recursive: true, force: true }) } catch { errors.push(join(root, '.dsh')) }
+  try { await rmdir(root) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push(root)
+  }
+  return errors
 }
 
 /** Create a task-owned root and detached worktrees; rollback only this call's creations on failure.
@@ -395,7 +509,7 @@ export async function removeWorkspace(root: string, repositories: readonly { rep
       if (branch !== undefined) await execFile('git', ['-C', repo, 'branch', '-D', '--', branch], { windowsHide: true })
     } catch { errors.push(directory) }
   }
-  try { await rmdir(root, { recursive: true }) } catch (error) {
+  try { await rm(root, { recursive: true, force: true }) } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push(root)
   }
   return errors
@@ -412,4 +526,34 @@ export async function commitsSince(directory: string, baseline: string): Promise
     const result = await execFile('git', ['-C', directory, 'rev-list', '--count', `${baseline}..HEAD`], { windowsHide: true })
     return Number.parseInt(result.stdout.trim(), 10) || 0
   } catch (error) { throw new WorkspacePreparationError('diff_failed', [], error) }
+}
+
+
+/**
+ * Aggregate project skill bundles from repositories into a container root.
+ * DSH discovers project skills only at the workspace root, so a multi-repository
+ * container links each repository's `.dsh/skills` and `.agents/skills` entries
+ * under `<root>/.dsh/skills`. Best-effort: one unreadable repository does not
+ * fail workspace creation.
+ * @param root - Loom-created container root (never a repository worktree).
+ * @param repositories - real repository directories inside the container.
+ */
+export async function linkWorkspaceSkills(root: string, repositories: readonly string[]): Promise<void> {
+  const destination = join(root, '.dsh', 'skills')
+  let created = false
+  for (const repository of repositories) {
+    const prefix = basename(repository).replace(/[^A-Za-z0-9._-]/gu, '-')
+    for (const relativeRoot of ['.dsh/skills', '.agents/skills'] as const) {
+      let entries
+      try { entries = await readdir(join(repository, relativeRoot), { withFileTypes: true }) } catch { continue }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue
+        try {
+          if (!created) { await mkdir(destination, { recursive: true, mode: 0o700 }); created = true }
+          const target = join(repository, relativeRoot, entry.name)
+          await symlink(target, join(destination, `${prefix}--${entry.name}`), process.platform === 'win32' ? (entry.isDirectory() ? 'junction' : 'file') : 'dir')
+        } catch { /* A skill link is an optional discovery aid; never block the workspace. */ }
+      }
+    }
+  }
 }

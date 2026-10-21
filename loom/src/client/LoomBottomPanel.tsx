@@ -2,7 +2,7 @@
 import { useState, type ReactNode } from 'react'
 import { IconFullscreenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AuditEntry } from 'dsh-workloom/types'
-import { LoomDiff, type LoadWorkspaceChanges, type RenderFileDiffSlot } from './LoomDiff.tsx'
+import { LoomDiff, type LoadWorkspaceChanges } from './LoomDiff.tsx'
 import { ACTOR_LABEL, AUDIT_LABEL, COLORS, metaLine } from './shell.ts'
 import type { TokenUsageView } from './projection.ts'
 import type { LoomKey } from './locales.ts'
@@ -22,8 +22,9 @@ export interface LoomBottomPanelProps {
   readonly diffCount: number
   readonly usage: TokenUsageView | undefined
   readonly workspaceId: string | undefined
+  /** Attempt whose start HEAD is the comparison baseline. */
+  readonly attemptId?: string | undefined
   readonly loadChanges: LoadWorkspaceChanges
-  readonly renderFactorySlot: RenderFileDiffSlot
   /** Whether comparisons wrap wide lines instead of scrolling sideways. */
   readonly wrap: boolean
   readonly onToggleWrap: () => void
@@ -46,7 +47,7 @@ const PANES: readonly { id: Pane; key: LoomKey }[] = [
  * @returns the bottom region of the Loom page.
  */
 export function LoomBottomPanel(props: LoomBottomPanelProps): ReactNode {
-  const { t, collapsed, height, pane, audit, diffCount, usage, workspaceId, loadChanges, renderFactorySlot, wrap, onToggleWrap, onOpenFile, onToggle, onPane } = props
+  const { t, collapsed, height, pane, audit, diffCount, usage, workspaceId, attemptId, loadChanges, wrap, onToggleWrap, onOpenFile, onToggle, onPane } = props
   const [diffExpanded, setDiffExpanded] = useState(false)
   return <section style={{ flex: 'none', borderTop: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, display: 'flex', flexDirection: 'column' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 8px', height: 34, overflowX: 'auto', borderBottom: collapsed ? 'none' : `0.5px solid ${COLORS.border}` }}>
@@ -55,7 +56,7 @@ export function LoomBottomPanel(props: LoomBottomPanelProps): ReactNode {
       <button type="button" onClick={onToggle} style={{ marginLeft: !collapsed && pane === 'diff' ? 0 : 'auto', flex: 'none', position: 'sticky', right: 0, zIndex: 1, background: COLORS.panel2, border: 'none', color: COLORS.faint, cursor: 'pointer', font: 'inherit', fontSize: 11, padding: '0 10px', whiteSpace: 'nowrap' }}>{collapsed ? `▴ ${t('bottom.expand')}` : `▾ ${t('bottom.collapse')}`}</button>
     </div>
     {!collapsed && <div style={{ height, overflow: 'auto', padding: '10px 16px', fontSize: 11.5, fontFamily: 'ui-monospace, "Cascadia Code", monospace', lineHeight: 1.75 }}>
-      {pane === 'diff' && <LoomDiff t={t} workspaceId={workspaceId} loadChanges={loadChanges} renderFactorySlot={renderFactorySlot} wrap={wrap} onToggleWrap={onToggleWrap} {...onOpenFile === undefined ? {} : { onOpenFile }} />}
+      {pane === 'diff' && <LoomDiff t={t} workspaceId={workspaceId} {...(attemptId === undefined ? {} : { attemptId })} loadChanges={loadChanges} wrap={wrap} onToggleWrap={onToggleWrap} {...onOpenFile === undefined ? {} : { onOpenFile }} />}
       {pane === 'audit' && (audit.length === 0
         ? <p style={{ ...metaLine, margin: 0 }}>{t('bottom.activityEmpty')}</p>
         : audit.map(entry => <div key={entry.id} style={{ display: 'flex', gap: 12, minWidth: 0 }}>
@@ -82,7 +83,7 @@ export function LoomBottomPanel(props: LoomBottomPanelProps): ReactNode {
           <span style={{ ...metaLine, marginLeft: 'auto' }}>{t('diff.files')}</span>
           <button type="button" onClick={() => setDiffExpanded(false)} style={{ border: `0.5px solid ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.text, cursor: 'pointer', font: 'inherit', fontSize: 12, padding: '4px 8px' }}>{t('form.close')}</button>
         </div>
-        <div style={{ flex: 1, minHeight: 0 }}><LoomDiff t={t} workspaceId={workspaceId} loadChanges={loadChanges} renderFactorySlot={renderFactorySlot} wrap={wrap} onToggleWrap={onToggleWrap} /></div>
+        <div style={{ flex: 1, minHeight: 0 }}><LoomDiff t={t} workspaceId={workspaceId} {...(attemptId === undefined ? {} : { attemptId })} loadChanges={loadChanges} wrap={wrap} onToggleWrap={onToggleWrap} /></div>
       </div>
     </div>}
   </section>

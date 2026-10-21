@@ -24,24 +24,19 @@ it('loads the turn summary and the selected native comparison', async () => {
   vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(
     url.includes('changes.summary') ? Response.json(summary) : Response.json(diff),
   )))
-  const states: string[] = []
   const container = document.createElement('div'); document.body.append(container)
   const root = createRoot(container)
   await act(async () => {
     root.render(createElement(LoomReviewPreview, {
       t: (key: keyof typeof en) => en[key], sessionId: 's1', seq: 9, initialIndex: 1,
       wrap: false, onToggleWrap: () => {},
-      renderFactorySlot: (_name, props) => {
-        const kind = typeof props.state === 'string' ? props.state : props.state.kind
-        states.push(kind)
-        return createElement('div', { 'data-diff-state': kind })
-      },
     }))
   })
   await act(async () => {
     await vi.waitFor(() => { expect(container.textContent).toContain('src/b.ts') })
   })
   expect(container.textContent).toContain(en['review.fileList'])
-  expect(states).toContain('text')
+  expect(container.textContent).toContain('const b = 2')
+  expect(container.querySelector('[data-loom-diff-viewport]')).not.toBeNull()
   await act(async () => { root.unmount() })
 })

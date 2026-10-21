@@ -72,19 +72,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /** Native conversation hosted by Loom's explicit SessionProvider. */
     'loom.conversation': { kind: 'single'; scope: 'session' }
   }
-  interface SlotFactoryMap {
-    /** Native file comparison registered by ui-deliverables; Loom supplies computed hunks. */
-    'deliverables.fileDiff': {
-      scope: 'root'
-      props: {
-        state: 'missing' | 'error' | 'loading' | { kind: 'binary' } | { kind: 'oversized' }
-          | { kind: 'text'; path: string; display: string; before: boolean; after: boolean; coarse: boolean; hunks: readonly { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: readonly string[] }[] }
-        split: boolean
-        wrap: boolean
-        retry: () => void
-      }
-    }
-  }
 }
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap { loom: unknown }
@@ -184,6 +171,10 @@ export function apply(ctx: ClientContext): void {
         createSessionInWorkspace: async (path: string, agentPreset?: string) => {
           const workspace = await ui.workspaces.create({ path })
           return ui.sessions.create({ workspaceId: workspace.workspaceId, ...(agentPreset === undefined ? {} : { agentPreset }) })
+        },
+        openPath: async (path, action = 'open') => {
+          const result = await ui.remote.session.openWorkspacePath(action === 'reveal' ? { path, action } : { path })
+          return result.ok
         },
       }),
     }, LoomPanel))

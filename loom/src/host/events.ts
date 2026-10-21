@@ -1,5 +1,6 @@
 /** Minimal Host event declarations for Loom's Agent gate and Session teardown listeners. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { Context } from '@deepseek-ai/cordis'
 
 /** Decision shape returned by the native tool pre-execute waterfall. */
 export type LoomToolDecision =
@@ -12,7 +13,12 @@ export type LoomToolDecision =
 /** Agent runtime subset observed by the execution gate. */
 export interface LoomAgent {
   readonly status: 'idle' | 'running'
-  readonly session: { readonly id: Branded<'SessionId'> }
+  readonly session: {
+    readonly id: Branded<'SessionId'>
+    readonly header: { readonly cwd?: string | undefined }
+  }
+  /** Agent-scoped context, used for model-visible workspace and skill locations. */
+  readonly ctx: Context
   cancel(cause: { readonly kind: 'user' }, options?: { readonly keepInbox?: boolean | undefined }): void
 }
 
@@ -31,5 +37,13 @@ declare module '@deepseek-ai/cordis' {
     'agent/status'(payload: { readonly agent: LoomAgent; readonly status: 'idle' | 'running' }): void
     /** Native Session disposal; used to release or dequeue its execution token. */
     'session/disposed'(session: { readonly id: Branded<'SessionId'> }): void
+    /** A Session opened in a Loom workspace; linked workspaces need full file access. */
+    'session/created'(session: {
+      readonly id: Branded<'SessionId'>
+      readonly header: { readonly cwd?: string | undefined }
+      append(type: 'sandbox/mode', data: { readonly mode: 'danger-full-access' }): unknown
+    }): void
+    /** A new Agent whose scoped context can carry the workspace repository map. */
+    'agent/created'(payload: { readonly agent: LoomAgent }): void
   }
 }

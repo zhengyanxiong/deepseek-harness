@@ -1,4 +1,4 @@
-/** Changed-file tree and native comparison over one attempt workspace. */
+/** Changed-file tree and comparison over one attempt workspace. */
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
@@ -8,22 +8,20 @@ import type {
   WorkspaceChangesRequest, WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord,
 } from 'dsh-workloom/types'
 import { LoomFileCounts, LoomFileRow } from './LoomFileRow.tsx'
+import { LoomHunks } from './LoomHunks.tsx'
 import { LoomWrapToggle } from './LoomWrapToggle.tsx'
 import { diffViewport } from './shell.ts'
 import type { LoomKey } from './locales.ts'
 
 type Translate = (key: LoomKey) => string
 
-/** The native factory's caller input, structurally identical to its declaration. */
-export interface NativeFileDiffInput {
+/** Diff state accepted by the Loom-owned comparison body. */
+export interface LoomFileDiffInput {
   state: 'missing' | 'error' | 'loading' | { kind: 'binary' } | { kind: 'oversized' } | { kind: 'text'; path: string; display: string; before: boolean; after: boolean; coarse: boolean; hunks: readonly WorkspaceFileChangeRecord['hunks'][number][] }
   split: boolean
   wrap: boolean
   retry: () => void
 }
-
-/** The Factory-render share of the slot props. */
-export type RenderFileDiffSlot = (name: 'deliverables.fileDiff', props: NativeFileDiffInput, options?: { fallback?: ReactNode }) => ReactNode
 
 /** Changes read for one workspace. */
 export type LoadWorkspaceChanges = (request: WorkspaceChangesRequest) => Promise<RemoteResult<{ repositories: WorkspaceRepositoryChangesRecord[] }>>
@@ -100,8 +98,9 @@ export function diffTreeFiles(trees: readonly DiffTreeDirectory[]): readonly Dif
 interface LoomDiffProps {
   readonly t: Translate
   readonly workspaceId: string | undefined
+  /** Attempt whose start HEAD is the comparison baseline. */
+  readonly attemptId?: string | undefined
   readonly loadChanges: LoadWorkspaceChanges
-  readonly renderFactorySlot: RenderFileDiffSlot
   /** Whether the comparison wraps wide lines instead of scrolling sideways. */
   readonly wrap: boolean
   readonly onToggleWrap: () => void
@@ -138,24 +137,23 @@ function TreeBranch({ t, node, depth, collapsed, selectedKey, onToggle, onSelect
 }
 
 /**
- * List a workspace's changed files as a repository tree and draw the selected file with native comparison.
+ * List a workspace's changed files as a repository tree and draw the selected file with a unified comparison.
  * @param props - selected workspace, its changes read, and the native factory renderer.
  * @returns the tree and comparison, or the state that stands in for them.
  */
-export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, wrap, onToggleWrap, onOpenFile }: LoomDiffProps): ReactNode {
+export function LoomDiff({ t, workspaceId, attemptId, loadChanges, wrap, onToggleWrap, onOpenFile }: LoomDiffProps): ReactNode {
   const [changes, setChanges] = useState<readonly WorkspaceRepositoryChangesRecord[] | 'loading' | 'error'>('loading')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [selectedKey, setSelectedKey] = useState<string | undefined>(undefined)
-  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     if (workspaceId === undefined) return
     let live = true
     setChanges('loading'); setSelectedKey(undefined); setCollapsed(new Set())
-    void loadChanges({ workspaceId }).then((result) => {
+    void loadChanges({ workspaceId, ...(attemptId === undefined ? {} : { attemptId }) }).then((result) => {
       if (live) setChanges(result.ok ? result.value.repositories : 'error')
     }).catch(() => { if (live) setChanges('error') })
     return () => { live = false }
-  }, [workspaceId, attempt, loadChanges])
+  }, [workspaceId, attemptId, loadChanges])
   if (workspaceId === undefined) return <p style={{ margin: 0, padding: 8 }}>{t('diff.workspace')}</p>
   if (changes === 'loading') return <p style={{ margin: 0, padding: 8 }} role="status">{t('diff.loading')}</p>
   if (changes === 'error') return <p style={{ margin: 0, padding: 8 }} role="alert">{t('state.error')}</p>
@@ -164,7 +162,7 @@ export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, wrap,
   if (files.length === 0) return <p style={{ margin: 0, padding: 8 }}>{t('diff.empty')}</p>
   const selected = files.find(entry => entry.key === selectedKey) ?? files[0]!
   const file = selected.file
-  const state: NativeFileDiffInput['state'] = file.binary ? { kind: 'binary' }
+  const state: LoomFileDiffInput['state'] = file.binary ? { kind: 'binary' }
     : file.hunks.length === 0 ? 'missing'
       : { kind: 'text', path: file.path, display: file.path, before: file.before, after: file.after, coarse: false, hunks: file.hunks }
   const added = files.reduce((total, entry) => total + entry.file.added, 0)
@@ -185,7 +183,7 @@ export function LoomDiff({ t, workspaceId, loadChanges, renderFactorySlot, wrap,
       </div>
     </div>
     <div data-loom-diff-viewport style={diffViewport}>
-      {renderFactorySlot('deliverables.fileDiff', { state, split: true, wrap, retry: () => setAttempt(current => current + 1) }, { fallback: <p style={{ margin: 0 }}>{t('integrationUnavailable')}</p> })}
+      <LoomHunks state={state} wrap={wrap} t={t} />
     </div>
   </div>
 }

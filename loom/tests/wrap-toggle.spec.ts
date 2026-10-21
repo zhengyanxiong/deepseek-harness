@@ -48,8 +48,7 @@ it('asks for the opposite wrap state when pressed', async () => {
   expect(onToggle).toHaveBeenCalledTimes(1)
 })
 
-it('hands the native comparison a bounded viewport and the current wrap state', async () => {
-  const shots: { wrap: boolean }[] = []
+it('draws the comparison in a bounded viewport with the current wrap state', async () => {
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -57,11 +56,11 @@ it('hands the native comparison a bounded viewport and the current wrap state', 
     root?.render(createElement(LoomDiff, {
       t, workspaceId: 'w1', wrap: true, onToggleWrap: () => {},
       loadChanges: () => Promise.resolve({ ok: true as const, value: { repositories } }),
-      renderFactorySlot: (_name, props) => { shots.push({ wrap: props.wrap }); return createElement('div', { 'data-diff-capture': '' }) },
     }))
   })
-  await act(async () => { await vi.waitFor(() => { expect(container?.querySelector('[data-diff-capture]')).not.toBeNull() }) })
-  expect(shots.at(-1)).toEqual({ wrap: true })
+  await act(async () => { await vi.waitFor(() => { expect(container?.textContent).toContain('const a = 1') }) })
   const viewport = container.querySelector('[data-loom-diff-viewport]')
   expect(viewport?.getAttribute('style')).toMatch(/flex-direction:\s*column/u)
+  expect(container.querySelector('[role="table"]')).not.toBeNull()
+  expect(container.textContent).not.toContain(en['integrationUnavailable'])
 })

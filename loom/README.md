@@ -10,10 +10,10 @@ Workloom 复用 DSH 原生的会话、Diff、输入框、模型选择、审批�
 
 - **多项目管理**：一个工作台管理多个项目，每个项目可以包含多个本地 Git 仓库和业务模块。
 - **版本与 Lock**：版本记录每个仓库的分支、标签或提交；生成 Lock 时固定到精确 commit，之后所有任务都基于同一份不可变基线。
-- **任务与工作区**：任务绑定版本，启动执行时从 Lock 物化独立工作区；工作区可以跨多轮 Session 复用，并保留自己的分支。
+- **任务与工作区**：项目拥有可复用的工作区池；任务可以从 Lock 新建 managed / direct / linked 工作区，也可以复用池中已有目录，并支持跨版本显式接管。
 - **原生 Agent 会话**：在任务工作区内启动 DSH 原生会话，继续使用原生工具、审批、模型选择和上下文压缩。
 - **Diff 与验收**：对照 Lock 查看工作区改动、未跟踪文件、未推送提交，并按任务状态流转。
-- **执行权**：同一工作区同时只允许一个 Agent 执行；支持等待、显式接管和释放，避免两个会话同时改同一份代码。
+- **执行权**：同一工作区同时只允许一个 Agent 执行；只有实际占用工作区的 Session 会阻止开始，任务状态本身不会；支持等待、显式接管和释放。
 - **审计与用量**：Activity 面板记录项目、版本、任务、Lock、工作区和执行操作；Usage 面板展示 DSH 原生 token 统计。
 - **可编辑**：项目、版本、任务创建后可以继续修改；编辑会保留内部 repository/module id，避免旧版本、Lock 和任务失联。
 
@@ -27,14 +27,14 @@ Workloom 复用 DSH 原生的会话、Diff、输入框、模型选择、审批�
 从 npm 安装：
 
 ```bash
-dsh plugin --profile web add dsh-workloom@0.1.5
+dsh plugin --profile web add dsh-workloom@0.1.6
 dsh --profile web
 ```
 
 Desktop：
 
 ```bash
-dsh plugin --profile desktop add dsh-workloom@0.1.5
+dsh plugin --profile desktop add dsh-workloom@0.1.6
 ```
 
 然后重启 DSH。Web 端仅刷新浏览器不够，Host 和 Client 都需要重新加载插件。
@@ -42,7 +42,7 @@ dsh plugin --profile desktop add dsh-workloom@0.1.5
 > 本机如果配置了只读镜像（例如 `registry.npmmirror.com`），镜像可能尚未同步新版本。安装时临时使用官方 registry：
 >
 > ```bash
-> npm_config_registry=https://registry.npmjs.org dsh plugin --profile web add dsh-workloom@0.1.5
+> npm_config_registry=https://registry.npmjs.org dsh plugin --profile web add dsh-workloom@0.1.6
 > ```
 
 ## 快速开始
@@ -51,8 +51,8 @@ dsh plugin --profile desktop add dsh-workloom@0.1.5
 2. **新建版本**：为每个仓库填写分支、标签或 commit。Workloom 不会自动 fetch，ref 必须已经在本地存在。
 3. **生成 Lock**：把版本 ref 解析成精确 commit。如果 Git 无法读取仓库，界面会显示具体路径和 Git 的错误信息。
 4. **新建任务**：选择版本、优先级和涉及模块，描述这次要完成的工作。
-5. **开始执行**：指定工作区目录，Workloom 从 Lock 创建工作区并启动原生 Session。
-6. **查看 Diff、验收、清理**：工作区有未提交改动或未推送提交时，清理会要求二次确认。
+5. **开始执行**：选择工作区模式（复用池、managed、direct、linked），Workloom 启动原生 Session 并登记执行权。
+6. **查看 Diff、验收、清理**：Diff 以本次 Attempt 启动时的 HEAD 为基线；复用前必须提交工作区改动，清理会二次确认。
 
 ## 核心概念
 
@@ -69,12 +69,32 @@ dsh plugin --profile desktop add dsh-workloom@0.1.5
 ## 兼容性与限制
 
 - 当前只支持**本地 Git 仓库**；不支持远程 clone、Git URL 或跨机器工作区。
-- Lock 创建**不会自动 fetch**；请先在本地拉取所需分支或标签。
+- Lock 创建时如果本地没有对应 ref，会从默认远端（优先 `origin`）执行一次 `git fetch --no-tags <remote> <ref>`，再解析 `FETCH_HEAD`；失败时保留 Git 错误。
 - Git 调用会禁用用户级和系统级配置及 hooks，但会为当前仓库路径显式传入 `safe.directory`，以兼容 Windows 或不同账户下的目录所有者检查。
+- `direct` 直接使用真实目录，Loom 只登记和执行，不复制、不移动、不删除；`linked` 由 Loom 创建容器和链接，清理只删除容器，不删除真实仓库；`managed` 由 Loom 创建 worktree 和根目录，清理会删除这两者。
+- `linked` 会话会以 DSH `danger-full-access` 运行，因为链接目标位于工作区根目录之外；`managed` 与 `direct` 使用 `workspace-write`。
+- 多仓库容器会在根目录聚合各仓库的 `.dsh/skills` 与 `.agents/skills`，让 DSH 的项目技能仍可发现；`direct` 不修改用户目录，改为在会话上下文中列出仓库路径与技能位置。
 - Workloom 的执行权只约束 DSH 托管的 Agent 调用；外部编辑器和终端仍可修改工作区文件。
 - 终止确认观察的是 Agent 状态，不是所有子进程或外部进程。
 - Terminal、测试面板尚未接入原生或外部数据源。
 - 当前为早期预览版本，接口和数据格式仍可能变化；升级前请备份 `$DSH_HOME/loom`。
+
+## 历史数据迁移
+
+旧版 catalog（`schema: loom-json-store` 且 `version: 1`）只保存工作区 `path`、`managed` 和版本 `source.path`。新版加载时会自动补出 `projectId / mode / rootPath / rootOwner / repositories`；显式迁移脚本会把文件写成 `version: 2`，并先备份原文件：
+
+```bash
+# 在仓库根目录执行；默认原地更新并生成 catalog.json.v1-<时间戳>.bak
+pnpm --dir loom migrate-catalog --file "$DSH_HOME/loom/catalog.json"
+
+# 或写到另一个文件，先对比再替换
+pnpm --dir loom migrate-catalog --file "$DSH_HOME/loom/catalog.json" --output /tmp/catalog.v2.json
+
+# Windows PowerShell
+pnpm --dir loom migrate-catalog --file "$env:DSH_HOME\loom\catalog.json"
+```
+
+迁移只改 catalog，不移动、不删除任何用户目录，也不改 DSH Session 文件。`managed` 工作区迁移为 `managed/worktree/rootOwner=loom`；其他旧工作区迁移为 `direct/direct/rootOwner=user`。旧 direct 工作区的 `path` 如果正好等于仓库根目录，迁移会把绑定放回 `.`，避免多出一层目录。如果旧项目把仓库根目录写成了工作区的子目录，请迁移后在项目的“工作区相对目录”里改成 `.`，或改用 `direct` 选择真实仓库根目录。建议迁移前备份整个 `$DSH_HOME/loom`。
 
 ## 开发
 
@@ -96,8 +116,9 @@ Highlights:
 
 - Multiple projects, repositories and business modules in one workbench.
 - A version pins refs per repository; a Lock resolves them to exact commits.
-- Tasks materialize isolated Git worktrees from a Lock and reuse them across Sessions.
-- Native DSH Sessions run inside a task workspace with the usual tools and approvals.
+- A project owns a reusable workspace pool; tasks create managed, direct or linked workspaces or reuse an existing one, with explicit cross-version takeover.
+- Diff baselines each Attempt on the HEAD captured when it started.
+- Native DSH Sessions run inside a task workspace with the usual tools and approvals; linked workspaces run with full file access because their links target real repositories outside the container.
 - Workspace ownership allows one Agent at a time, with waiting, takeover and release.
 - Durable audit history and native token usage reporting.
 - Projects, versions and tasks remain editable after creation.
@@ -105,11 +126,22 @@ Highlights:
 Requirements: DSH `>=0.2.1-rc.2 <0.3.0`, Node.js `>=22.19`.
 
 ```bash
-dsh plugin --profile web add dsh-workloom@0.1.5
+dsh plugin --profile web add dsh-workloom@0.1.6
 dsh --profile web
 ```
 
-Workloom currently supports local Git repositories only, does not fetch missing refs during Lock creation, and remains an early preview. See [TODO](https://github.com/zhengyanxiong/deepseek-harness/blob/feature/dsh-loom/loom/TODO.md) for remaining work.
+Workloom currently supports local Git repositories only and remains an early preview. Lock creation fetches a missing ref from the default remote once, then resolves `FETCH_HEAD`. See [TODO](https://github.com/zhengyanxiong/deepseek-harness/blob/feature/dsh-loom/loom/TODO.md) for remaining work.
+
+## Historical migration
+
+A legacy catalog (`schema: loom-json-store`, `version: 1`) stores only workspace `path`, `managed` and version `source.path`. New code enriches those records on load; the explicit script writes `version: 2` after backing up the source:
+
+```bash
+pnpm --dir loom migrate-catalog --file "$DSH_HOME/loom/catalog.json"
+pnpm --dir loom migrate-catalog --file "$DSH_HOME/loom/catalog.json" --output /tmp/catalog.v2.json
+```
+
+The script changes only the catalog: it never moves or deletes user folders and never rewrites DSH Session files. Legacy `managed` workspaces become `managed/worktree/rootOwner=loom`; all others become `direct/direct/rootOwner=user`. Back up the whole `$DSH_HOME/loom` directory before migrating.
 
 ## License
 

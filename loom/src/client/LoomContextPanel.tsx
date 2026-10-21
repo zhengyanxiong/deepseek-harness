@@ -1,7 +1,7 @@
 /** Workbench context panel over the selected project, version, task and workspace. */
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import {
-  Button, IconBranchOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular, Menu,
+  Button, IconEditOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular, Menu,
   type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
@@ -32,6 +32,8 @@ export interface LoomContextPanelProps {
   readonly onDeleteProject?: (() => Promise<RemoteResult<void>>) | undefined
   readonly onDeleteVersion?: (() => Promise<RemoteResult<void>>) | undefined
   readonly onDeleteTask?: (() => Promise<RemoteResult<void>>) | undefined
+  /** Opens a mapped repository in the desktop's default tool. */
+  readonly openPath?: ((path: string) => void) | undefined
 }
 
 const panel: CSSProperties = { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'auto', background: COLORS.panel, borderLeft: `0.5px solid ${COLORS.border}` }
@@ -53,11 +55,8 @@ const repoPath: CSSProperties = { color: COLORS.faint, fontSize: 9.5, fontFamily
 const graphRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, paddingLeft: 2 }
 const dot: CSSProperties = { width: 5, height: 5, borderRadius: '50%', flex: 'none' }
 const graphLabel: CSSProperties = { color: COLORS.dim, fontSize: 9.5, flex: 'none' }
-const tag: CSSProperties = { display: 'inline-flex', alignItems: 'center', flex: 'none', padding: '1px 5px', borderRadius: 3, background: COLORS.panel3, color: COLORS.dim, fontSize: 9, lineHeight: 1.4 }
 const sourceRow: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2, padding: '5px 7px', borderRadius: 5, background: COLORS.panel, border: `0.5px solid ${COLORS.border}` }
 const sourceTitle: CSSProperties = { color: COLORS.text, fontSize: 10.5, fontFamily: 'ui-monospace, monospace', overflowWrap: 'anywhere' }
-const branchLine: CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, color: COLORS.dim, fontSize: 10.5 }
-const refChip: CSSProperties = { display: 'inline-flex', alignItems: 'center', minWidth: 0, maxWidth: '100%', padding: '1px 5px', borderRadius: 4, background: COLORS.panel3, color: COLORS.text, fontFamily: 'ui-monospace, monospace', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 const moduleRow: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 1, padding: '5px 7px', borderRadius: 5, background: COLORS.panel, border: `0.5px solid ${COLORS.border}` }
 
 function SectionHeading({ title: heading, action }: { title: string; action?: ReactNode }) {
@@ -90,17 +89,13 @@ function repoNameOf(path: string): string {
   return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path
 }
 
-/** One repository's Lock, version ref and optional workspace branch. */
-function RepositoryGraph({ t, source, versionRef, workspaceRef, lock }: {
+/** One repository's Lock and version ref; the current branch stays in DSH's native Git panel. */
+function RepositoryGraph({ t, source, versionRef, lock }: {
   t: Translate
   source: SourceConfig
   versionRef: string | undefined
-  workspaceRef: string | undefined
   lock: string | undefined
 }) {
-  const same = versionRef !== undefined && versionRef === workspaceRef
-  const versionLabel = t('version.title')
-  const workspaceLabel = t('workspace.title')
   return <div style={gitRepo}>
     <div style={repoHead}>
       <span style={repoName} title={source.repo}>{repoNameOf(source.repo)}</span>
@@ -111,25 +106,11 @@ function RepositoryGraph({ t, source, versionRef, workspaceRef, lock }: {
       <span style={graphLabel}>{t('lock.title')}</span>
       <span style={{ ...mono, color: lock === undefined ? COLORS.faint : COLORS.text }} title={lock}>{lock ?? t('ctx.noLock')}</span>
     </div>
-    {same
-      ? <div style={{ ...graphRow, paddingLeft: 10 }}>
-        <span style={{ ...dot, background: COLORS.accent }} />
-        <span style={refChip} title={versionRef}>{versionRef}</span>
-        <span style={tag}>{versionLabel}</span>
-        <span style={tag}>{workspaceLabel}</span>
-      </div>
-      : <>
-        <div style={{ ...graphRow, paddingLeft: 10 }}>
-          <span style={{ ...dot, background: COLORS.accent }} />
-          <span style={graphLabel}>{versionLabel}</span>
-          <span style={{ ...mono, color: COLORS.dim }} title={versionRef}>{versionRef ?? t('ctx.noBranch')}</span>
-        </div>
-        <div style={{ ...graphRow, paddingLeft: 10 }}>
-          <span style={{ ...dot, background: COLORS.green }} />
-          <span style={graphLabel}>{workspaceLabel}</span>
-          <span style={{ ...mono, color: COLORS.dim }} title={workspaceRef}>{workspaceRef ?? t('ctx.noBranch')}</span>
-        </div>
-      </>}
+    <div style={{ ...graphRow, paddingLeft: 10 }}>
+      <span style={{ ...dot, background: COLORS.accent }} />
+      <span style={graphLabel}>{t('version.title')}</span>
+      <span style={{ ...mono, color: COLORS.dim }} title={versionRef}>{versionRef ?? t('ctx.noBranch')}</span>
+    </div>
   </div>
 }
 
@@ -138,7 +119,7 @@ function RepositoryGraph({ t, source, versionRef, workspaceRef, lock }: {
  * @param props - catalog records, current selection and owner actions.
  * @returns the aside content for the workbench view.
  */
-export function LoomContextPanel({ t, snapshot, project, version, task, usage, generateLock, onLockChanged, onEditProject, onNewVersion, onEditVersion, onEditTask, onDeleteProject, onDeleteVersion, onDeleteTask }: LoomContextPanelProps) {
+export function LoomContextPanel({ t, snapshot, project, version, task, usage, generateLock, onLockChanged, onEditProject, onNewVersion, onEditVersion, onEditTask, onDeleteProject, onDeleteVersion, onDeleteTask, openPath }: LoomContextPanelProps) {
   const [pendingDelete, setPendingDelete] = useState<DeleteKind>()
   const [deleting, setDeleting] = useState(false)
   const [deleteFailure, setDeleteFailure] = useState<FailureReport>()
@@ -162,7 +143,6 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
   const workspace = currentWorkspace(snapshot, task)
   const projectSource = (sourceId: string) => project?.config.sources.find(source => source.id === sourceId)
   const versionRef = (source: SourceConfig): string | undefined => version?.sources.find(entry => entry.sourceId === source.id)?.ref
-  const workspaceRef = (source: SourceConfig): string | undefined => workspace?.branches?.[source.id]
   const lockCommit = (source: SourceConfig): string | undefined => latestLock?.repositories.find(entry => entry.sourceId === source.id)?.commit.slice(0, 7)
   const moreItems: MenuEntry[] = []
   if (onEditProject !== undefined) moreItems.push({ id: 'edit-project', label: t('project.edit'), icon: <IconEditOutlineRegular /> })
@@ -199,7 +179,7 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
       <section style={section}>
         <SectionHeading title={t('ctx.git')} action={<span style={{ ...hint, fontFamily: 'ui-monospace, monospace' }}>{t('ctx.lockRepos').replace('{count}', String(count))}</span>} />
         {project.config.sources.map(source => <RepositoryGraph key={source.id} t={t} source={source}
-          versionRef={versionRef(source)} workspaceRef={workspaceRef(source)} lock={lockCommit(source)} />)}
+          versionRef={versionRef(source)} lock={lockCommit(source)} />)}
         {version !== undefined && <div style={{ marginTop: 2 }}>
           <LockButton t={t} version={version} generate={generateLock} onCreated={onLockChanged} existing={latestLock !== undefined} disabled={task?.status === 'running'} hint={false} />
           <p style={hint}>{t('ctx.gitHint')}</p>
@@ -216,11 +196,14 @@ export function LoomContextPanel({ t, snapshot, project, version, task, usage, g
         <SectionHeading title={t('ctx.workspace')} />
         {workspace === undefined ? <p style={muted}>{t('workspace.empty')}</p> : <>
           <Row k={t('workspace.path')} v={workspace.path} />
+          <Row k={t('workspace.mode')} v={t(`workspace.mode.${workspace.mode ?? 'managed'}`)} mono={false} />
           <Row k={t('ctx.lock')} v={shortCommit(snapshot.locks.find(lock => lock.id === workspace.lockId)) ?? workspace.lockId} />
-          <p style={{ ...hint, margin: '2px 0 0' }}>{t('ctx.branch')} · {t('ctx.readOnly')}</p>
-          {project.config.sources.map(source => <div key={source.id} style={sourceRow}>
-            <span style={sourceTitle}>{source.path}</span>
-            <span style={branchLine}><IconBranchOutlineRegular size={11} /><span style={refChip} title={workspace.branches?.[source.id]}>{workspaceRef(source) ?? t('ctx.noBranch')}</span></span>
+          {(workspace.repositories ?? []).map(binding => <div key={binding.sourceId} style={sourceRow}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+              <span style={sourceTitle}>{binding.path}</span>
+              {openPath !== undefined && <button type="button" aria-label={`${t('ctx.open')} ${binding.path}`} title={binding.targetPath} onClick={() => { openPath(binding.targetPath) }} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: 0, color: COLORS.accent, font: 'inherit', fontSize: 9.5, cursor: 'pointer', flex: 'none' }}>{t('ctx.open')}</button>}
+            </div>
+            <span style={mono} title={binding.targetPath}>{binding.targetPath}</span>
           </div>)}
         </>}
       </section>

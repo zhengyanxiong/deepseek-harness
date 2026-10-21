@@ -67,7 +67,8 @@
     "build": "pnpm run generate && tsdown",
     "watch": "tsdown --watch",
     "install-local": "pnpm run build && node scripts/stage.mjs",
-    "prepack": "pnpm run build"
+    "prepack": "pnpm run build",
+    "migrate-catalog": "node --import tsx/esm scripts/migrate-catalog.ts"
   },
   "dependencies": {
     "zod": "^4.0.0"

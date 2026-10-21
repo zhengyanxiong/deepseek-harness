@@ -7,6 +7,7 @@ import type { ProjectConfig } from './domain/project.ts'
 export type * from './domain/task.ts'
 export type * from './domain/version.ts'
 export type * from './domain/execution.ts'
+export type * from './domain/workspace.ts'
 export type * from './domain/audit.ts'
 export type * from './host/catalog.ts'
 
@@ -62,6 +63,8 @@ export interface GenerateLockRequest {
 /** Read changes against a workspace's Lock baseline. */
 export interface WorkspaceChangesRequest {
   readonly workspaceId: string
+  /** Attempt whose actual HEAD is the comparison baseline; omitted uses the workspace's last Lock. */
+  readonly attemptId?: string
 }
 /** Workspace ownership and uncommitted-change state. */
 export interface WorkspaceStatusResult {
@@ -89,6 +92,14 @@ export interface WorkspaceRepositoryChangesRecord {
   readonly directory: string
   readonly files: readonly WorkspaceFileChangeRecord[]
 }
+/** One repository input for a direct or linked workspace. */
+export interface WorkspaceRepositoryInput {
+  readonly sourceId: string
+  /** Path below the workspace root; `.` only for a single-repository direct workspace. */
+  readonly path: string
+  /** Real directory Git operates on. */
+  readonly targetPath: string
+}
 /** Materialize one prepared workspace from a version Lock. */
 export interface PrepareWorkspaceRequest {
   /** Explicit absolute root; the Host creates its own directory when omitted. */
@@ -97,6 +108,9 @@ export interface PrepareWorkspaceRequest {
   readonly lockId: string
   /** Optional branch per source id; an omitted source stays on a detached HEAD. */
   readonly branches?: Readonly<Record<string, string>>
+  /** `managed` creates worktrees; `linked` creates a root of links to existing directories. */
+  readonly mode?: 'managed' | 'linked'
+  readonly repositories?: readonly WorkspaceRepositoryInput[]
 }
 /** Record one prepared workspace whose directories already exist. */
 export interface RegisterWorkspaceRequest {
@@ -105,6 +119,12 @@ export interface RegisterWorkspaceRequest {
   readonly lockId: string
   /** Branch per source id; omitted entries keep the repository's current branch. */
   readonly branches?: Readonly<Record<string, string>>
+  /** `direct` records existing directories; `linked` records links created by prepare. */
+  readonly mode?: 'direct' | 'linked'
+  readonly projectId?: string
+  readonly rootPath?: string
+  readonly rootOwner?: 'loom' | 'user'
+  readonly repositories?: readonly WorkspaceRepositoryInput[]
 }
 /** Read branches of one local Git repository. */
 export interface RepositoryBranchesRequest {

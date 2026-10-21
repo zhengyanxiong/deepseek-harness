@@ -9,7 +9,7 @@ const t = (key: LoomKey) => en[key]
 it('offers Diff and File tabs before any workspace is selected', () => {
   const html = renderToStaticMarkup(createElement(LoomFilePreview, {
     t, workspaceId: undefined, sessionId: undefined, filePath: 'src/a.ts',
-    loadChanges: () => Promise.reject(new Error('unused')), renderFactorySlot: () => null,
+    loadChanges: () => Promise.reject(new Error('unused')),
     readFile: () => Promise.reject(new Error('unused')), wrap: false, onToggleWrap: () => {},
   }))
   expect(html).toContain(en['diff.tabDiff'])

@@ -165,7 +165,7 @@ export function thrownFailureReport(error: unknown): FailureReport {
 }
 
 /**
- * Host for the native comparison. Its body owns the scrolling, so the host must
+ * Host for a workspace comparison. Its body owns the scrolling, so the host must
  * bound the height: a bare scrolling block leaves the body at full content height,
  * which strands the columns' horizontal bars at the bottom of the whole
  * comparison and drops wheel scrolling over the code.

@@ -1,5 +1,6 @@
 /** Pure task transitions; callers serialize persistence and workspace execution separately. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { WorkspaceMode, WorkspaceRepositoryBinding } from './workspace.ts'
 
 /** Immutable repository baseline owned by a project version. */
 export interface Lock {
@@ -13,6 +14,12 @@ export interface Workspace {
   readonly id: Branded<'loom.workspace'>
   readonly versionId: Lock['versionId']
   readonly lockId: Lock['id']
+  /** Owning project; present on workspaces created after project-pool migration. */
+  readonly projectId?: Branded<'loom.project'> | undefined
+  readonly mode?: WorkspaceMode | undefined
+  readonly rootPath?: string | undefined
+  readonly rootOwner?: 'loom' | 'user' | undefined
+  readonly repositories?: readonly WorkspaceRepositoryBinding[] | undefined
 }
 
 /** Task state, independent of native Session running and approval states. */
