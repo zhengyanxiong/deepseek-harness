@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workloom · 工作区形态与映射原型</title>
+<style>
+  :root {
+    --canvas: #eef1f5;
+    --surface: #ffffff;
+    --surface-2: #f7f8fa;
+    --surface-3: #eef0f3;
+    --ink: #0f1115;
+    --ink-2: #5d636d;
+    --ink-3: #8b919a;
+    --line: rgba(15, 17, 21, .10);
+    --line-strong: rgba(15, 17, 21, .18);
+    --accent: #4176e6;
+    --accent-hover: #3568d4;
+    --accent-soft: #eef3fe;
+    --success: #2f7a4b;
+    --success-soft: #eef8f1;
+    --warning: #9a6200;
+    --warning-soft: #fff7e8;
+    --danger: #bd3d36;
+    --danger-soft: #fdf2f2;
+    --mono: "SFMono-Regular", "Cascadia Code", "DejaVu Sans Mono", ui-monospace, monospace;
+    --sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", "DejaVu Sans", sans-serif;
+    --shadow: 0 1px 2px rgba(15, 17, 21, .04);
+    --shadow-mock: 0 24px 70px rgba(15, 17, 21, .12), 0 2px 8px rgba(15, 17, 21, .06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--canvas); }
+  body { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; }
+  .page { width: 1440px; margin: 0 auto; padding: 48px 56px 80px; }
+  .page-head { max-width: 980px; margin-bottom: 34px; }
+  .eyebrow { font: 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+  .page-head h1 { margin: 14px 0 0; font-size: 30px; line-height: 1.15; font-weight: 500; letter-spacing: -.02em; }
+  .page-head p { margin: 12px 0 0; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+  .page-head code { font-family: var(--mono); font-size: 12px; background: rgba(15,17,21,.05); padding: 1px 5px; border-radius: 4px; }
+  .artboard { margin-top: 44px; }
+  .art-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
+  .art-head h2 { margin: 10px 0 0; font-size: 20px; line-height: 1.2; font-weight: 500; letter-spacing: -.01em; }
+  .art-head p { margin: 8px 0 0; max-width: 760px; font-size: 12.5px; line-height: 1.65; color: var(--ink-2); }
+  .art-note { flex: none; max-width: 300px; font-size: 11.5px; line-height: 1.65; color: var(--ink-3); text-align: right; }
+
+  .mock { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-mock); overflow: hidden; }
+  .mock-top { height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 9px; height: 9px; border-radius: 999px; background: #d8dce2; display: block; }
+  .brand { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; }
+  .brand-mark { width: 22px; height: 22px; border-radius: 6px; background: var(--ink); color: #fff; display: grid; place-items: center; font: 11px/1 var(--mono); }
+  .mock-top .crumb { color: var(--ink-3); font-size: 11.5px; }
+  .mock-top .spacer { flex: 1; }
+  .mock-top .top-pill { height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); background: var(--surface); }
+  .photo { width: 22px; height: 22px; border-radius: 999px; background: linear-gradient(135deg, #dbe4f6, #c6d5f1); border: 1px solid rgba(15,17,21,.08); }
+
+  .mock-body { display: grid; grid-template-columns: 176px minmax(0, 1fr) 300px; min-height: 560px; }
+  .nav { border-right: 1px solid var(--line); padding: 16px 12px; background: var(--surface-2); }
+  .nav-label { padding: 0 6px; font: 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+  .nav-item { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--ink-2); }
+  .nav-item.on { background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow); font-weight: 500; }
+  .nav-item + .nav-item { margin-top: 2px; }
+  .nav-item .count { margin-left: auto; font: 10px/1 var(--mono); color: var(--ink-3); }
+  .nav-sep { height: 1px; background: var(--line); margin: 14px 4px; }
+  .nav-note { padding: 0 6px; font-size: 10.5px; line-height: 1.55; color: var(--ink-3); }
+
+  .pane { padding: 22px 24px 24px; min-width: 0; }
+  .crumbline { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-3); }
+  .crumbline b { color: var(--ink-2); font-weight: 400; }
+  .pane h3 { margin: 12px 0 0; font-size: 19px; line-height: 1.2; font-weight: 500; letter-spacing: -.01em; }
+  .pane .sub { margin: 7px 0 0; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
+
+  .seg { display: inline-flex; padding: 3px; border-radius: 8px; background: var(--surface-3); gap: 2px; margin-top: 16px; }
+  .seg button { height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12px; cursor: pointer; }
+  .seg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(15,17,21,.10); font-weight: 500; }
+
+  .section-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 20px 0 8px; }
+  .section-label { font-size: 12px; font-weight: 500; color: var(--ink); }
+  .section-meta { font-size: 11px; color: var(--ink-3); }
+  .pool { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .pool-row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; background: var(--surface); }
+  .pool-row + .pool-row { border-top: 1px solid var(--line); }
+  .pool-row.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .radio { width: 15px; height: 15px; border-radius: 999px; border: 1.5px solid var(--line-strong); flex: none; margin-top: 2px; display: grid; place-items: center; background: var(--surface); }
+  .pool-row.sel .radio { border-color: var(--accent); }
+  .pool-row.sel .radio i { width: 7px; height: 7px; border-radius: 999px; background: var(--accent); display: block; }
+  .pool-main { min-width: 0; flex: 1; }
+  .row-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; font-weight: 500; }
+  .row-meta { margin-top: 4px; font: 10.5px/1.45 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+  .row-sub { margin-top: 3px; font-size: 11px; color: var(--ink-2); }
+  .row-side { flex: none; text-align: right; font-size: 10.5px; color: var(--ink-3); line-height: 1.5; }
+  .badge { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 4px; font-size: 10px; font-weight: 500; line-height: 1; white-space: nowrap; }
+  .badge.blue { background: var(--accent-soft); color: var(--accent); }
+  .badge.gray { background: var(--surface-3); color: var(--ink-2); }
+  .badge.green { background: var(--success-soft); color: var(--success); }
+  .badge.amber { background: var(--warning-soft); color: var(--warning); }
+  .badge.red { background: var(--danger-soft); color: var(--danger); }
+  .dot { width: 5px; height: 5px; border-radius: 999px; background: currentColor; display: inline-block; }
+
+  .notice { margin-top: 12px; border-radius: 8px; border: 1px solid; padding: 9px 11px; font-size: 11.5px; line-height: 1.6; display: flex; gap: 8px; align-items: flex-start; }
+  .notice.warn { background: var(--warning-soft); border-color: rgba(154, 98, 0, .18); color: var(--warning); }
+  .notice.info { background: var(--accent-soft); border-color: rgba(65, 118, 230, .16); color: #2f5db8; }
+  .notice.danger { background: var(--danger-soft); border-color: rgba(189, 61, 54, .16); color: var(--danger); }
+  .notice .ic { margin-top: 1px; flex: none; }
+  .notice b { font-weight: 500; }
+  .actions { display: flex; align-items: center; gap: 9px; margin-top: 18px; }
+  .btn { height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid transparent; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 12.5px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; background: transparent; }
+  .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 1px 2px rgba(15,17,21,.12); }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn.primary[disabled] { background: #c9d4e8; color: #fff; cursor: not-allowed; box-shadow: none; }
+  .btn.secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+  .btn.ghost { color: var(--accent); padding: 0 3px; height: 28px; }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 12px; }
+  .spacer { flex: 1; }
+  .hint { font-size: 10.5px; color: var(--ink-3); }
+
+  .side { border-left: 1px solid var(--line); padding: 18px 16px; background: var(--surface); }
+  .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .side-title { font-size: 12px; font-weight: 500; }
+  .side-card { margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .side-card-head { padding: 10px 11px; background: var(--surface-2); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .side-card-head b { font-size: 11.5px; font-weight: 500; }
+  .kv { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 6px 8px; padding: 10px 11px; }
+  .kv dt { color: var(--ink-3); font-size: 10.5px; line-height: 1.5; }
+  .kv dd { margin: 0; font: 10.5px/1.5 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+  .repo-line { display: flex; align-items: flex-start; gap: 7px; padding: 8px 11px; border-top: 1px solid var(--line); }
+  .repo-line:first-of-type { border-top: 0; }
+  .repo-line .repo-name { width: 48px; flex: none; font-size: 11px; font-weight: 500; }
+  .repo-line .repo-path { min-width: 0; font: 10px/1.5 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+  .repo-line .repo-kind { margin-left: auto; flex: none; }
+  .tree { padding: 11px 12px; font: 10.5px/1.7 var(--mono); color: var(--ink-2); background: var(--surface-2); border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  .tree .muted { color: var(--ink-3); }
+  .tree .link { color: var(--accent); }
+
+  /* wizard */
+  .wizard { display: grid; grid-template-columns: 188px minmax(0, 1fr); min-height: 610px; }
+  .steps { border-right: 1px solid var(--line); background: var(--surface-2); padding: 20px 14px; }
+  .step { display: flex; gap: 9px; padding: 8px 7px; border-radius: 7px; }
+  .step + .step { margin-top: 2px; }
+  .step-num { width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-3); font: 10px/20px var(--mono); text-align: center; flex: none; }
+  .step.done .step-num { background: var(--success-soft); border-color: rgba(47,122,75,.2); color: var(--success); }
+  .step.on { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .step.on .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step-text b { display: block; font-size: 11.5px; font-weight: 500; color: var(--ink-2); }
+  .step.on .step-text b { color: var(--ink); }
+  .step-text span { display: block; margin-top: 2px; font-size: 10px; color: var(--ink-3); }
+  .wizard-main { padding: 22px 24px 18px; min-width: 0; }
+  .wizard-main h3 { margin: 7px 0 0; font-size: 18px; font-weight: 500; letter-spacing: -.01em; }
+  .wizard-main .sub { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
+  .modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+  .mode { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); cursor: pointer; min-width: 0; }
+  .mode.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .mode .mode-top { display: flex; align-items: center; gap: 6px; }
+  .mode .mode-radio { width: 12px; height: 12px; border-radius: 999px; border: 1.5px solid var(--line-strong); flex: none; }
+  .mode.on .mode-radio { border-color: var(--accent); background: radial-gradient(circle at center, var(--accent) 0 3px, transparent 3.5px); }
+  .mode b { font-size: 11.5px; font-weight: 500; }
+  .mode p { margin: 6px 0 0; font-size: 10.5px; line-height: 1.5; color: var(--ink-3); }
+  .mode .badge { margin-top: 7px; }
+  .mapping { margin-top: 16px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .map-head, .map-row { display: grid; grid-template-columns: 76px minmax(110px, .8fr) minmax(180px, 1.5fr) 76px; gap: 10px; align-items: center; padding: 8px 11px; }
+  .map-head { background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+  .map-row { border-top: 1px solid var(--line); background: var(--surface); }
+  .map-row:first-of-type { border-top: 0; }
+  .map-row .repo { font-size: 11.5px; font-weight: 500; }
+  .field { height: 28px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 8px; display: flex; align-items: center; gap: 5px; font: 10.5px/1 var(--mono); color: var(--ink-2); background: var(--surface); min-width: 0; }
+  .field span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .field .ic { color: var(--ink-3); flex: none; }
+  .preview { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 10px; margin-top: 12px; }
+  .preview-box { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .preview-head { padding: 8px 10px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 10.5px; color: var(--ink-2); font-weight: 500; }
+  .preview-body { padding: 10px; font: 10.5px/1.7 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+  .preview-body .muted { color: var(--ink-3); }
+  .preview-body .link { color: var(--accent); }
+  .wizard-foot { display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); margin-top: 16px; padding-top: 14px; }
+
+  /* detail */
+  .detail-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 0; min-height: 500px; }
+  .detail-main { padding: 22px 24px; min-width: 0; }
+  .detail-main h3 { margin: 10px 0 0; font-size: 18px; font-weight: 500; }
+  .detail-main .sub { margin: 6px 0 0; font-size: 12px; color: var(--ink-2); line-height: 1.6; }
+  .detail-headline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .detail-rows { margin-top: 14px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .detail-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--surface); }
+  .detail-row:first-child { border-top: 0; }
+  .detail-row dt { font-size: 11px; color: var(--ink-3); line-height: 1.5; }
+  .detail-row dd { margin: 0; min-width: 0; }
+  .detail-row .mono { font: 10.5px/1.55 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+  .detail-row .plain { font-size: 11.5px; color: var(--ink-2); line-height: 1.5; }
+  .detail-row .action { font-size: 11px; color: var(--accent); white-space: nowrap; }
+  .detail-side { border-left: 1px solid var(--line); padding: 18px 16px; background: var(--surface-2); }
+  .side-note { font-size: 10.5px; line-height: 1.65; color: var(--ink-3); margin-top: 10px; }
+
+  .board-foot { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; color: var(--ink-3); font: 10.5px/1.5 var(--mono); }
+  .ic { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; display: block; }
+  .ic.sm { width: 12px; height: 12px; }
+
+  @media (max-width: 900px) {
+    .page { width: auto; padding: 24px 16px 48px; }
+    .mock-body { grid-template-columns: 1fr; }
+    .nav, .side { display: none; }
+    .wizard { grid-template-columns: 1fr; }
+    .steps { display: none; }
+    .modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .map-head { display: none; }
+    .map-row { grid-template-columns: 1fr; gap: 6px; }
+    .detail-wrap { grid-template-columns: 1fr; }
+    .detail-side { display: none; }
+    .art-head { display: block; }
+    .art-note { text-align: left; margin-top: 8px; max-width: none; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.8 4.2h4l1.3 1.6h7.1v6.6a1 1 0 0 1-1 1H2.8a1 1 0 0 1-1-1V4.2Z"/><path d="M1.8 4.2V3.1a1 1 0 0 1 1-1h3l1.2 1.4h5.2a1 1 0 0 1 1 1v.3"/></symbol>
+  <symbol id="i-link" viewBox="0 0 16 16"><path d="M6.4 9.6 9.6 6.4"/><path d="M7.1 4.2 8 3.3a2.6 2.6 0 0 1 3.7 3.7l-.9.9"/><path d="M8.9 11.8l-.9.9a2.6 2.6 0 0 1-3.7-3.7l.9-.9"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.3 14 13H2L8 2.3Z"/><path d="M8 6v3.2"/><path d="M8 11.4v.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="m3 8.4 3.1 3.1L13 4.6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5.2 3.6 12 8l-6.8 4.4V3.6Z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.5 4.5 4.5L6 12.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.4"/><path d="m10.3 10.3 3.2 3.2"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.3" y="5.3" width="8" height="8" rx="1.2"/><path d="M3 10.7V3.9a1 1 0 0 1 1-1h6.8"/></symbol>
+</svg>
+
+<main class="page">
+  <header class="page-head">
+    <div class="eyebrow">Workloom · workspace model</div>
+    <h1>工作区形态与映射：单仓和多仓都能用</h1>
+    <p>
+      这张原型对应 <code>workspace-modes-design.md</code>。核心是项目池 + 四种工作区形态：
+      <b>managed</b>（Loom 建真实 worktree）、<b>direct-single</b>（单仓目录直连）、
+      <b>direct-multi</b>（共同父目录直连）、<b>linked-multi</b>（分散多仓用链接接入）。
+      链接模式按 A 方案使用 <code>danger-full-access</code>，UI 必须显式提示。
+    </p>
+  </header>
+
+  <!-- 01 START -->
+  <section class="artboard">
+    <div class="art-head">
+      <div>
+        <div class="eyebrow">01 / start</div>
+        <h2>开始执行：复用项目池，运行中只拦提交</h2>
+        <p>工作区可跨任务、跨版本复用。执行互斥只看是否有真实执行 owner，不看 task.status；运行中、未提交都在表单里直接说清楚。</p>
+      </div>
+      <div class="art-note">列表中的运行中工作区仍可选中查看，<br>但提交按钮给出明确原因和“打开占用会话”。</div>
+    </div>
+    <div class="mock">
+      <div class="mock-top">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="brand"><span class="brand-mark">W</span> Workloom</div>
+        <span class="crumb">iems / vn_balance / 修复结算页空指针</span>
+        <span class="spacer"></span>
+        <span class="top-pill"><svg class="ic sm"><use href="#i-folder"/></svg> 2 个仓库</span>
+        <span class="photo"></span>
+      </div>
+      <div class="mock-body">
+        <aside class="nav">
+          <div class="nav-label">项目</div>
+          <div class="nav-item on"><svg class="ic sm"><use href="#i-folder"/></svg> iems <span class="count">3</span></div>
+          <div class="nav-item"><svg class="ic sm"><use href="#i-folder"/></svg> logistics-portal</div>
+          <div class="nav-sep"></div>
+          <div class="nav-label">当前版本</div>
+          <div class="nav-item"><span class="dot" style="color:var(--accent)"></span> vn_balance</div>
+          <div class="nav-item"><span class="dot" style="color:var(--ink-3)"></span> 20261112</div>
+          <div class="nav-sep"></div>
+          <div class="nav-label">任务</div>
+          <div class="nav-item on"><span class="dot" style="color:var(--ink-3)"></span> 修复结算页空指针</div>
+          <div class="nav-item"><span class="dot" style="color:var(--ink-3)"></span> 补充汇率回滚测试</div>
+          <div class="nav-sep"></div>
+          <div class="nav-note">项目池是项目级<br>任务和版本都可以复用</div>
+        </aside>
+
+        <main class="pane">
+          <div class="crumbline"><b>任务</b><svg class="ic sm"><use href="#i-chev"/></svg><b>修复结算页空指针</b></div>
+          <h3>开始执行</h3>
+          <p class="sub">选择一个已有工作区，或新建一个。复用前需要所有仓库已提交。</p>
+
+          <div class="seg">
+            <button class="on">使用项目池</button>
+            <button>新建工作区</button>
+          </div>
+
+          <div class="section-row">
+            <div class="section-label">工作区</div>
+            <div class="section-meta">3 个可复用 · 最近使用排序</div>
+          </div>
+
+          <div class="pool">
+            <div class="pool-row sel">
+              <span class="radio"><i></i></span>
+              <div class="pool-main">
+                <div class="row-title">vn_balance · 托管 <span class="badge blue">managed</span><span class="badge amber"><span class="dot"></span> 运行中</span><span class="badge gray">2 仓库</span></div>
+                <div class="row-meta">E:\loom-workspaces\iems\vn_balance</div>
+                <div class="row-sub">last · vn_balance / f3941b7 · back, common</div>
+              </div>
+              <div class="row-side">任务 A · Session 3f2a<br><span style="color:var(--accent)">打开占用会话</span></div>
+            </div>
+
+            <div class="pool-row">
+              <span class="radio"></span>
+              <div class="pool-main">
+                <div class="row-title">vn_balance-direct · 直连 <span class="badge green">clean</span><span class="badge gray">2 仓库</span></div>
+                <div class="row-meta">E:\repo\logistics-worktree</div>
+                <div class="row-sub">back → vn_balance · common → common · last used 2h ago</div>
+              </div>
+              <div class="row-side">空闲</div>
+            </div>
+
+            <div class="pool-row">
+              <span class="radio"></span>
+              <div class="pool-main">
+                <div class="row-title">scattered · 链接 <span class="badge amber">需 full access</span><span class="badge gray">2 仓库</span></div>
+                <div class="row-meta">E:\loom-workspaces\iems\scattered</div>
+                <div class="row-sub">back → E:\repo\...\vn_balance · common → E:\repo\...\common</div>
+              </div>
+              <div class="row-side">空闲</div>
+            </div>
+          </div>
+
+          <div class="notice warn">
+            <svg class="ic"><use href="#i-alert"/></svg>
+            <div><b>这个工作区正在被任务 A 使用。</b> 同一时间只允许一个执行 owner；如需继续，请先打开占用会话或等它结束。不能靠改 task.status 绕过。</div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" disabled><svg class="ic sm"><use href="#i-play"/></svg> 开始执行</button>
+            <button class="btn secondary">查看工作区详情</button>
+            <span class="spacer"></span>
+            <span class="hint">启动前会再检查一次 clean + owner</span>
+          </div>
+        </main>
+
+        <aside class="side">
+          <div class="side-head"><div class="side-title">工作区预览</div><span class="badge blue">managed</span></div>
+          <div class="side-card">
+            <div class="side-card-head"><b>vn_balance</b><span class="badge amber">运行中</span></div>
+            <dl class="kv">
+              <dt>根目录</dt><dd>E:\loom-workspaces\iems\vn_balance</dd>
+              <dt>基线</dt><dd>f3941b7 · 2026-11-12</dd>
+              <dt>Owner</dt><dd>task A / session 3f2a</dd>
+            </dl>
+            <div class="repo-line"><span class="repo-name">back</span><span class="repo-path">back<br><span style="color:var(--ink-3)">loom/vn_balance/back-3efdbc15</span></span><span class="repo-kind badge green">clean</span></div>
+            <div class="repo-line"><span class="repo-name">common</span><span class="repo-path">common<br><span style="color:var(--ink-3)">loom/vn_balance/common-1a2b</span></span><span class="repo-kind badge green">clean</span></div>
+          </div>
+          <div class="side-note">工作区详情里始终显示 root、仓库实际目录和 owner。不要只显示 branch，避免第 5 个问题里的重复信息。</div>
+        </aside>
+      </div>
+    </div>
+    <div class="board-foot"><span>01 · start / pool reuse</span><span>execution owner is the only block</span></div>
+  </section>
+
+  <!-- 02 WIZARD -->
+  <section class="artboard">
+    <div class="art-head">
+      <div>
+        <div class="eyebrow">02 / create</div>
+        <h2>新建工作区：先选形态，再填仓库映射</h2>
+        <p>单仓直连不建目录；多仓同父目录直接指向父目录；多仓分散才创建容器 + 链接。每一步都给出真实路径预览，避免多出一层。</p>
+      </div>
+      <div class="art-note">linked 模式不是默认项；<br>选中后立即显示 full-access 警告。</div>
+    </div>
+    <div class="mock">
+      <div class="mock-top">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="brand"><span class="brand-mark">W</span> Workloom</div>
+        <span class="crumb">新建工作区</span>
+        <span class="spacer"></span>
+        <span class="top-pill">iems · 2 个仓库</span>
+        <span class="photo"></span>
+      </div>
+      <div class="wizard">
+        <aside class="steps">
+          <div class="step done"><span class="step-num"><svg class="ic sm"><use href="#i-check"/></svg></span><span class="step-text"><b>基本信息</b><span>名称 / 项目</span></span></div>
+          <div class="step on"><span class="step-num">2</span><span class="step-text"><b>仓库映射</b><span>形态 / 目录</span></span></div>
+          <div class="step"><span class="step-num">3</span><span class="step-text"><b>分支与基线</b><span>每个仓库</span></span></div>
+          <div class="step"><span class="step-num">4</span><span class="step-text"><b>确认</b><span>预览后创建</span></span></div>
+          <div class="nav-sep"></div>
+          <div class="nav-note">工作区属于项目，不锁死版本；<br>版本基线在启动时记录。</div>
+        </aside>
+
+        <main class="wizard-main">
+          <div class="eyebrow">STEP 2 / 4</div>
+          <h3>仓库放在哪里？</h3>
+          <p class="sub">iems 有 2 个仓库。选择它们当前所在的位置；Loom 只负责组织工作区，不移动你的代码。</p>
+
+          <div class="modes">
+            <div class="mode">
+              <div class="mode-top"><span class="mode-radio"></span><b>自动创建</b></div>
+              <p>Loom 建根目录，并为每个仓库建真实 worktree。</p>
+              <span class="badge gray">managed</span>
+            </div>
+            <div class="mode">
+              <div class="mode-top"><span class="mode-radio"></span><b>单仓直连</b></div>
+              <p>目录就是工作区根；不加一层，不用链接。</p>
+              <span class="badge gray">direct-single</span>
+            </div>
+            <div class="mode">
+              <div class="mode-top"><span class="mode-radio"></span><b>共同父目录</b></div>
+              <p>多个仓库已在同一父目录下，直接使用该父目录。</p>
+              <span class="badge gray">direct-multi</span>
+            </div>
+            <div class="mode on">
+              <div class="mode-top"><span class="mode-radio"></span><b>分散目录链接</b></div>
+              <p>仓库不在一起；Loom 建容器，用链接接入已有目录。</p>
+              <span class="badge amber">linked-multi</span>
+            </div>
+          </div>
+
+          <div class="mapping">
+            <div class="map-head"><span>仓库</span><span>工作区路径</span><span>实际目录</span><span>类型</span></div>
+            <div class="map-row">
+              <span class="repo">back</span>
+              <div class="field"><span>back</span></div>
+              <div class="field"><svg class="ic sm"><use href="#i-folder"/></svg><span>E:\repo\logistics-worktree\vn_balance</span></div>
+              <span class="badge amber">link</span>
+            </div>
+            <div class="map-row">
+              <span class="repo">common</span>
+              <div class="field"><span>common</span></div>
+              <div class="field"><svg class="ic sm"><use href="#i-folder"/></svg><span>E:\repo\common-worktree\vn_balance</span></div>
+              <span class="badge amber">link</span>
+            </div>
+          </div>
+
+          <div class="preview">
+            <div class="preview-box">
+              <div class="preview-head">工作区路径预览</div>
+              <div class="preview-body">
+                E:\loom-workspaces\iems\vn_balance<br>
+                ├─ <span class="link">back</span> <span class="muted">→ E:\repo\logistics-worktree\vn_balance</span><br>
+                └─ <span class="link">common</span> <span class="muted">→ E:\repo\common-worktree\vn_balance</span>
+              </div>
+            </div>
+            <div class="preview-box">
+              <div class="preview-head">会话 cwd</div>
+              <div class="preview-body">
+                E:\loom-workspaces\iems\vn_balance<br>
+                <span class="muted">真实代码仍在原目录；<br>根目录下只有链接。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="notice warn">
+            <svg class="ic"><use href="#i-alert"/></svg>
+            <div><b>链接模式需要 full access。</b> 目标目录在工作区根之外，<code>workspace-write</code> 会拒绝写入；该工作区启动的会话将使用 <code>danger-full-access</code>。只删除链接，不碰目标目录。</div>
+          </div>
+
+          <div class="wizard-foot">
+            <button class="btn secondary">上一步</button>
+            <span class="spacer"></span>
+            <span class="hint">创建前会校验每个目标是否为 Git 仓库</span>
+            <button class="btn primary">下一步：分支与基线</button>
+          </div>
+        </main>
+      </div>
+    </div>
+    <div class="board-foot"><span>02 · create / mapping</span><span>direct by default; link only when scattered</span></div>
+  </section>
+
+  <!-- 03 DETAIL -->
+  <section class="artboard">
+    <div class="art-head">
+      <div>
+        <div class="eyebrow">03 / detail</div>
+        <h2>工作区详情：root、真实目录、基线、owner 分开说</h2>
+        <p>右侧上下文面板不再重复“Git 分支”；工作区详情只回答四个问题：根在哪、每个仓库实际在哪、启动时基线是什么、现在谁在跑。</p>
+      </div>
+      <div class="art-note">复用、同步、Diff 都以这里的<br>bindings + owner 为准。</div>
+    </div>
+    <div class="mock">
+      <div class="mock-top">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="brand"><span class="brand-mark">W</span> Workloom</div>
+        <span class="crumb">工作区 / scattered</span>
+        <span class="spacer"></span>
+        <span class="top-pill"><svg class="ic sm"><use href="#i-folder"/></svg> 在文件管理器中打开</span>
+        <span class="photo"></span>
+      </div>
+      <div class="detail-wrap">
+        <main class="detail-main">
+          <div class="detail-headline">
+            <span class="badge amber">linked-multi</span>
+            <span class="badge gray">项目 iems</span>
+            <span class="badge green"><span class="dot"></span> clean</span>
+            <span class="badge blue">空闲</span>
+          </div>
+          <h3>scattered</h3>
+          <p class="sub">分散多仓工作区。代码没有复制；根目录下是链接。清理时只删除链接和根目录。</p>
+
+          <div class="detail-rows">
+            <div class="detail-row">
+              <dt>工作区根</dt>
+              <dd><div class="mono">E:\loom-workspaces\iems\scattered</div></dd>
+              <span class="action">复制</span>
+            </div>
+            <div class="detail-row">
+              <dt>back</dt>
+              <dd><div class="mono">scattered\back → E:\repo\logistics-worktree\vn_balance</div><div class="plain" style="margin-top:3px;color:var(--ink-3)">branch feature/trx_vn_balance · clean</div></dd>
+              <span class="action">打开目录</span>
+            </div>
+            <div class="detail-row">
+              <dt>common</dt>
+              <dd><div class="mono">scattered\common → E:\repo\common-worktree\vn_balance</div><div class="plain" style="margin-top:3px;color:var(--ink-3)">branch feature/trx_vn_balance · clean</div></dd>
+              <span class="action">打开目录</span>
+            </div>
+            <div class="detail-row">
+              <dt>会话沙箱</dt>
+              <dd><div class="plain">danger-full-access <span class="badge amber" style="margin-left:6px">链接模式</span></div><div class="plain" style="margin-top:3px;color:var(--ink-3)">因为目标在工作区根之外；关闭该工作区不会影响其他工作区。</div></dd>
+              <span class="action">说明</span>
+            </div>
+            <div class="detail-row">
+              <dt>上次基线</dt>
+              <dd><div class="mono">f3941b7 · vn_balance / 2026-11-12</div><div class="plain" style="margin-top:3px;color:var(--ink-3)">仅作展示；新一次执行会重新记录实际 HEAD。</div></dd>
+              <span class="action">查看 Lock</span>
+            </div>
+            <div class="detail-row">
+              <dt>运行 owner</dt>
+              <dd><div class="plain">无。可被任意任务复用；启动前仍会检查所有仓库 clean。</div></dd>
+              <span class="action">—</span>
+            </div>
+          </div>
+
+          <div class="notice info">
+            <svg class="ic"><use href="#i-alert"/></svg>
+            <div>这里不显示“当前分支”作为独立区块；分支属于每个仓库绑定。版本基线 vs 实际 HEAD 放在“基线”行里，避免第 5 个问题的重复。</div>
+          </div>
+        </main>
+
+        <aside class="detail-side">
+          <div class="side-title">复用规则</div>
+          <div class="side-card" style="margin-top:10px">
+            <div class="side-card-head"><b>启动前检查</b></div>
+            <div style="padding:10px 11px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;gap:7px;align-items:flex-start"><svg class="ic sm" style="color:var(--success);margin-top:1px"><use href="#i-check"/></svg><span style="font-size:10.5px;line-height:1.55;color:var(--ink-2)">execution.owner 为空</span></div>
+              <div style="display:flex;gap:7px;align-items:flex-start"><svg class="ic sm" style="color:var(--success);margin-top:1px"><use href="#i-check"/></svg><span style="font-size:10.5px;line-height:1.55;color:var(--ink-2)">所有仓库 working tree clean</span></div>
+              <div style="display:flex;gap:7px;align-items:flex-start"><svg class="ic sm" style="color:var(--success);margin-top:1px"><use href="#i-check"/></svg><span style="font-size:10.5px;line-height:1.55;color:var(--ink-2)">目标目录仍是 Git 仓库</span></div>
+              <div style="display:flex;gap:7px;align-items:flex-start"><svg class="ic sm" style="color:var(--ink-3);margin-top:1px"><use href="#i-alert"/></svg><span style="font-size:10.5px;line-height:1.55;color:var(--ink-2)">版本不一致只提示基线偏离，不硬拦</span></div>
+            </div>
+          </div>
+          <div class="side-note">未提交时按钮不是静默禁用，而是给出“去提交 / 打开占用会话”的明确动作。</div>
+        </aside>
+      </div>
+    </div>
+    <div class="board-foot"><span>03 · detail / bindings</span><span>root vs target vs baseline vs owner</span></div>
+  </section>
+</main>
+</body>
+</html>

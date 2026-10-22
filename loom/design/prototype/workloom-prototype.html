@@ -1,0 +1,1793 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workloom 设计原型</title>
+<style>
+  :root {
+    --canvas: #f3f4f6;
+    --surface: #ffffff;
+    --surface-muted: #f7f8fa;
+    --surface-sunken: #eef0f3;
+    --ink: #0f1115;
+    --ink-2: #5d636d;
+    --ink-3: #8b919a;
+    --line: rgba(15, 17, 21, .10);
+    --line-strong: rgba(15, 17, 21, .18);
+    --brand: #4176e6;
+    --brand-soft: #eef3fe;
+    --danger: #cc3d3d;
+    --mono: "DejaVu Sans Mono", "SFMono-Regular", ui-monospace, monospace;
+    --sans: "DejaVu Sans", "WenQuanYi Zen Hei", "Segoe UI", sans-serif;
+    --shadow-modal: 0 24px 80px rgba(15, 17, 21, .22), 0 2px 8px rgba(15, 17, 21, .08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--canvas); }
+  body { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; }
+  svg.icon { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; display: block; }
+  .mono { font-family: var(--mono); }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid transparent;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 13px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; background: transparent;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  }
+  .btn-primary { background: var(--ink); color: #fff; box-shadow: 0 1px 1px rgba(15,17,21,.18); }
+  .btn-primary:hover { background: #25282e; }
+  .btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+  .btn-secondary:hover { background: var(--surface-muted); border-color: rgba(15,17,21,.28); }
+  .btn-ghost { background: transparent; color: var(--ink-2); }
+  .btn-ghost:hover { background: var(--surface-muted); color: var(--ink); }
+  .btn-danger { background: transparent; color: var(--danger); }
+  .btn-danger:hover { background: #fdf2f2; }
+  .btn-link { height: 30px; padding: 0 4px; background: transparent; color: var(--brand); border: 0; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 6px; }
+  .btn-link:hover { background: var(--brand-soft); }
+  .btn-sm { height: 30px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+  .btn-icon { width: 30px; height: 30px; padding: 0; border-radius: 7px; color: var(--ink-2); }
+  .btn-icon:hover { background: var(--surface-sunken); color: var(--ink); }
+  .btn-disabled { background: #c9cdd4; color: #fff; cursor: not-allowed; box-shadow: none; }
+  .btn:focus-visible, .btn-icon:focus-visible, .seg:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  /* ---------- board shell ---------- */
+  .board { width: 1440px; height: 900px; overflow: hidden; background: var(--canvas); padding: 42px 56px; position: relative; }
+  #board-buttons { height: 1020px; }
+  .board + .board { margin-top: 0; }
+  .eyebrow { font: 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+  .board h1 { margin: 14px 0 0; font-size: 28px; line-height: 1.15; font-weight: 500; letter-spacing: -.02em; }
+  .board .lede { margin: 10px 0 0; max-width: 780px; font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+  .board-foot { position: absolute; left: 56px; right: 56px; bottom: 28px; display: flex; justify-content: space-between; align-items: center; font: 11px/1.5 var(--mono); color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 14px; }
+
+  /* ---------- board 1 ---------- */
+  .spec-grid { display: grid; grid-template-columns: 320px 400px 1fr; gap: 24px; margin-top: 30px; align-items: start; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(15,17,21,.04); }
+  .panel-head { height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+  .panel-title { font-size: 12px; font-weight: 500; letter-spacing: .01em; color: var(--ink-2); }
+  .tree { padding: 10px; }
+  .tree-row { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 8px; border-radius: 7px; color: var(--ink-2); font-size: 12.5px; }
+  .tree-row.active { background: var(--surface-sunken); color: var(--ink); font-weight: 500; }
+  .tree-row.indent { padding-left: 26px; }
+  .tree-row.muted { color: var(--ink-3); }
+  .tree-row .chev { width: 12px; height: 12px; opacity: .55; }
+  .tree-row .count { margin-left: auto; font: 10px/1 var(--mono); color: var(--ink-3); }
+  .tree-label { margin: 12px 8px 4px; font: 10px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); text-transform: uppercase; }
+  .sidebar-actions { margin-top: 14px; padding: 12px 10px 10px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+  .sidebar-actions .btn { width: 100%; justify-content: flex-start; }
+  .sidebar-actions .btn-ghost { justify-content: flex-start; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #c2c6cd; flex: none; }
+  .status-dot.todo { background: #d99a2b; }
+  .status-dot.done { background: #4b9b68; }
+
+  .detail-panel { padding-bottom: 12px; }
+  .detail-title-row { padding: 18px 18px 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .detail-title { font-size: 15px; font-weight: 500; letter-spacing: -.01em; }
+  .detail-sub { margin-top: 6px; display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 11px; }
+  .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 5px; background: var(--surface-muted); border: 1px solid var(--line); font-size: 10px; color: var(--ink-2); }
+  .meta { padding: 18px; display: grid; grid-template-columns: 76px 1fr; gap: 12px 10px; font-size: 12px; }
+  .meta dt { color: var(--ink-3); }
+  .meta dd { margin: 0; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel-divider { height: 1px; background: var(--line); margin: 0 18px; }
+  .lock-section { padding: 16px 18px 0; }
+  .section-kicker { font: 10px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); text-transform: uppercase; }
+  .lock-value { margin-top: 8px; font: 12px/1 var(--mono); color: var(--ink-2); }
+  .lock-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+  .spec-card { padding: 16px 18px 18px; }
+  .spec-row { display: grid; grid-template-columns: 140px 1fr; gap: 18px; align-items: start; padding: 14px 0; border-top: 1px solid var(--line); }
+  .spec-row:first-child { border-top: 0; padding-top: 4px; }
+  .spec-label { font: 10px/1.5 var(--mono); letter-spacing: .08em; color: var(--ink-3); text-transform: uppercase; padding-top: 10px; }
+  .spec-items { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .spec-note { margin-top: 6px; font-size: 11px; line-height: 1.55; color: var(--ink-3); }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; background: var(--brand); display: inline-block; vertical-align: -2px; margin-right: 5px; }
+  .spec-rule { margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: var(--surface-muted); font-size: 11.5px; line-height: 1.6; color: var(--ink-2); }
+
+  /* ---------- modal boards ---------- */
+  .flow-board { width: 1440px; height: 900px; position: relative; overflow: hidden; background: #e9ebee; }
+  .app-shot { position: absolute; inset: 0; background: var(--surface); }
+  .app-top { height: 48px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 16px; padding: 0 20px; }
+  .app-brand { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 500; }
+  .brandmark { width: 22px; height: 22px; border-radius: 6px; background: var(--ink); display: grid; place-items: center; }
+  .brandmark span { width: 10px; height: 10px; border: 1px solid rgba(255,255,255,.75); border-radius: 2px; position: relative; }
+  .brandmark span::before, .brandmark span::after { content: ""; position: absolute; background: rgba(255,255,255,.75); }
+  .brandmark span::before { left: 3px; right: 3px; top: 3px; height: 1px; }
+  .brandmark span::after { top: 3px; bottom: 3px; left: 4px; width: 1px; }
+  .app-crumb { font-size: 11px; color: var(--ink-3); }
+  .app-spacer { flex: 1; }
+  .app-body { height: calc(100% - 48px); display: grid; grid-template-columns: 256px minmax(0, 1fr) 320px; }
+  .app-side { border-right: 1px solid var(--line); padding: 14px 12px; background: #fbfbfc; }
+  .app-main { padding: 28px 32px; }
+  .app-right { border-left: 1px solid var(--line); padding: 20px 18px; background: #fbfbfc; }
+  .app-heading { font-size: 20px; font-weight: 500; letter-spacing: -.01em; }
+  .app-sub { margin-top: 8px; color: var(--ink-3); font-size: 11.5px; }
+  .app-section { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .app-section-title { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+  .app-line { margin-top: 12px; height: 9px; border-radius: 5px; background: #eef0f3; }
+  .app-line.short { width: 58%; }
+  .app-line.mid { width: 78%; }
+  .app-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
+  .app-row:first-child { border-top: 0; }
+  .app-row b { font-weight: 500; color: var(--ink); }
+  .scrim { position: absolute; inset: 0; background: rgba(15, 17, 21, .40); backdrop-filter: blur(1.5px); }
+  .stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 28px 40px; }
+  .stage-note { position: absolute; top: 22px; left: 30px; z-index: 3; font: 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.68); }
+  .modal { background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-modal); overflow: hidden; position: relative; }
+  .modal-project { width: 760px; }
+  .modal-standard { width: 660px; }
+  .modal-head { padding: 22px 24px 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .modal-title { font-size: 18px; font-weight: 500; letter-spacing: -.015em; }
+  .modal-sub { margin-top: 7px; font-size: 12px; color: var(--ink-3); }
+  .modal-meta { margin-top: 3px; font: 10px/1 var(--mono); letter-spacing: .09em; color: var(--ink-3); white-space: nowrap; }
+  .modal-close { margin-top: -2px; }
+
+  .stepper { display: flex; align-items: center; padding: 17px 24px 18px; border-bottom: 1px solid var(--line); margin-top: 14px; }
+  .step { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; }
+  .step + .step { flex: 1; }
+  .node { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); background: #fff; color: var(--ink-3); display: grid; place-items: center; font: 11px/1 var(--mono); flex: none; }
+  .step.done .node { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .step.active .node { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: 0 0 0 4px var(--brand-soft); }
+  .step-label { margin-left: 8px; font-size: 12px; line-height: 1.2; color: var(--ink-3); white-space: nowrap; }
+  .step.done .step-label { color: var(--ink-2); }
+  .step.active .step-label { color: var(--ink); font-weight: 500; }
+  .optional { display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 5px; border: 1px solid var(--line); border-radius: 999px; font: 9px/1 var(--mono); letter-spacing: .04em; color: var(--ink-3); }
+  .rail { flex: 1; height: 1px; min-width: 20px; margin: 0 12px; background: var(--line); position: relative; }
+  .step.done .rail { background: var(--brand); }
+  .rail::after { content: ""; position: absolute; left: 50%; top: -2px; width: 1px; height: 5px; background: rgba(15,17,21,.12); }
+
+  .modal-body { padding: 22px 24px 24px; }
+  .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .section-heading h3 { margin: 0; font-size: 13px; font-weight: 500; letter-spacing: -.005em; }
+  .section-heading .section-hint { font-size: 11px; color: var(--ink-3); }
+  .field { display: grid; gap: 7px; }
+  .field + .field { margin-top: 16px; }
+  .label { font-size: 12px; font-weight: 500; color: var(--ink-2); }
+  .req { color: var(--danger); font-weight: 400; }
+  .input { height: 38px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; display: flex; align-items: center; padding: 0 12px; font-size: 12.5px; color: var(--ink); min-width: 0; }
+  .input .placeholder { color: var(--ink-3); }
+  .input.mono { font-family: var(--mono); font-size: 11.5px; letter-spacing: -.01em; }
+  .input.focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(65,118,230,.13); }
+  .input-row { display: flex; gap: 8px; align-items: center; }
+  .input-row .input { flex: 1; min-width: 0; }
+  .input-row .btn { flex: none; }
+  .help { font-size: 11px; line-height: 1.55; color: var(--ink-3); }
+  .error { font-size: 11px; line-height: 1.5; color: var(--danger); display: flex; gap: 5px; align-items: flex-start; }
+
+  .repo-card { border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 16px; background: #fff; }
+  .repo-card + .repo-card { margin-top: 10px; }
+  .repo-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .repo-title { font-size: 11px; font-weight: 500; color: var(--ink-2); display: flex; align-items: center; gap: 7px; }
+  .repo-index { font: 10px/1 var(--mono); color: var(--ink-3); }
+  .repo-card .field + .field { margin-top: 13px; }
+  .add-row { margin-top: 10px; }
+  .helper-strip { margin-top: 14px; padding: 11px 12px; border-radius: 8px; background: var(--surface-muted); border: 1px solid var(--line); display: flex; gap: 9px; align-items: flex-start; font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+  .helper-strip svg { flex: none; margin-top: 1px; color: var(--ink-3); }
+  .helper-strip b { font-weight: 500; color: var(--ink); }
+
+  .modal-foot { padding: 15px 24px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; background: #fff; }
+  .foot-left { display: flex; align-items: center; gap: 6px; }
+  .foot-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .skip { color: var(--ink-2); }
+  .skip svg { width: 13px; height: 13px; }
+  .foot-note { margin-left: 8px; font-size: 10.5px; color: var(--ink-3); }
+  .modal-foot .btn { height: 34px; }
+  .modal-foot .btn-primary { min-width: 88px; }
+
+  .branch-card { border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px; }
+  .branch-card + .branch-card { margin-top: 9px; }
+  .branch-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .branch-path { min-width: 0; }
+  .branch-path .p { font: 11px/1.5 var(--mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .branch-path .n { margin-top: 2px; font-size: 10px; color: var(--ink-3); }
+  .branch-controls { display: flex; gap: 7px; align-items: center; margin-top: 10px; }
+  .select { height: 34px; flex: 1; min-width: 0; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; padding: 0 10px; display: flex; align-items: center; gap: 8px; font: 11.5px var(--mono); color: var(--ink); }
+  .select .chev { margin-left: auto; color: var(--ink-3); }
+  .select .tag-mini { font: 9px var(--mono); color: var(--ink-3); background: var(--surface-muted); border-radius: 4px; padding: 3px 5px; }
+
+  .segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 9px; }
+  .seg { height: 28px; padding: 0 12px; border: 0; background: transparent; border-radius: 6px; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
+  .seg.active { background: #fff; color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px rgba(15,17,21,.08); }
+  .module-list { display: grid; gap: 7px; margin-top: 8px; }
+  .module { display: flex; gap: 10px; align-items: flex-start; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink-2); }
+  .module.selected { border-color: rgba(65,118,230,.45); background: #f8faff; color: var(--ink); }
+  .checkbox { width: 15px; height: 15px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; flex: none; margin-top: 1px; display: grid; place-items: center; color: #fff; }
+  .module.selected .checkbox { background: var(--brand); border-color: var(--brand); }
+  .checkbox svg { width: 10px; height: 10px; stroke-width: 2.2; }
+  .module .m-name { display: block; font-family: var(--mono); font-size: 11px; line-height: 1.5; }
+  .module .m-desc { display: block; font-size: 10.5px; color: var(--ink-3); margin-top: 2px; line-height: 1.45; }
+  .optional-callout { display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; background: #fbfaf5; border: 1px solid #eee6cf; color: #6f6448; font-size: 11px; line-height: 1.55; margin-bottom: 18px; }
+  .optional-callout svg { flex: none; color: #9a8a5d; margin-top: 1px; }
+
+  .summary { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .summary-row { display: grid; grid-template-columns: 92px 1fr; gap: 12px; padding: 11px 13px; font-size: 12px; border-top: 1px solid var(--line); }
+  .summary-row:first-child { border-top: 0; }
+  .summary-row dt { color: var(--ink-3); }
+  .summary-row dd { margin: 0; color: var(--ink); }
+  .summary-row dd.mono { font-size: 11px; }
+  .confirm-note { margin-top: 14px; display: flex; gap: 8px; align-items: flex-start; font-size: 11px; line-height: 1.55; color: var(--ink-3); }
+  .confirm-note svg { flex: none; margin-top: 1px; }
+
+  .placement { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+  .placement-item { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 13px 15px; box-shadow: 0 1px 2px rgba(15,17,21,.04); }
+  .placement-item .k { font: 9px/1.4 var(--mono); letter-spacing: .10em; color: var(--ink-3); text-transform: uppercase; }
+  .placement-item .t { margin-top: 6px; font-size: 12px; font-weight: 500; }
+  .placement-item .d { margin-top: 4px; font-size: 11px; line-height: 1.55; color: var(--ink-3); }
+
+
+
+  /* ---------- full workbench shell ---------- */
+  #board-shell { width: 1440px; height: 900px; background: #e7e9ec; padding: 16px; overflow: hidden; }
+  .shell { width: 1408px; height: 868px; background: #fff; border: 1px solid rgba(15,17,21,.14); border-radius: 14px; overflow: hidden; box-shadow: 0 22px 70px rgba(15,17,21,.16), 0 2px 8px rgba(15,17,21,.05); display: flex; flex-direction: column; }
+  .shell-top { height: 52px; flex: none; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #fff; }
+  .shell-brand { display: flex; align-items: center; gap: 8px; padding-right: 4px; }
+  .shell-brandname { font-size: 13px; font-weight: 500; letter-spacing: -.01em; }
+  .shell-sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+  .ctx-btn { height: 30px; display: inline-flex; align-items: center; gap: 7px; padding: 0 8px; border: 1px solid transparent; border-radius: 7px; background: transparent; cursor: pointer; color: var(--ink); }
+  .ctx-btn:hover { background: var(--surface-muted); }
+  .ctx-btn .k { font: 8.5px/1 var(--mono); letter-spacing: .08em; color: var(--ink-3); text-transform: uppercase; }
+  .ctx-btn .v { font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .ctx-btn .chev { width: 11px; height: 11px; color: var(--ink-3); }
+  .top-active { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 999px; background: #f2f8f3; color: #3f7d51; font-size: 10.5px; white-space: nowrap; }
+  .top-active .dot { width: 6px; height: 6px; border-radius: 50%; background: #48a363; box-shadow: 0 0 0 3px rgba(72,163,99,.12); }
+  .view-switch { display: flex; height: 30px; padding: 2px; border-radius: 8px; background: #f2f3f5; border: 1px solid var(--line); }
+  .view-switch button { height: 24px; padding: 0 11px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 11px; cursor: pointer; }
+  .view-switch button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(15,17,21,.09); font-weight: 500; }
+  .top-spacer { flex: 1; }
+  .top-new { height: 32px; padding: 0 11px; font-size: 12px; }
+  .top-new .chev { width: 11px; height: 11px; margin-left: 1px; }
+  .top-icon { width: 30px; height: 30px; }
+  .top-icon.active { background: var(--surface-sunken); color: var(--ink); }
+  .shell-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr) 344px; }
+  .shell-side { min-height: 0; background: #fbfbfc; border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+  .shell-aside { min-height: 0; background: #fbfbfc; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+  .shell-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #f7f8fa; }
+  .shell-bottom { height: 34px; flex: none; border-top: 1px solid var(--line); background: #fbfbfc; display: flex; align-items: center; gap: 2px; padding: 0 12px; }
+  .bottom-tab { height: 24px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-3); font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .bottom-tab.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(15,17,21,.08); }
+  .bottom-meta { margin-left: auto; font: 9.5px var(--mono); color: var(--ink-3); display: flex; align-items: center; gap: 10px; }
+  .side-scroll { flex: 1; min-height: 0; overflow: hidden; padding: 10px 10px 14px; }
+  .side-section { margin-bottom: 15px; }
+  .side-head { height: 24px; padding: 0 6px; display: flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 10px; font-weight: 500; letter-spacing: .01em; }
+  .side-head .count { margin-left: auto; font: 9px var(--mono); color: var(--ink-3); font-weight: 400; }
+  .side-head .pin { color: var(--ink-3); }
+  .side-hint { margin: 2px 6px 4px; color: var(--ink-3); font-size: 10px; line-height: 1.5; }
+  .proj-row { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-radius: 7px; color: var(--ink-2); cursor: pointer; }
+  .proj-row.active { background: #eef1f5; color: var(--ink); }
+  .proj-row:hover { background: #f1f3f5; }
+  .proj-row .chev { width: 11px; height: 11px; color: var(--ink-3); flex: none; }
+  .proj-row .folder { width: 15px; height: 15px; color: var(--ink-2); flex: none; }
+  .proj-name { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .proj-count { margin-left: auto; font: 9px var(--mono); color: var(--ink-3); }
+  .proj-actions { display: flex; gap: 0; margin-left: 2px; }
+  .mini-icon { width: 22px; height: 22px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-3); display: grid; place-items: center; cursor: pointer; padding: 0; }
+  .mini-icon:hover { background: #e8ebef; color: var(--ink); }
+  .mini-icon svg { width: 12px; height: 12px; }
+  .tree { margin-left: 13px; padding-left: 9px; border-left: 1px solid rgba(15,17,21,.10); }
+  .ver-row { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 4px; border-radius: 6px; position: relative; cursor: pointer; }
+  .ver-row::before { content: ""; position: absolute; left: -10px; top: 50%; width: 7px; height: 1px; background: rgba(15,17,21,.10); }
+  .ver-chip { height: 20px; display: inline-flex; align-items: center; padding: 0 7px; border-radius: 4px; background: #eef3fe; color: #3566c9; font: 9.5px var(--mono); letter-spacing: -.01em; }
+  .ver-row .ver-count { font: 9px var(--mono); color: var(--ink-3); margin-left: 2px; }
+  .ver-row.active .ver-chip { background: #dfe9fc; }
+  .ver-actions { margin-left: auto; display: flex; gap: 0; }
+  .task-row { position: relative; display: flex; align-items: flex-start; gap: 7px; padding: 6px 5px 6px 4px; margin-left: 2px; border-radius: 6px; cursor: pointer; }
+  .task-row::before { content: ""; position: absolute; left: -10px; top: 16px; width: 7px; height: 1px; background: rgba(15,17,21,.10); }
+  .task-row:hover { background: #f1f3f5; }
+  .task-row.selected { background: #f0f5fd; box-shadow: inset 2px 0 0 var(--brand); }
+  .task-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; margin-top: 5px; background: #b7bcc4; }
+  .task-dot.done { background: #48a363; }
+  .task-dot.pending { background: #b7bcc4; }
+  .task-dot.running { background: #4176e6; box-shadow: 0 0 0 3px rgba(65,118,230,.12); }
+  .task-text { min-width: 0; }
+  .task-name { font-size: 12px; line-height: 1.4; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .task-state { margin-top: 1px; font-size: 9.5px; line-height: 1.4; color: var(--ink-3); }
+  .task-row.selected .task-name { font-weight: 500; }
+  .add-project { width: calc(100% - 12px); margin: 7px 6px 0; height: 32px; font-size: 12px; border-radius: 8px; }
+  .search-box { height: 32px; margin: 5px 6px 6px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: #fff; display: flex; align-items: center; gap: 7px; color: var(--ink-3); font-size: 11px; }
+  .search-box svg { width: 12px; height: 12px; flex: none; }
+  .session-group { display: flex; align-items: baseline; gap: 6px; padding: 5px 6px 3px; color: var(--ink-3); font-size: 9.5px; }
+  .session-group .count { margin-left: auto; font: 9px var(--mono); }
+  .session-row { display: flex; gap: 8px; align-items: flex-start; padding: 6px 6px; border-radius: 7px; cursor: pointer; }
+  .session-row:hover { background: #f1f3f5; }
+  .session-row.active { background: #f0f5fd; }
+  .session-dot { width: 6px; height: 6px; border-radius: 50%; background: #48a363; flex: none; margin-top: 6px; }
+  .session-dot.pending { background: #b7bcc4; }
+  .session-title { font-size: 11.5px; line-height: 1.4; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-meta { margin-top: 2px; font-size: 9.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-actions { display: flex; flex-direction: column; gap: 4px; margin: 6px 6px 0; }
+  .session-actions .btn { width: 100%; justify-content: center; font-size: 11.5px; height: 32px; }
+  .wb-head { height: 52px; flex: none; border-bottom: 1px solid var(--line); background: #fff; display: flex; align-items: center; gap: 10px; padding: 0 18px; }
+  .wb-title { font-size: 14px; font-weight: 500; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wb-chips { display: flex; gap: 5px; align-items: center; flex: none; }
+  .chip { height: 20px; display: inline-flex; align-items: center; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink-2); font-size: 9.5px; white-space: nowrap; }
+  .chip.status { border-color: #e7dcc3; background: #fbf8f1; color: #7b6735; }
+  .chip.version { border-color: #dbe5f8; background: #f4f8ff; color: #3566c9; font-family: var(--mono); }
+  .chip.running { border-color: #dbe5f8; background: #f4f8ff; color: #3566c9; }
+  .wb-head-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .wb-body { flex: 1; min-height: 0; overflow: hidden; padding: 18px 22px 22px; }
+  .wb-inner { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .wb-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 15px 16px; box-shadow: 0 1px 2px rgba(15,17,21,.03); }
+  .wb-kicker { font: 8.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .wb-desc { margin: 8px 0 0; color: var(--ink-2); font-size: 12px; line-height: 1.7; }
+  .wb-meta { margin-top: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .wb-meta .k { font: 8.5px/1.2 var(--mono); letter-spacing: .08em; color: var(--ink-3); text-transform: uppercase; }
+  .wb-meta .v { margin-top: 4px; font-size: 11px; color: var(--ink); }
+  .acceptance { margin: 9px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+  .acceptance li { display: flex; gap: 8px; font-size: 11.5px; line-height: 1.5; color: var(--ink-2); }
+  .acceptance .tick { width: 14px; height: 14px; border: 1px solid var(--line-strong); border-radius: 50%; flex: none; margin-top: 1px; }
+  .exec-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 15px 16px; box-shadow: 0 1px 2px rgba(15,17,21,.03); }
+  .exec-card-head { display: flex; align-items: center; gap: 8px; }
+  .exec-card-head h3 { margin: 0; font-size: 12px; font-weight: 500; }
+  .exec-card-head .badge { margin-left: auto; }
+  .exec-grid { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .exec-field label { display: block; margin-bottom: 5px; font-size: 10.5px; color: var(--ink-3); }
+  .exec-input { height: 34px; border: 1px solid var(--line-strong); border-radius: 7px; display: flex; align-items: center; gap: 7px; padding: 0 10px; font-size: 11px; color: var(--ink-2); background: #fff; }
+  .exec-input .chev { width: 11px; height: 11px; margin-left: auto; color: var(--ink-3); }
+  .exec-foot { margin-top: 13px; display: flex; align-items: center; gap: 10px; }
+  .exec-foot .hint { font-size: 9.5px; color: var(--ink-3); }
+  .exec-foot .btn { margin-left: auto; height: 32px; font-size: 12px; }
+  .timeline { padding: 2px 2px 0; }
+  .timeline-title { font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .timeline-row { display: flex; gap: 9px; margin-top: 9px; font-size: 10.5px; color: var(--ink-3); }
+  .timeline-row .t { width: 54px; flex: none; font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
+  .timeline-row .what { color: var(--ink-2); }
+
+  .shell-body { position: relative; }
+  .resize-handle { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 8; cursor: col-resize; background: transparent; }
+  .resize-handle.right { right: 340px; }
+  .resize-handle::after { content: ""; position: absolute; left: 1px; top: 50%; width: 4px; height: 42px; transform: translateY(-50%); border-radius: 4px; background: repeating-linear-gradient(180deg, #b9c0ca 0 3px, transparent 3px 7px); box-shadow: 0 0 0 1px rgba(255,255,255,.75); transition: background .15s ease; }
+  .resize-handle:hover::after { background: rgba(65,118,230,.55); }
+  .git-card { margin-top: 7px; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .git-repo { display: flex; align-items: center; gap: 6px; min-width: 0; font: 9.5px/1.3 var(--mono); color: var(--ink-2); }
+  .git-repo-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .git-repo-path { margin-left: auto; flex: none; color: var(--ink-3); font-size: 8.5px; }
+  .git-repo-block + .git-repo-block { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .repo-branch { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 0 1px; font-size: 9px; color: var(--ink-3); }
+  .repo-branch span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .repo-branch b { font: 8.5px var(--mono); font-weight: 400; color: var(--ink-2); white-space: nowrap; }
+  .git-graph { position: relative; margin-top: 7px; padding-left: 18px; }
+  .git-spine { position: absolute; left: 4px; top: 7px; bottom: 15px; width: 1px; background: #d5d9e0; }
+  .git-node { position: relative; display: flex; align-items: center; gap: 6px; min-height: 21px; padding-left: 1px; }
+  .git-dot { position: absolute; left: -17px; top: 50%; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px #c9ced6; transform: translateY(-50%); background: #fff; }
+  .git-fork { position: relative; margin-left: -6px; padding-left: 16px; border-left: 1px solid #d5d9e0; }
+  .git-fork::before { content: ""; position: absolute; left: -8px; top: 0; width: 8px; height: 1px; background: #d5d9e0; }
+  .git-fork .git-node::before { content: ""; position: absolute; left: -16px; top: 50%; width: 16px; height: 1px; background: #d5d9e0; }
+  .git-fork .git-node .git-dot { left: -20px; }
+  .git-node.lock .git-dot { background: #0f1115; box-shadow: 0 0 0 1px #0f1115; }
+  .git-node.same .git-dot { background: linear-gradient(90deg, #4176e6 0 50%, #48a363 50% 100%); box-shadow: 0 0 0 1px #6f88b4; }
+  .git-hash { font: 10px var(--mono); color: var(--ink); flex: none; }
+  .git-ref { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 148px; font: 9.5px var(--mono); color: var(--ink-2); }
+  .git-tags { margin-left: auto; display: flex; gap: 3px; flex: none; }
+  .git-tag { margin-left: auto; flex: none; height: 16px; display: inline-flex; align-items: center; padding: 0 5px; border-radius: 3px; font: 8px/1 var(--mono); letter-spacing: .02em; }
+  .git-tag.lock { background: #f2f3f5; color: var(--ink-3); }
+  .git-tag.version { background: #eef3fe; color: #3566c9; }
+  .git-tag.workspace { background: #f1f8f3; color: #3f7d51; }
+  .git-note { margin-top: 5px; padding-left: 16px; font-size: 9px; line-height: 1.45; color: var(--ink-3); }
+  .ctx-wide { width: 100%; justify-content: center; margin-top: 8px; font-size: 10.5px; height: 29px; }
+  .ctx-hint { margin: 5px 1px 0; font-size: 8.5px; line-height: 1.45; color: var(--ink-3); }
+  .ctx-muted { font-size: 10px; line-height: 1.55; color: var(--ink-3); }
+  .usage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; }
+  .usage-grid div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+  .usage-grid span { color: var(--ink-3); font-size: 9px; white-space: nowrap; }
+  .usage-grid b { color: var(--ink); font: 9.5px var(--mono); font-weight: 400; white-space: nowrap; }
+  .ctx-edit { color: var(--ink-2); font-size: 9.5px; letter-spacing: 0; text-transform: none; font-family: inherit; }
+  .ctx-task-title { font-size: 12px; line-height: 1.4; color: var(--ink); }
+  .ctx-prop { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 4px 0; border-top: 1px solid var(--line); font-size: 10.5px; }
+  .ctx-prop:first-of-type { margin-top: 8px; }
+  .ctx-prop .pk { color: var(--ink-3); flex: none; }
+  .ctx-prop .pv { color: var(--ink); text-align: right; min-width: 0; }
+  .ctx-prop .pv.mono { font-family: var(--mono); font-size: 9.5px; }
+  .ctx-prop .pv.wrap { white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
+  .ctx-status-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #48a363; margin-right: 4px; vertical-align: 1px; }
+  .ctx-status-dot.run { background: #4176e6; }
+
+  .context-head { height: 52px; flex: none; padding: 0 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
+  .context-kicker { font: 8px/1.2 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); }
+  .context-title { margin-top: 3px; font-size: 12.5px; font-weight: 500; }
+  .context-actions { margin-left: auto; display: flex; gap: 2px; }
+  .context-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px 14px; }
+  .context-subject { padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+  .context-name { font-size: 13px; font-weight: 500; line-height: 1.4; }
+  .context-sub { margin-top: 6px; display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--ink-3); }
+  .context-sub .tag { height: 18px; font-size: 9px; }
+  .props { margin-top: 12px; }
+  .prop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 7px 1px; border-top: 1px solid var(--line); font-size: 11px; }
+  .prop:first-child { border-top: 0; }
+  .prop .pk { color: var(--ink-3); flex: none; }
+  .prop .pv { color: var(--ink); text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prop .pv.mono { font-family: var(--mono); font-size: 10px; }
+  .context-section { margin-top: 8px; }
+  .context-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font: 8.5px/1.2 var(--mono); letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); }
+  .context-box { margin-top: 5px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .context-box .main { font: 11px var(--mono); color: var(--ink); }
+  .context-box .sub { margin-top: 4px; font-size: 9.5px; color: var(--ink-3); line-height: 1.5; }
+  .context-box .btn { margin-top: 9px; width: 100%; justify-content: center; font-size: 10.5px; height: 28px; }
+  .context-box .state { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-2); }
+  .context-box .state .dot { width: 6px; height: 6px; border-radius: 50%; background: #b7bcc4; }
+  .context-box .state .dot.done { background: #48a363; }
+  .context-box .state .dot.run { background: #4176e6; }
+  .context-session { display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: var(--ink-2); }
+  .context-session + .context-session { margin-top: 7px; }
+  .context-session .sdot { width: 5px; height: 5px; border-radius: 50%; background: #48a363; flex: none; }
+  .context-session .sname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .context-session .stime { margin-left: auto; font: 8.5px var(--mono); color: var(--ink-3); flex: none; }
+  .ref-row + .ref-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .ref-name { font: 10px var(--mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ref-branch { margin-top: 3px; font: 9px var(--mono); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .context-activity { display: flex; gap: 8px; font-size: 10px; color: var(--ink-2); }
+  .context-activity + .context-activity { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .context-activity .at { width: 32px; flex: none; font: 8.5px var(--mono); color: var(--ink-3); }
+  .shell *::-webkit-scrollbar { width: 0; height: 0; }
+
+
+  /* ---------- chrome spec board ---------- */
+  #board-chrome { width: 1440px; height: 1000px; background: #eef0f3; padding: 40px 16px 16px; position: relative; overflow: hidden; }
+  .chrome-title { position: absolute; left: 32px; top: 28px; }
+  .chrome-title .eyebrow { font-size: 10px; }
+  .chrome-title h1 { margin: 8px 0 0; font-size: 24px; font-weight: 500; letter-spacing: -.02em; }
+  .chrome-top-wrap { position: absolute; left: 16px; right: 16px; top: 94px; }
+  .chrome-label { font: 9px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+  .chrome-top-wrap img, .chrome-left-wrap img, .chrome-right-wrap img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(15,17,21,.04); }
+  .chrome-left-wrap { position: absolute; left: 16px; top: 182px; width: 320px; }
+  .chrome-right-wrap { position: absolute; right: 16px; top: 182px; width: 344px; }
+  .chrome-notes { position: absolute; left: 360px; right: 384px; top: 190px; display: grid; gap: 12px; }
+  .chrome-note { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 13px 15px; }
+  .chrome-note h3 { margin: 0; font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .chrome-note h3 span { font: 8.5px var(--mono); letter-spacing: .1em; color: var(--ink-3); text-transform: uppercase; font-weight: 400; }
+  .chrome-note p { margin: 6px 0 0; font-size: 11px; line-height: 1.6; color: var(--ink-2); }
+  .chrome-note b { font-weight: 500; color: var(--ink); }
+  .chrome-tokens { position: absolute; left: 360px; right: 384px; bottom: 20px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+  .chrome-token { display: flex; align-items: center; gap: 6px; font: 8.5px var(--mono); color: var(--ink-3); }
+  .chrome-token i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid rgba(15,17,21,.10); }
+  .chrome-foot { position: absolute; left: 16px; right: 16px; bottom: 0; height: 1px; background: var(--line); }
+
+
+
+  /* ---------- bottom panel board ---------- */
+  #board-bottom { width: 1440px; height: 700px; background: #eef0f3; position: relative; overflow: hidden; }
+  .bt-head { position: absolute; left: 40px; top: 28px; }
+  .bt-head h1 { margin: 8px 0 0; font-size: 24px; font-weight: 500; letter-spacing: -.02em; }
+  .bt-head p { margin: 7px 0 0; color: var(--ink-3); font-size: 11px; }
+  .bt-frame { position: absolute; left: 40px; top: 120px; right: 40px; height: 470px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; box-shadow: 0 3px 12px rgba(15,17,21,.05); }
+  .bt-top { height: 170px; padding: 16px 18px; background: #fafbfc; border-bottom: 1px solid var(--line); }
+  .bt-top .eyebrow { font-size: 8.5px; }
+  .bt-top h2 { margin: 7px 0 0; font-size: 14px; font-weight: 500; }
+  .bt-top p { margin: 5px 0 0; font-size: 10px; color: var(--ink-3); }
+  .bt-panel { position: absolute; left: 0; right: 0; bottom: 0; height: 300px; background: #fff; display: flex; flex-direction: column; }
+  .bt-dragbar { position: relative; height: 14px; flex: none; border-bottom: 1px solid var(--line); background: #fafbfc; }
+  .bt-dragbar::before { content: ""; position: absolute; left: 43%; right: 43%; top: 6px; height: 2px; border-radius: 2px; background: repeating-linear-gradient(90deg, #aeb6c1 0 4px, transparent 4px 8px); }
+  .bt-dragbar .up { position: absolute; left: 12px; top: 1px; font-size: 11px; line-height: 12px; color: #4176e6; }
+  .bt-dragbar .hint { position: absolute; right: 12px; top: 2px; font: 8px var(--mono); color: var(--ink-3); }
+  .bt-tabs { display: flex; align-items: center; gap: 0; height: 34px; flex: none; padding: 0 10px; border-bottom: 1px solid var(--line); }
+  .bt-tab { height: 100%; display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 10px; color: var(--ink-3); border-bottom: 2px solid transparent; }
+  .bt-tab.active { color: var(--ink); border-bottom-color: var(--brand); }
+  .bt-tab b { font: 8px var(--mono); font-weight: 400; background: #f0f1f3; border-radius: 6px; padding: 1px 4px; }
+  .bt-tab .fs { margin-left: auto; font-size: 9px; color: var(--ink-3); padding-right: 8px; }
+  .bt-diff { flex: 1; min-height: 0; overflow: hidden; padding: 8px 14px; font: 9px/1.75 var(--mono); }
+  .bt-file { display: flex; align-items: center; gap: 8px; color: var(--ink-2); margin-bottom: 4px; }
+  .bt-file .add { color: #3f7d51; }
+  .bt-file .del { color: #b54d4d; }
+  .bt-line { display: flex; gap: 8px; white-space: nowrap; }
+  .bt-line .ln { width: 26px; color: var(--ink-3); text-align: right; flex: none; }
+  .bt-line .code { color: var(--ink-2); }
+  .bt-line.add .code { color: #2f6b41; background: #f3faf5; }
+  .bt-line.del .code { color: #9c4141; background: #fdf5f5; }
+  .bt-note { position: absolute; right: 40px; top: 608px; display: flex; align-items: center; gap: 7px; font: 8.5px var(--mono); color: var(--ink-3); }
+  .bt-note b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---------- context / branch board ---------- */
+  #board-context { width: 1440px; height: 1000px; background: #eef0f3; position: relative; overflow: hidden; }
+  .ctxb-head { position: absolute; left: 40px; top: 28px; }
+  .ctxb-head .eyebrow { font-size: 10px; }
+  .ctxb-head h1 { margin: 8px 0 0; font-size: 24px; font-weight: 500; letter-spacing: -.02em; }
+  .ctxb-head p { margin: 7px 0 0; color: var(--ink-3); font-size: 11px; }
+  .ctxb-default { position: absolute; left: 40px; top: 136px; width: 344px; }
+  .ctxb-default .ctxb-label { margin-bottom: 7px; }
+  .ctxb-default img { display: block; width: 344px; height: auto; border: 1px solid var(--line); border-radius: 9px; background: #fff; box-shadow: 0 3px 12px rgba(15,17,21,.06); }
+  .ctxb-handle { position: absolute; left: 31px; top: 50%; width: 12px; height: 120px; transform: translateY(-50%); z-index: 2; }
+  .ctxb-handle::after { content: ""; position: absolute; left: 3px; top: 50%; width: 5px; height: 56px; transform: translateY(-50%); border-radius: 4px; background: repeating-linear-gradient(180deg, rgba(15,17,21,.45) 0 3px, transparent 3px 7px); }
+  .ctxb-handle-note { position: absolute; left: 40px; bottom: 58px; width: 344px; font-size: 9.5px; line-height: 1.55; color: var(--ink-3); }
+  .ctxb-handle-note b { color: var(--ink-2); font-weight: 500; }
+  .ctxb-right { position: absolute; left: 430px; top: 126px; right: 40px; bottom: 26px; display: flex; flex-direction: column; gap: 13px; }
+  .ctxb-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .ctxb-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 13px 15px 14px; }
+  .ctxb-kicker { font: 8.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .ctxb-title { margin-top: 5px; font-size: 13px; font-weight: 500; }
+  .ctxb-card p { margin: 5px 0 0; font-size: 10.5px; line-height: 1.55; color: var(--ink-3); }
+  .ref-source, .fork-source { margin-top: 11px; display: flex; align-items: center; gap: 6px; font: 9.5px var(--mono); color: var(--ink-2); }
+  .ref-source span, .fork-source span { color: var(--ink-3); font-size: 8.5px; }
+  .ref-rail { position: relative; margin-top: 7px; padding-left: 18px; }
+  .ref-line { position: absolute; left: 4px; top: 8px; bottom: 19px; width: 1px; background: #d5d9e0; }
+  .ref-node { position: relative; display: flex; align-items: center; gap: 6px; min-height: 25px; }
+  .ref-dot { position: absolute; left: -17px; top: 50%; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid #fff; transform: translateY(-50%); box-shadow: 0 0 0 1px #0f1115; background: #0f1115; }
+  .ref-dot.split { background: linear-gradient(90deg, #4176e6 0 50%, #48a363 50% 100%); box-shadow: 0 0 0 1px #6f88b4; }
+  .ref-mono { font: 10px var(--mono); color: var(--ink); }
+  .ref-tag { margin-left: auto; height: 16px; display: inline-flex; align-items: center; padding: 0 5px; border-radius: 3px; font: 8px var(--mono); }
+  .ref-tag.lock { background: #f2f3f5; color: var(--ink-3); }
+  .ref-tag.version { background: #eef3fe; color: #3566c9; }
+  .ref-tag.workspace { background: #f1f8f3; color: #3f7d51; }
+  .ref-tags { margin-left: auto; display: flex; gap: 3px; }
+  .fork-canvas { position: relative; height: 106px; margin-top: 2px; }
+  .fork-canvas svg { position: absolute; left: 0; top: 4px; width: 100%; height: 100px; }
+  .fork-label { position: absolute; display: flex; align-items: center; gap: 5px; font: 9.5px var(--mono); color: var(--ink-2); white-space: nowrap; }
+  .fork-label .ref-tag { margin-left: 0; }
+  .fork-lock { left: 26px; top: 0; color: var(--ink); }
+  .fork-version { left: 78px; top: 34px; }
+  .fork-workspace { left: 78px; top: 70px; }
+  .demo-foot { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 9.5px; line-height: 1.5; color: var(--ink-3); }
+  .ctxb-notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .ctxb-note { background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; font-size: 10.5px; line-height: 1.55; color: var(--ink-3); }
+  .ctxb-note b { display: block; margin-bottom: 3px; font-weight: 500; color: var(--ink); }
+  .ctxb-drag { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .drag-card { padding: 10px 13px 11px; background: #fff; border: 1px solid var(--line); border-radius: 9px; }
+  .v-resize { display: flex; align-items: stretch; height: 42px; margin-top: 7px; }
+  .vr-center { flex: 1; display: flex; align-items: center; justify-content: center; border: 1px dashed #d5d9e0; border-radius: 5px 0 0 5px; background: #fafbfc; font-size: 8.5px; color: var(--ink-3); }
+  .vr-boundary { position: relative; width: 16px; flex: none; border-top: 1px solid #d5d9e0; border-bottom: 1px solid #d5d9e0; background: #fff; }
+  .vr-grip { position: absolute; left: 7px; top: 3px; bottom: 3px; width: 2px; background: repeating-linear-gradient(180deg, #aeb6c1 0 3px, transparent 3px 6px); }
+  .vr-arrow { position: absolute; left: -15px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #4176e6; }
+  .vr-aside { width: 76px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #dbe5f8; border-left: 0; border-radius: 0 5px 5px 0; background: #f4f8ff; font-size: 8.5px; line-height: 1.35; color: #3566c9; }
+  .vr-aside b { font: 9px var(--mono); font-weight: 500; }
+  .bottom-resize { margin-top: 7px; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+  .br-handle { position: relative; height: 12px; border-bottom: 1px solid var(--line); background: #fafbfc; }
+  .br-grip { position: absolute; left: 34%; right: 34%; top: 5px; height: 2px; background: repeating-linear-gradient(90deg, #aeb6c1 0 3px, transparent 3px 6px); }
+  .br-arrow { position: absolute; left: 4px; top: 0; font-size: 11px; line-height: 11px; color: #4176e6; }
+  .br-tabs { height: 20px; display: flex; align-items: center; gap: 8px; padding: 0 7px; border-bottom: 1px solid var(--line); font-size: 7.5px; color: var(--ink-3); }
+  .br-tabs b { color: var(--ink); font-weight: 500; border-bottom: 1.5px solid #4176e6; height: 100%; display: inline-flex; align-items: center; }
+  .br-body { height: 25px; display: flex; align-items: center; gap: 8px; padding: 0 7px; font: 7.5px var(--mono); color: var(--ink-3); }
+  .br-body span:first-child { color: var(--ink-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .br-body span:last-child { margin-left: auto; color: #3f7d51; white-space: nowrap; }
+  .drag-caption { margin-top: 6px; font-size: 8.5px; line-height: 1.45; color: var(--ink-3); }
+
+  /* ---------- confirmation dialogs ---------- */
+  .modal-confirm { width: 460px; }
+  .modal-blocked { width: 560px; }
+  .modal-takeover { width: 440px; }
+  .modal-cleanup { width: 880px; }
+  .dialog-eyebrow { font: 10px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .dialog-eyebrow.danger { color: var(--danger); }
+  .dialog-eyebrow.blocked { color: #8a6d2f; }
+  .dialog-head { padding: 20px 22px 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .dialog-title { margin-top: 7px; font-size: 17px; line-height: 1.25; font-weight: 500; letter-spacing: -.015em; }
+  .dialog-desc { margin-top: 5px; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+  .dialog-body { padding: 18px 22px 20px; }
+  .subject-card { display: flex; gap: 11px; align-items: flex-start; padding: 12px 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-muted); }
+  .subject-icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: none; background: #fdf2f2; color: var(--danger); }
+  .subject-icon.warn { background: #fbfaf5; color: #9a7b2f; }
+  .subject-name { font-size: 13px; line-height: 1.4; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+  .subject-context { margin-top: 3px; font-size: 10.5px; line-height: 1.45; color: var(--ink-3); }
+  .warning-copy { margin: 14px 0 0; font-size: 11.5px; line-height: 1.65; color: var(--ink-2); }
+  .warning-copy b { font-weight: 500; color: var(--ink); }
+  .blocked-box { margin-top: 13px; padding: 12px 13px; border: 1px solid #eadfc7; border-radius: 9px; background: #fbfaf5; }
+  .blocked-title { display: flex; gap: 7px; align-items: center; font-size: 11px; font-weight: 500; color: #7b6735; }
+  .blocked-list { margin-top: 10px; }
+  .blocked-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(154,123,47,.16); font-size: 11.5px; color: var(--ink-2); }
+  .blocked-row:first-child { border-top: 0; padding-top: 0; }
+  .blocked-row .b-name { font-weight: 500; color: var(--ink); }
+  .blocked-row .b-meta { margin-left: auto; font-size: 10px; color: #8a7a55; white-space: nowrap; }
+  .blocked-note { margin: 10px 0 0; font-size: 10.5px; line-height: 1.55; color: #7d6a3f; }
+  .dialog-foot { padding: 14px 22px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; background: #fff; }
+  .dialog-foot .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .btn-danger-solid { background: #c73e3e; color: #fff; box-shadow: 0 1px 1px rgba(15,17,21,.14); }
+  .btn-danger-solid:hover { background: #b43333; }
+  .btn-danger-outline { background: #fff; color: var(--danger); border-color: rgba(199,62,62,.55); }
+  .btn-danger-outline:hover { background: #fdf2f2; border-color: var(--danger); }
+  .dialog-foot .btn { height: 34px; }
+  .dialog-failure { margin-top: 12px; padding: 9px 11px; border: 1px solid rgba(199,62,62,.4); border-radius: 8px; background: #fff7f7; color: var(--danger); font-size: 11px; line-height: 1.55; }
+
+  /* cleanup */
+  .cleanup-head { padding: 20px 22px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; gap: 14px; }
+  .cleanup-head .dialog-title { margin-top: 6px; }
+  .cleanup-path { margin-top: 5px; font: 10.5px/1.5 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+  .cleanup-body { display: grid; grid-template-columns: 276px minmax(0, 1fr); min-height: 350px; }
+  .cleanup-side { padding: 18px 20px; border-right: 1px solid var(--line); background: #fbfbfc; }
+  .cleanup-main { padding: 18px 20px; min-width: 0; }
+  .cleanup-kicker { font: 9px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .cleanup-warning { margin: 10px 0 0; font-size: 11px; line-height: 1.65; color: var(--ink-2); }
+  .counts { margin-top: 14px; display: grid; gap: 8px; }
+  .count-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; font-size: 11px; color: var(--ink-2); }
+  .count-row b { font: 11px/1 var(--mono); color: var(--ink); font-weight: 500; }
+  .danger-zone { margin-top: 14px; padding: 11px; border: 1px solid #efd2d2; border-radius: 8px; background: #fff8f8; }
+  .check-row { display: flex; gap: 8px; align-items: flex-start; font-size: 10.5px; line-height: 1.55; color: #7b4545; }
+  .check-box { width: 15px; height: 15px; border: 1px solid rgba(199,62,62,.65); border-radius: 4px; background: #c73e3e; display: grid; place-items: center; color: #fff; flex: none; margin-top: 1px; }
+  .check-box svg { width: 10px; height: 10px; stroke-width: 2.2; }
+  .diff-panel { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: #fff; }
+  .diff-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--surface-muted); font-size: 10.5px; color: var(--ink-3); }
+  .diff-head b { font-weight: 500; color: var(--ink-2); }
+  .diff-file { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-top: 1px solid var(--line); font: 10px/1.4 var(--mono); color: var(--ink-2); }
+  .diff-file:first-of-type { border-top: 0; }
+  .diff-file .badge { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; font-size: 9px; background: #fdf3e7; color: #9a6a22; flex: none; }
+  .diff-file .badge.new { background: #eef8f0; color: #3f7d51; }
+  .diff-file .muted { margin-left: auto; color: var(--ink-3); }
+  .diff-code { border-top: 1px solid var(--line); padding: 7px 0; background: #fcfcfd; }
+  .diff-line { display: flex; gap: 10px; padding: 2px 12px; font: 9.5px/1.55 var(--mono); color: var(--ink-2); white-space: pre; overflow: hidden; }
+  .diff-line .ln { width: 22px; flex: none; color: #b1b5bc; text-align: right; }
+  .diff-line.add { background: #f1f8f3; color: #356b45; }
+  .diff-line.del { background: #fdf2f2; color: #8e4646; }
+  .cleanup-foot { padding: 13px 20px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .cleanup-foot .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .cleanup-foot .btn { height: 34px; }
+  .board-caption { position: absolute; left: 30px; bottom: 24px; z-index: 3; font: 10px/1.5 var(--mono); color: rgba(255,255,255,.62); letter-spacing: .03em; }
+  .board-caption b { color: rgba(255,255,255,.86); font-weight: 400; }
+
+  /* flow board with two frames */
+  .frames { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 32px; padding: 52px 40px; }
+  .frame-wrap { display: flex; flex-direction: column; gap: 10px; }
+  .frame-label { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 5px; background: rgba(15,17,21,.58); border: 1px solid rgba(255,255,255,.14); font: 10px/1.3 var(--mono); letter-spacing: .10em; text-transform: uppercase; color: rgba(255,255,255,.78); }
+  .frame-label b { font-weight: 400; color: #fff; }
+
+  /* dark-mode note only for contrast board? not used */
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* Kanban board */
+  .kb-main { background: #f7f8fa; }
+  .kb-toolbar { flex: none; padding: 11px 14px 0; background: #fff; border-bottom: 1px solid var(--line); }
+  .kb-metrics { height: 24px; display: flex; align-items: center; }
+  .kb-metric { display: flex; align-items: baseline; gap: 5px; padding: 0 10px; border-right: 1px solid var(--line); color: var(--ink-3); font-size: 9px; white-space: nowrap; }
+  .kb-metric:first-child { padding-left: 0; }
+  .kb-metric:last-child { border-right: 0; }
+  .kb-metric b { font: 13px/1 var(--mono); font-weight: 400; color: var(--ink); }
+  .kb-metric.running b { color: var(--brand); }
+  .kb-metric.review b { color: #8b6fd6; }
+  .kb-metric.done b { color: #48a363; }
+  .kb-filterbar { display: flex; align-items: center; gap: 5px; padding: 7px 0 10px; min-width: 0; }
+  .kb-select { height: 25px; display: flex; align-items: center; gap: 4px; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink-2); font-size: 9px; white-space: nowrap; flex: none; }
+  .kb-select .k { color: var(--ink-3); font: 7.5px/1 var(--mono); }
+  .kb-select .chev { width: 10px; height: 10px; color: var(--ink-3); stroke-width: 1.8; flex: none; }
+  .kb-search { flex: 1; min-width: 90px; height: 25px; display: flex; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink-3); font-size: 9px; text-align: left; }
+  .kb-search svg { width: 11px; height: 11px; color: var(--ink-3); flex: none; }
+  .kb-mode { flex: none; display: flex; gap: 1px; padding: 2px; border-radius: 6px; background: #eef0f3; margin-left: auto; }
+  .kb-mode span { height: 21px; display: flex; align-items: center; padding: 0 7px; border-radius: 4px; color: var(--ink-3); font-size: 8.5px; }
+  .kb-mode .active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(15,17,21,.10); }
+  .kb-board { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 9px; padding: 9px 12px 12px; overflow: hidden; }
+  .kb-lane { min-height: 0; display: flex; flex-direction: column; }
+  .kb-lane.primary { flex: 1.25; }
+  .kb-lane.secondary { flex: .82; }
+  .kb-lane + .kb-lane { border-top: 1px solid var(--line); padding-top: 8px; }
+  .kb-lane-head { height: 23px; flex: none; display: flex; align-items: center; gap: 5px; padding: 0 2px; }
+  .kb-lane-name { font-size: 10px; font-weight: 500; color: var(--ink-2); }
+  .kb-lane-count { font: 8.5px/1 var(--mono); color: var(--ink-3); }
+  .kb-lane-add { margin-left: auto; border: 0; background: transparent; color: var(--ink-3); font: 8.5px/1 var(--sans); padding: 2px 0; cursor: pointer; }
+  .kb-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
+  .kb-col { min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 7px; background: #fbfbfc; overflow: hidden; }
+  .kb-col-head { flex: none; height: 27px; display: flex; align-items: center; gap: 5px; padding: 0 7px; border-bottom: 1px solid var(--line); background: #f7f8fa; }
+  .kb-status-dot { width: 5px; height: 5px; border-radius: 50%; flex: none; background: #aeb5c0; }
+  .kb-status-dot.pending { background: #aeb5c0; }
+  .kb-status-dot.running { background: var(--brand); }
+  .kb-status-dot.review { background: #8b6fd6; }
+  .kb-status-dot.completed { background: #48a363; }
+  .kb-status-dot.failed { background: #c45151; }
+  .kb-col-name { font-size: 9px; color: var(--ink-2); white-space: nowrap; }
+  .kb-col-count { margin-left: auto; padding: 1px 4px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink-3); font: 8px/1 var(--mono); }
+  .kb-col-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 5px; padding: 6px; overflow: hidden; }
+  .kb-card { flex: none; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px 7px; border: 1px solid var(--line); border-left: 2px solid #aeb5c0; border-radius: 6px; background: #fff; }
+  .kb-card.running { border-left-color: var(--brand); }
+  .kb-card.review { border-left-color: #8b6fd6; }
+  .kb-card.completed { border-left-color: #48a363; }
+  .kb-card.failed { border-left-color: #c45151; }
+  .kb-card-title { font-size: 10.5px; line-height: 1.35; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .kb-card-desc { font-size: 9.2px; line-height: 1.4; color: var(--ink-3); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .kb-card-meta { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .kb-ver { padding: 1px 4px; border-radius: 3px; background: #eef3fe; color: #3566c9; font: 7.8px/1.35 var(--mono); white-space: nowrap; }
+  .kb-prio { padding: 1px 4px; border-radius: 3px; background: #f3f4f6; color: var(--ink-3); font: 7.8px/1.35 var(--mono); white-space: nowrap; }
+  .kb-prio.normal { background: #eef8f8; color: #2d7c85; }
+  .kb-prio.high { background: #fbf4e6; color: #9a6b12; }
+  .kb-prio.low { background: #f3f4f6; color: var(--ink-3); }
+  .kb-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding-top: 4px; border-top: 1px solid #f0f1f3; color: var(--ink-3); font: 7.8px/1 var(--mono); min-width: 0; }
+  .kb-module { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kb-sessions { flex: none; }
+  .kb-empty { padding: 12px 5px; border: 1px dashed #e2e4e8; border-radius: 5px; text-align: center; color: var(--ink-3); font-size: 8.5px; }
+  .kb-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 11px 0 2px; }
+  .kb-stat { padding: 8px 9px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+  .kb-stat b { display: block; font: 16px/1 var(--mono); font-weight: 400; color: var(--ink); }
+  .kb-stat b.blue { color: var(--brand); }
+  .kb-stat b.purple { color: #8b6fd6; }
+  .kb-stat span { display: block; margin-top: 4px; color: var(--ink-3); font-size: 8.5px; }
+  .kb-list { margin-top: 4px; }
+  .kb-list-row { display: flex; align-items: flex-start; gap: 6px; min-width: 0; padding: 6px 0; border-top: 1px solid var(--line); }
+  .kb-list-row:first-child { border-top: 0; padding-top: 2px; }
+  .kb-list-row > .kb-status-dot { margin-top: 4px; }
+  .kb-list-row > div { min-width: 0; }
+  .kb-list-row b { display: block; color: var(--ink-2); font-size: 9.5px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+  .kb-list-row small { display: block; margin-top: 2px; color: var(--ink-3); font: 8px/1.2 var(--mono); }
+  .kb-list-time { margin-left: auto; flex: none; color: var(--ink-3); font: 8px/1.4 var(--mono); }
+  .kb-activity-time { flex: none; padding-top: 1px; color: var(--ink-3); font: 8px/1.4 var(--mono); }
+  .kb-project-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 9.5px; }
+  .kb-project-row:first-of-type { border-top: 0; }
+  .kb-project-row b { color: var(--ink-3); font: 8.5px/1 var(--mono); font-weight: 400; }
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.4 1.4-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V20h-2v-.5a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-1.4-1.4.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H4v-2h.5a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 1.4-1.4.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V4h2v.5a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 1.4 1.4-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H20v2h-.5a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.4l6.1-.9L12 3Z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 4 4v2H6v-2l4-4-1-6Z"/><path d="M12 15v6"/></symbol>
+  <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 3.8 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.8a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M6 8.5v2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-2M12 13.5v2"/></symbol>
+</svg>
+
+<!-- BOARD 1: BUTTONS -->
+<section class="board" id="board-buttons">
+  <header>
+    <div class="eyebrow">WORKLOOM / UI SPEC 01</div>
+    <h1>按钮层级与落位</h1>
+    <p class="lede">一个视图只保留一个主操作。创建、生成 Lock、开始执行使用黑底主按钮；浏览、上一步、重新生成使用描边按钮；取消和跳过保持无边框；删除收进“更多”菜单，避免和主操作并排。</p>
+  </header>
+
+  <div class="spec-grid">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">项目树</span>
+        <button class="btn btn-icon" aria-label="新建项目"><svg class="icon"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="tree">
+        <div class="tree-row active"><svg class="icon chev"><use href="#i-chevron-down"/></svg><span>dsh</span><span class="count">03</span></div>
+        <div class="tree-row indent muted"><span>v1 · 3 个任务</span></div>
+        <div class="tree-row indent"><span class="status-dot todo"></span><span>第三轮任务验证</span></div>
+        <div class="tree-row indent"><span class="status-dot done"></span><span>第二轮验证任务</span></div>
+        <div class="tree-row indent"><span class="status-dot done"></span><span>测试任务</span></div>
+        <div class="tree-row"><svg class="icon chev"><use href="#i-chevron-right"/></svg><span>Workloom 官网</span><span class="count">00</span></div>
+        <div class="tree-label">会话</div>
+        <div class="tree-row indent muted"><span>临时会话</span></div>
+        <div class="sidebar-actions">
+          <button class="btn btn-secondary btn-sm"><svg class="icon"><use href="#i-plus"/></svg>新建项目</button>
+          <button class="btn btn-secondary btn-sm"><svg class="icon"><use href="#i-plus"/></svg>新建任务会话</button>
+          <button class="btn btn-ghost btn-sm">新建临时会话</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel detail-panel">
+      <div class="detail-title-row">
+        <div>
+          <div class="detail-title">任务详情</div>
+          <div class="detail-sub"><span class="tag">待开始</span><span>普通优先级</span></div>
+        </div>
+        <div style="display:flex;gap:2px">
+          <button class="btn btn-icon" aria-label="编辑任务"><svg class="icon"><use href="#i-edit"/></svg></button>
+          <button class="btn btn-icon" aria-label="更多操作"><svg class="icon"><use href="#i-more"/></svg></button>
+        </div>
+      </div>
+      <dl class="meta">
+        <dt>版本</dt><dd>v1</dd>
+        <dt>工作区</dt><dd>未创建</dd>
+        <dt>Lock</dt><dd class="mono">deb33fc</dd>
+      </dl>
+      <div class="panel-divider"></div>
+      <div class="lock-section">
+        <div class="section-kicker">Lock</div>
+        <div class="lock-value">deb33fc · 2 个仓库</div>
+        <div class="lock-actions">
+          <button class="btn btn-primary btn-sm">生成 Lock</button>
+          <button class="btn btn-secondary btn-sm">重新生成</button>
+        </div>
+      </div>
+      <div class="panel-divider" style="margin-top:16px"></div>
+      <div class="lock-section">
+        <div class="section-kicker">执行</div>
+        <div class="lock-value">使用已有代码目录</div>
+        <div class="lock-actions"><button class="btn btn-secondary btn-sm">选择目录</button></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">按钮规范</span><span class="eyebrow" style="font-size:9px">4 TYPES + ICON</span></div>
+      <div class="spec-card">
+        <div class="spec-row">
+          <div class="spec-label">Primary</div>
+          <div>
+            <div class="spec-items"><button class="btn btn-primary">新建项目</button><button class="btn btn-primary">生成 Lock</button><button class="btn btn-primary">开始执行</button></div>
+            <div class="spec-note">深色填充，一屏只出现一次。禁用态保留形状，不变成灰色文字。</div>
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-label">Secondary</div>
+          <div>
+            <div class="spec-items"><button class="btn btn-secondary"><svg class="icon"><use href="#i-folder"/></svg>浏览…</button><button class="btn btn-secondary"><svg class="icon"><use href="#i-arrow-left"/></svg>上一步</button><button class="btn btn-secondary">重新生成</button></div>
+            <div class="spec-note">白底描边，用于辅助动作和向后退。不要和主按钮同时抢视觉重量。</div>
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-label">Ghost / skip</div>
+          <div>
+            <div class="spec-items"><button class="btn btn-ghost">取消</button><button class="btn btn-ghost">跳过此步</button><button class="btn btn-link">添加仓库<svg class="icon"><use href="#i-arrow-right"/></svg></button></div>
+            <div class="spec-note">可选步骤提供明确的“跳过此步”，不把用户困在表单里。</div>
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-label">Danger</div>
+          <div>
+            <div class="spec-items"><button class="btn btn-danger">删除项目</button></div>
+            <div class="spec-note">只出现在“更多”菜单或确认框。默认不红，避免页面到处是危险信号。</div>
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-label">Icon</div>
+          <div>
+            <div class="spec-items">
+              <button class="btn btn-icon" aria-label="新建"><svg class="icon"><use href="#i-plus"/></svg></button>
+              <button class="btn btn-icon" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+              <button class="btn btn-icon" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button>
+              <button class="btn btn-primary btn-disabled" disabled>开始执行</button>
+            </div>
+            <div class="spec-note">图标按钮 30×30，带 Tooltip；禁用按钮用 opacity 表现，不改变布局。</div>
+          </div>
+        </div>
+        <div class="spec-rule"><span class="swatch"></span>进度、焦点和链接统一使用品牌蓝 <span class="mono">#4176E6</span>；主按钮保持 DSH 的近黑 <span class="mono">#0F1115</span>。所有控件继续使用 <span class="mono">--dsw-*</span> token。</div>
+      </div>
+    </div>
+  </div>
+  <div class="placement">
+    <div class="placement-item"><div class="k">01 / TOP BAR</div><div class="t">“新建”保留在顶栏</div><div class="d">下拉菜单暂不改变；项目、版本、任务三个入口统一打开居中弹框。</div></div>
+    <div class="placement-item"><div class="k">02 / RIGHT PANEL</div><div class="t">标题只留编辑与更多</div><div class="d">删除、重建等低频操作收进“更多”；生成 Lock 仍留在正文，作为唯一主操作。</div></div>
+    <div class="placement-item"><div class="k">03 / MODAL</div><div class="t">每步只有一个主按钮</div><div class="d">右侧固定“上一步 / 下一步”；可选步骤额外提供“跳过此步”，绝不把用户困住。</div></div>
+  </div>
+  <div class="board-foot"><span>WORKLOOM / BUTTON SYSTEM</span><span>ONE PRIMARY PER VIEW · DANGER IN OVERFLOW · 30×30 ICON TARGETS</span></div>
+</section>
+
+<!-- BOARD 2: PROJECT MODAL -->
+<section class="flow-board" id="board-project">
+  <div class="app-shot">
+    <div class="app-top">
+      <div class="app-brand"><span class="brandmark"><span></span></span>Workloom</div>
+      <span class="app-crumb">dsh / v1 / 第三轮任务验证</span>
+      <span class="app-spacer"></span>
+      <button class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-plus"/></svg>新建<svg class="icon" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+    </div>
+    <div class="app-body">
+      <aside class="app-side">
+        <div class="tree-label" style="margin-top:0">项目</div>
+        <div class="tree-row active"><svg class="icon chev"><use href="#i-chevron-down"/></svg>dsh<span class="count">03</span></div>
+        <div class="tree-row indent"><span class="status-dot todo"></span>第三轮任务验证</div>
+        <div class="tree-row indent"><span class="status-dot done"></span>第二轮验证任务</div>
+        <div class="tree-row indent"><span class="status-dot done"></span>测试任务</div>
+        <div class="sidebar-actions"><button class="btn btn-secondary btn-sm"><svg class="icon"><use href="#i-plus"/></svg>新建项目</button></div>
+      </aside>
+      <main class="app-main">
+        <div class="app-heading">第三轮任务验证</div>
+        <div class="app-sub">待开始 · 普通优先级 · v1</div>
+        <div class="app-section"><div class="app-section-title">任务描述</div><div class="app-line mid" style="margin-top:14px"></div><div class="app-line short" style="margin-top:8px"></div></div>
+        <div class="app-section"><div class="app-section-title">执行配置</div><div class="app-line" style="margin-top:14px;width:72%"></div><div class="app-line short" style="margin-top:8px"></div></div>
+      </main>
+      <aside class="app-right">
+        <div class="app-section-title">任务详情</div>
+        <div class="app-row"><span>版本</span><b>v1</b></div>
+        <div class="app-row"><span>工作区</span><b>未创建</b></div>
+        <div class="app-row"><span>Lock</span><b class="mono" style="font-size:11px">deb33fc</b></div>
+        <div style="margin-top:18px"><button class="btn btn-primary btn-sm">生成 Lock</button></div>
+      </aside>
+    </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="stage">
+    <div class="modal modal-project" role="dialog" aria-modal="true" aria-labelledby="project-title">
+      <div class="modal-head">
+        <div>
+          <div class="modal-meta">PROJECT / CREATE</div>
+          <div class="modal-title" id="project-title">新建项目</div>
+          <div class="modal-sub">第 2 步，共 4 步 · 登记仓库</div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <button class="btn btn-icon modal-close" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+      <div class="stepper">
+        <div class="step done"><span class="node"><svg class="icon" style="width:11px;height:11px"><use href="#i-check"/></svg></span><span class="step-label">基本信息</span><span class="rail"></span></div>
+        <div class="step active"><span class="node">2</span><span class="step-label">仓库</span><span class="rail"></span></div>
+        <div class="step"><span class="node">3</span><span class="step-label">模块</span><span class="optional">可选</span><span class="rail"></span></div>
+        <div class="step"><span class="node">4</span><span class="step-label">确认</span></div>
+      </div>
+      <div class="modal-body">
+        <div class="section-heading"><h3>仓库</h3><span class="section-hint">至少一个；路径必须落在本机</span></div>
+        <div class="repo-card">
+          <div class="repo-head"><span class="repo-title"><span class="repo-index">01</span>主仓库</span><button class="btn btn-ghost btn-sm">删除</button></div>
+          <label class="field">
+            <span class="label">仓库绝对路径 <span class="req">*</span></span>
+            <span class="input-row"><span class="input mono">/home/bernie/workspace/repo/deepseek-harness-loom</span><button class="btn btn-secondary btn-sm"><svg class="icon"><use href="#i-folder"/></svg>浏览…</button></span>
+            <span class="help">本地 Git 仓库根目录，WSL 服务请选择 /home 或 /mnt/c 下的路径。</span>
+          </label>
+          <label class="field">
+            <span class="label">工作区内相对目录 <span class="req">*</span></span>
+            <span class="input mono focus">.</span>
+            <span class="help">单仓库项目填 <span class="mono">.</span>，表示工作区根目录就是仓库根目录；多仓库时填各自子目录。</span>
+          </label>
+        </div>
+        <button class="btn btn-link add-row"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>添加仓库</button>
+        <div class="helper-strip"><svg class="icon"><use href="#i-info"/></svg><span>只会登记本机 Git 仓库，不会克隆。每个项目仓库子目录必须存在且可读取。</span></div>
+      </div>
+      <div class="modal-foot">
+        <div class="foot-left"><button class="btn btn-ghost">取消</button></div>
+        <div class="foot-right"><button class="btn btn-secondary"><svg class="icon"><use href="#i-arrow-left"/></svg>上一步</button><button class="btn btn-primary">下一步</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BOARD 3: VERSION MODAL -->
+<section class="flow-board" id="board-version">
+  <div class="app-shot">
+    <div class="app-top">
+      <div class="app-brand"><span class="brandmark"><span></span></span>Workloom</div>
+      <span class="app-crumb">dsh / 版本</span>
+      <span class="app-spacer"></span>
+      <button class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-plus"/></svg>新建<svg class="icon" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+    </div>
+    <div class="app-body">
+      <aside class="app-side">
+        <div class="tree-label" style="margin-top:0">项目</div>
+        <div class="tree-row active"><svg class="icon chev"><use href="#i-chevron-down"/></svg>dsh<span class="count">03</span></div>
+        <div class="tree-row indent"><span class="status-dot todo"></span>第三轮任务验证</div>
+        <div class="tree-row indent"><span class="status-dot done"></span>第二轮验证任务</div>
+      </aside>
+      <main class="app-main">
+        <div class="app-heading">版本</div>
+        <div class="app-sub">冻结每个仓库的引用，生成 Lock 后才能开始任务。</div>
+        <div class="app-section"><div class="app-section-title">v1</div><div class="app-row"><span>主仓库</span><b class="mono" style="font-size:11px">feature/dsh-loom</b></div><div class="app-row"><span>Lock</span><b class="mono" style="font-size:11px">deb33fc</b></div></div>
+      </main>
+      <aside class="app-right">
+        <div class="app-section-title">版本详情</div>
+        <div class="app-row"><span>任务</span><b>3</b></div>
+        <div class="app-row"><span>Lock</span><b>2</b></div>
+      </aside>
+    </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="stage">
+    <div class="modal modal-standard" role="dialog" aria-modal="true" aria-labelledby="version-title">
+      <div class="modal-head">
+        <div>
+          <div class="modal-meta">VERSION / CREATE</div>
+          <div class="modal-title" id="version-title">新建版本</div>
+          <div class="modal-sub">第 2 步，共 3 步 · 选择分支</div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <button class="btn btn-icon modal-close" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+      <div class="stepper">
+        <div class="step done"><span class="node"><svg class="icon" style="width:11px;height:11px"><use href="#i-check"/></svg></span><span class="step-label">基本信息</span><span class="rail"></span></div>
+        <div class="step active"><span class="node">2</span><span class="step-label">分支</span><span class="rail"></span></div>
+        <div class="step"><span class="node">3</span><span class="step-label">确认</span></div>
+      </div>
+      <div class="modal-body">
+        <div class="section-heading"><h3>版本引用</h3><span class="section-hint">每个仓库都必须指定</span></div>
+        <div class="branch-card">
+          <div class="branch-top">
+            <div class="branch-path"><div class="p">/home/bernie/workspace/repo/deepseek-harness-loom</div><div class="n">主仓库</div></div>
+            <span class="tag">feature/dsh-loom</span>
+          </div>
+          <div class="branch-controls">
+            <div class="select">feature/dsh-loom<svg class="icon chev" style="width:13px;height:13px"><use href="#i-chevron-down"/></svg></div>
+            <button class="btn btn-secondary btn-sm">加载分支</button>
+          </div>
+          <div class="help" style="margin-top:8px">已有分支可直接选择，也允许手填标签或 commit。</div>
+        </div>
+        <div class="branch-card">
+          <div class="branch-top">
+            <div class="branch-path"><div class="p">/home/bernie/workspace/repo/deepseek-harness</div><div class="n">文档仓库</div></div>
+            <span class="tag" style="color:var(--danger);border-color:#efd2d2;background:#fff7f7">未选择</span>
+          </div>
+          <div class="branch-controls">
+            <div class="select" style="border-color:var(--brand);box-shadow:0 0 0 3px rgba(65,118,230,.13)">选择分支或输入 ref<svg class="icon chev" style="width:13px;height:13px"><use href="#i-chevron-down"/></svg></div>
+            <button class="btn btn-secondary btn-sm">加载分支</button>
+          </div>
+          <div class="error" style="margin-top:8px"><svg class="icon" style="width:13px;height:13px"><use href="#i-info"/></svg>请选择一个分支，或输入标签 / commit。</div>
+        </div>
+        <div class="helper-strip"><svg class="icon"><use href="#i-info"/></svg><span><b>创建后需要生成 Lock。</b> Lock 会固定到具体 commit；分支之后再移动，不会影响已生成的 Lock。</span></div>
+      </div>
+      <div class="modal-foot">
+        <div class="foot-left"><button class="btn btn-ghost">取消</button></div>
+        <div class="foot-right"><button class="btn btn-secondary"><svg class="icon"><use href="#i-arrow-left"/></svg>上一步</button><button class="btn btn-primary">下一步</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BOARD 4: TASK FLOW, STEP 2 + STEP 3 -->
+<section class="flow-board" id="board-task-flow">
+  <div class="app-shot">
+    <div class="app-top">
+      <div class="app-brand"><span class="brandmark"><span></span></span>Workloom</div>
+      <span class="app-crumb">dsh / v1 / 新建任务</span>
+      <span class="app-spacer"></span>
+      <button class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-plus"/></svg>新建<svg class="icon" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+    </div>
+    <div class="app-body">
+      <aside class="app-side"><div class="tree-label" style="margin-top:0">项目</div><div class="tree-row active"><svg class="icon chev"><use href="#i-chevron-down"/></svg>dsh<span class="count">03</span></div><div class="tree-row indent"><span class="status-dot todo"></span>第三轮任务验证</div><div class="tree-row indent"><span class="status-dot done"></span>第二轮验证任务</div></aside>
+      <main class="app-main"><div class="app-heading">第三轮任务验证</div><div class="app-sub">待开始 · 普通优先级 · v1</div><div class="app-section"><div class="app-section-title">任务描述</div><div class="app-line mid" style="margin-top:14px"></div><div class="app-line short" style="margin-top:8px"></div></div></main>
+      <aside class="app-right"><div class="app-section-title">任务详情</div><div class="app-row"><span>版本</span><b>v1</b></div><div class="app-row"><span>Lock</span><b class="mono" style="font-size:11px">deb33fc</b></div></aside>
+    </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="frames">
+    <div class="frame-wrap">
+      <div class="frame-label"><b>STEP 2</b> · 范围与优先级 · 可跳过</div>
+      <div class="modal modal-standard" role="dialog" aria-modal="true" aria-labelledby="task-title">
+        <div class="modal-head">
+          <div>
+            <div class="modal-meta">TASK / CREATE</div>
+            <div class="modal-title" id="task-title">新建任务</div>
+            <div class="modal-sub">第 2 步，共 3 步 · 这一步可跳过</div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:8px">
+              <button class="btn btn-icon modal-close" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+          </div>
+        </div>
+        <div class="stepper">
+          <div class="step done"><span class="node"><svg class="icon" style="width:11px;height:11px"><use href="#i-check"/></svg></span><span class="step-label">任务内容</span><span class="rail"></span></div>
+          <div class="step active"><span class="node">2</span><span class="step-label">范围与优先级</span><span class="optional">可选</span><span class="rail"></span></div>
+          <div class="step"><span class="node">3</span><span class="step-label">确认</span></div>
+        </div>
+        <div class="modal-body">
+          <div class="optional-callout"><svg class="icon"><use href="#i-info"/></svg><span>这一步只决定任务归属和优先级。跳过也可以创建，之后在任务详情里仍可修改。</span></div>
+          <div class="field">
+            <span class="label">优先级</span>
+            <div class="segmented"><button class="seg">低</button><button class="seg active">普通</button><button class="seg">高</button></div>
+            <span class="help">默认普通；创建后也可调整。</span>
+          </div>
+          <div class="field" style="margin-top:20px">
+            <div class="section-heading" style="margin-bottom:8px"><h3 style="font-size:12px">关联模块</h3><span class="section-hint">可以多选，也可以不选</span></div>
+            <div class="module-list">
+              <label class="module selected"><span class="checkbox"><svg class="icon"><use href="#i-check"/></svg></span><span><span class="m-name">loom/client</span><span class="m-desc">左侧项目树、创建弹框与按钮规范</span></span></label>
+              <label class="module"><span class="checkbox"></span><span><span class="m-name">loom/host</span><span class="m-desc">目录选择、工作区与 Remote 服务</span></span></label>
+              <label class="module"><span class="checkbox"></span><span><span class="m-name">loom/git</span><span class="m-desc">worktree 与分支准备</span></span></label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <div class="foot-left"><button class="btn btn-ghost">取消</button><button class="btn btn-ghost skip">跳过此步<svg class="icon"><use href="#i-arrow-right"/></svg></button></div>
+          <div class="foot-right"><button class="btn btn-secondary"><svg class="icon"><use href="#i-arrow-left"/></svg>上一步</button><button class="btn btn-primary">下一步</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-label"><b>STEP 3</b> · 确认后创建</div>
+      <div class="modal modal-standard" role="dialog" aria-modal="true" aria-labelledby="task-confirm-title">
+        <div class="modal-head">
+          <div>
+            <div class="modal-meta">TASK / CREATE</div>
+            <div class="modal-title" id="task-confirm-title">新建任务</div>
+            <div class="modal-sub">第 3 步，共 3 步 · 确认并创建</div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <button class="btn btn-icon modal-close" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+          </div>
+        </div>
+        <div class="stepper">
+          <div class="step done"><span class="node"><svg class="icon" style="width:11px;height:11px"><use href="#i-check"/></svg></span><span class="step-label">任务内容</span><span class="rail"></span></div>
+          <div class="step done"><span class="node"><svg class="icon" style="width:11px;height:11px"><use href="#i-check"/></svg></span><span class="step-label">范围与优先级</span><span class="optional">可选</span><span class="rail"></span></div>
+          <div class="step active"><span class="node">3</span><span class="step-label">确认</span></div>
+        </div>
+        <div class="modal-body">
+          <div class="section-heading"><h3>确认任务</h3><span class="section-hint">创建后进入任务详情</span></div>
+          <dl class="summary">
+            <div class="summary-row"><dt>任务标题</dt><dd>第三轮任务验证</dd></div>
+            <div class="summary-row"><dt>描述</dt><dd>验证第三轮问题，截图和按钮一起回归。</dd></div>
+            <div class="summary-row"><dt>所属版本</dt><dd>v1 · dsh</dd></div>
+            <div class="summary-row"><dt>优先级</dt><dd>普通</dd></div>
+            <div class="summary-row"><dt>关联模块</dt><dd class="mono">loom/client</dd></div>
+          </dl>
+          <div class="confirm-note"><svg class="icon"><use href="#i-info"/></svg><span>创建后点击“开始执行”，任务标题与要求会自动带入新会话输入框，仍可编辑后再发送。</span></div>
+        </div>
+        <div class="modal-foot">
+          <div class="foot-left"><button class="btn btn-ghost">取消</button></div>
+          <div class="foot-right"><button class="btn btn-secondary"><svg class="icon"><use href="#i-arrow-left"/></svg>上一步</button><button class="btn btn-primary" style="min-width:96px">创建任务</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- BOARD 5: DELETE DIALOGS -->
+<section class="flow-board" id="board-delete">
+  <div class="app-shot">
+    <div class="app-top">
+      <div class="app-brand"><span class="brandmark"><span></span></span>Workloom</div>
+      <span class="app-crumb">dsh / v1 / 第三轮任务验证</span>
+      <span class="app-spacer"></span>
+      <button class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-plus"/></svg>新建<svg class="icon" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+    </div>
+    <div class="app-body">
+      <aside class="app-side"><div class="tree-label" style="margin-top:0">项目</div><div class="tree-row active"><svg class="icon chev"><use href="#i-chevron-down"/></svg>dsh<span class="count">03</span></div><div class="tree-row indent"><span class="status-dot todo"></span>第三轮任务验证</div><div class="tree-row indent"><span class="status-dot done"></span>第二轮验证任务</div></aside>
+      <main class="app-main"><div class="app-heading">第三轮任务验证</div><div class="app-sub">待开始 · 普通优先级 · v1</div><div class="app-section"><div class="app-section-title">任务描述</div><div class="app-line mid" style="margin-top:14px"></div><div class="app-line short" style="margin-top:8px"></div></div></main>
+      <aside class="app-right"><div class="app-section-title">任务详情</div><div class="app-row"><span>版本</span><b>v1</b></div><div class="app-row"><span>Lock</span><b class="mono" style="font-size:11px">deb33fc</b></div></aside>
+    </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="frames" style="gap:28px;padding:48px 36px">
+    <div class="frame-wrap">
+      <div class="frame-label"><b>DELETE</b> · 可删除</div>
+      <div class="modal modal-confirm" role="dialog" aria-modal="true" aria-labelledby="delete-task-title">
+        <div class="dialog-head">
+          <div><div class="dialog-eyebrow danger">DANGER / DELETE</div><div class="dialog-title" id="delete-task-title">删除任务</div><div class="dialog-desc">此操作不可撤销。</div></div>
+          <button class="btn btn-icon" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="dialog-body">
+          <div class="subject-card"><span class="subject-icon"><svg class="icon"><use href="#i-warning"/></svg></span><div><div class="subject-name">第三轮任务验证</div><div class="subject-context">所属版本 v1 · 普通优先级 · 待开始</div></div></div>
+          <p class="warning-copy">将删除这个<strong>任务</strong>、它的执行记录，以及已清理的工作区记录。未清理的工作区必须先处理。</p>
+        </div>
+        <div class="dialog-foot"><button class="btn btn-ghost">取消</button><div class="right"><button class="btn btn-danger-solid">删除任务</button></div></div>
+      </div>
+    </div>
+    <div class="frame-wrap">
+      <div class="frame-label"><b>BLOCKED</b> · 依赖未处理</div>
+      <div class="modal modal-blocked" role="dialog" aria-modal="true" aria-labelledby="delete-project-title">
+        <div class="dialog-head">
+          <div><div class="dialog-eyebrow blocked">BLOCKED / DELETE</div><div class="dialog-title" id="delete-project-title">删除项目</div><div class="dialog-desc">依赖未处理，暂时不能删除。</div></div>
+          <button class="btn btn-icon" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="dialog-body">
+          <div class="subject-card"><span class="subject-icon warn"><svg class="icon"><use href="#i-warning"/></svg></span><div><div class="subject-name">dsh</div><div class="subject-context">项目 · 1 个版本 · 3 个任务</div></div></div>
+          <div class="blocked-box">
+            <div class="blocked-title"><svg class="icon" style="width:13px;height:13px"><use href="#i-info"/></svg>该项目仍有 1 个版本</div>
+            <div class="blocked-list"><div class="blocked-row"><span class="b-name">v1</span><span>3 个任务</span><span class="b-meta">必须先删除</span></div></div>
+            <p class="blocked-note">Workloom 不会级联删除版本或任务。请先删除这个版本；如果只是查看，可以返回。</p>
+          </div>
+          <p class="warning-copy">删除项目后无法恢复项目配置和模块定义。</p>
+        </div>
+        <div class="dialog-foot"><button class="btn btn-ghost">取消</button><div class="right"><button class="btn btn-primary">查看版本</button></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="board-caption"><b>规则</b> 默认焦点在“取消”；红底只用于不可逆删除；被依赖阻止时不给删除按钮，只给处理路径。</div>
+</section>
+
+<!-- BOARD 6: CLEANUP + TAKEOVER -->
+<section class="flow-board" id="board-operations">
+  <div class="app-shot">
+    <div class="app-top">
+      <div class="app-brand"><span class="brandmark"><span></span></span>Workloom</div>
+      <span class="app-crumb">dsh / v1 / 第三轮任务验证</span>
+      <span class="app-spacer"></span>
+      <button class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-plus"/></svg>新建<svg class="icon" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+    </div>
+    <div class="app-body">
+      <aside class="app-side"><div class="tree-label" style="margin-top:0">项目</div><div class="tree-row active"><svg class="icon chev"><use href="#i-chevron-down"/></svg>dsh<span class="count">03</span></div><div class="tree-row indent"><span class="status-dot todo"></span>第三轮任务验证</div></aside>
+      <main class="app-main"><div class="app-heading">第三轮任务验证</div><div class="app-sub">运行中 · 普通优先级 · v1</div><div class="app-section"><div class="app-section-title">工作区</div><div class="app-line mid" style="margin-top:14px"></div><div class="app-line short" style="margin-top:8px"></div></div></main>
+      <aside class="app-right"><div class="app-section-title">执行</div><div class="app-row"><span>Owner</span><b class="mono" style="font-size:11px">session-14395459</b></div></aside>
+    </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="frames" style="gap:30px;padding:44px 30px;align-items:center">
+    <div class="frame-wrap">
+      <div class="frame-label"><b>CLEANUP</b> · 有未提交改动</div>
+      <div class="modal modal-cleanup" role="dialog" aria-modal="true" aria-labelledby="cleanup-title">
+        <div class="cleanup-head">
+          <div style="min-width:0"><div class="dialog-eyebrow">WORKSPACE / CLEANUP</div><div class="dialog-title" id="cleanup-title">清理工作区</div><div class="cleanup-path">/home/bernie/.dsh/loom/workspaces/v1-2d273b4d</div></div>
+          <button class="btn btn-icon" aria-label="关闭" style="margin-left:auto"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="cleanup-body">
+          <aside class="cleanup-side">
+            <div class="cleanup-kicker">清理前检查</div>
+            <p class="cleanup-warning">清理会删除工作区目录。未提交改动和未推送提交不会自动保留。</p>
+            <div class="counts">
+              <div class="count-row"><span>未提交改动</span><b>3 个文件</b></div>
+              <div class="count-row"><span>未推送提交</span><b>1 个</b></div>
+            </div>
+            <div class="danger-zone">
+              <label class="check-row"><span class="check-box"><svg class="icon"><use href="#i-check"/></svg></span><span>我已知晓，将丢弃这些未提交改动。</span></label>
+            </div>
+            <p class="cleanup-warning" style="margin-top:12px">已推送的提交不受影响。运行中的任务禁止清理。</p>
+            <div class="cleanup-kicker" style="margin-top:16px">清理后</div>
+            <p class="cleanup-warning" style="margin-top:6px">工作区记录标记为已清理；任务、版本和 Lock 不受影响。需要时可以重新准备工作区。</p>
+          </aside>
+          <div class="cleanup-main">
+            <div class="diff-panel">
+              <div class="diff-head"><b>改动预览</b><span>3 个文件 · +12 −4</span></div>
+              <div class="diff-file"><span class="badge">M</span>src/client/LoomPanel.tsx<span class="muted">+8 −2</span></div>
+              <div class="diff-file"><span class="badge">M</span>src/client/locales.ts<span class="muted">+3 −1</span></div>
+              <div class="diff-file"><span class="badge new">A</span>notes/draft.md<span class="muted">+1 −1</span></div>
+              <div class="diff-code">
+                <div class="diff-line"><span class="ln">...</span><span>const panelWidth = 760</span></div>
+                <div class="diff-line del"><span class="ln">-</span><span>const label = '新建项目'</span></div>
+                <div class="diff-line add"><span class="ln">+</span><span>const label = t('project.new')</span></div>
+                <div class="diff-line"><span class="ln">...</span><span>return &lt;LoomCreateDialog /&gt;</span></div>
+                <div class="diff-line"><span class="ln">...</span><span>export function LoomPanel() {</span></div>
+                <div class="diff-line"><span class="ln">...</span><span>  const [active, setActive] = useState()</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cleanup-foot"><button class="btn btn-ghost">取消</button><div class="right"><button class="btn btn-danger-solid">丢弃改动并清理</button></div></div>
+      </div>
+    </div>
+    <div class="frame-wrap">
+      <div class="frame-label"><b>TAKEOVER</b> · 停止并接管</div>
+      <div class="modal modal-takeover" role="dialog" aria-modal="true" aria-labelledby="takeover-title">
+        <div class="dialog-head">
+          <div><div class="dialog-eyebrow blocked">STOP / TAKEOVER</div><div class="dialog-title" id="takeover-title">停止并接管执行</div><div class="dialog-desc">第三轮任务验证 · 运行中。</div></div>
+          <button class="btn btn-icon" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="dialog-body">
+          <div class="subject-card"><span class="subject-icon warn"><svg class="icon"><use href="#i-warning"/></svg></span><div><div class="subject-name">session-14395459</div><div class="subject-context">当前执行所有者</div></div></div>
+          <p class="warning-copy">接管会先停止当前执行、工具和子 Agent。它不会自动提交、重置或丢弃工作区改动。</p>
+          <div class="helper-strip" style="margin-top:14px"><svg class="icon"><use href="#i-info"/></svg><span>只有确认上一个执行已经停止，再继续接管。</span></div>
+        </div>
+        <div class="dialog-foot"><button class="btn btn-ghost">取消</button><div class="right"><button class="btn btn-danger-outline">停止并接管</button></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="board-caption"><b>规则</b> 清理前先展示真实 Diff；丢弃改动必须显式勾选；接管用红色描边，区别于不可逆删除的红底。</div>
+</section>
+
+
+<!-- BOARD 7: WORKBENCH SHELL -->
+<section class="flow-board" id="board-shell" style="padding:16px;background:#e7e9ec">
+  <div class="shell">
+    <header class="shell-top">
+      <div class="shell-brand"><span class="brandmark"><span></span></span><span class="shell-brandname">Workloom</span></div>
+      <span class="shell-sep"></span>
+      <button class="ctx-btn"><span class="k">项目</span><span class="v">dsh</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+      <button class="ctx-btn"><span class="k">版本</span><span class="v">workloom</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+      <span class="top-active"><span class="dot"></span>2 个工作区</span>
+      <div class="view-switch"><button class="active">工作台</button><button>看板</button></div>
+      <span class="top-spacer"></span>
+      <button class="btn btn-secondary top-new"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>新建<svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+      <button class="btn btn-icon top-icon active" aria-label="切换右侧面板"><svg class="icon"><use href="#i-panel"/></svg></button>
+      <button class="btn btn-icon top-icon" aria-label="设置"><svg class="icon"><use href="#i-settings"/></svg></button>
+    </header>
+    <div class="shell-body">
+      <div class="resize-handle right" title="拖动调整右栏宽度"></div>
+      <aside class="shell-side">
+        <div class="side-scroll">
+          <section class="side-section">
+            <div class="side-head"><svg class="icon pin" style="width:12px;height:12px"><use href="#i-star"/></svg>置顶项目</div>
+            <div class="side-hint">点击项目右侧的置顶按钮。</div>
+          </section>
+
+          <section class="side-section">
+            <div class="side-head">项目<span class="count">2</span></div>
+            <div class="proj-row active"><svg class="icon chev"><use href="#i-chevron-down"/></svg><svg class="icon folder"><use href="#i-folder"/></svg><span class="proj-name">dsh</span><span class="proj-count">2</span><span class="proj-actions"><button class="mini-icon" aria-label="新建版本"><svg class="icon"><use href="#i-plus"/></svg></button><button class="mini-icon" aria-label="编辑项目"><svg class="icon"><use href="#i-edit"/></svg></button><button class="mini-icon" aria-label="置顶项目"><svg class="icon"><use href="#i-star"/></svg></button><button class="mini-icon" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button></span></div>
+            <div class="tree">
+              <div class="ver-row"><span class="ver-chip">v1</span><span class="ver-count">3</span><span class="ver-actions"><button class="mini-icon" aria-label="新建版本"><svg class="icon"><use href="#i-plus"/></svg></button><button class="mini-icon" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button></span></div>
+              <div class="task-row"><span class="task-dot done"></span><div class="task-text"><div class="task-name">测试任务</div><div class="task-state">已完成</div></div></div>
+              <div class="task-row"><span class="task-dot done"></span><div class="task-text"><div class="task-name">第二轮验证任务</div><div class="task-state">已完成</div></div></div>
+              <div class="task-row"><span class="task-dot pending"></span><div class="task-text"><div class="task-name">第三轮任务验证</div><div class="task-state">待开始</div></div></div>
+              <div class="ver-row active"><span class="ver-chip">workloom</span><span class="ver-count">1</span><span class="ver-actions"><button class="mini-icon" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button></span></div>
+              <div class="task-row selected"><span class="task-dot running"></span><div class="task-text"><div class="task-name">workloom ui 设计</div><div class="task-state">进行中</div></div></div>
+            </div>
+            <div class="proj-row" style="margin-top:2px"><svg class="icon chev"><use href="#i-chevron-right"/></svg><svg class="icon folder"><use href="#i-folder"/></svg><span class="proj-name">Workloom 官网</span><span class="proj-count">0</span></div>
+            <button class="btn btn-secondary add-project"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>新建项目</button>
+          </section>
+
+          <section class="side-section" style="margin-bottom:8px">
+            <div class="side-head">会话<span class="count">最多 5 个</span></div>
+            <div class="search-box"><svg class="icon"><use href="#i-search"/></svg>搜索会话</div>
+            <div class="session-group">任务会话<span class="count">3</span></div>
+            <div class="session-row"><span class="session-dot"></span><div style="min-width:0"><div class="session-title">文件预览滚动换行修复</div><div class="session-meta">dsh · workloom ui 设计</div></div></div>
+            <div class="session-row"><span class="session-dot pending"></span><div style="min-width:0"><div class="session-title">查看当前工作区分支情况</div><div class="session-meta">dsh · 第二轮验证任务</div></div></div>
+            <div class="session-row"><span class="session-dot pending"></span><div style="min-width:0"><div class="session-title">查看当前路径内容</div><div class="session-meta">dsh · 测试任务</div></div></div>
+            <div class="session-actions"><button class="btn btn-secondary"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>新建任务会话</button><button class="btn btn-ghost"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>新建临时会话</button></div>
+          </section>
+        </div>
+      </aside>
+
+      <main class="shell-main">
+        <div class="wb-head">
+          <div class="wb-title">workloom ui 设计</div>
+          <div class="wb-chips"><span class="chip running">进行中</span><span class="chip">普通</span><span class="chip version">workloom</span></div>
+          <div class="wb-head-actions"><button class="btn btn-icon" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button></div>
+        </div>
+        <div class="wb-body">
+          <div class="wb-inner">
+            <div class="wb-card">
+              <div class="wb-kicker">TASK / DESCRIPTION</div>
+              <p class="wb-desc">重做 Workloom 主界面：收敛左栏信息密度，重画顶栏层级，并把右栏的版本、任务、工作区与分支关系整理成可扫描的上下文。</p>
+              <div class="wb-meta">
+                <div><div class="k">VERSION</div><div class="v">workloom · dsh</div></div>
+                <div><div class="k">PRIORITY</div><div class="v">普通</div></div>
+                <div><div class="k">MODULE</div><div class="v mono" style="font-family:var(--mono);font-size:10px">loom/client</div></div>
+              </div>
+            </div>
+
+            <div class="wb-card">
+              <div class="wb-kicker">ACCEPTANCE</div>
+              <ul class="acceptance">
+                <li><span class="tick"></span><span>默认 320 / 344，右栏可向左拖宽，底部可向上拖高，窄宽度不溢出。</span></li>
+                <li><span class="tick"></span><span>版本 ref 与工作区分支在同一张图里可以区分。</span></li>
+                <li><span class="tick"></span><span>长路径、长任务名和长分支名都有明确的截断或换行规则。</span></li>
+                <li><span class="tick"></span><span>多个仓库逐个列出 Lock 与工作区分支，不省略第二个仓库。</span></li>
+              </ul>
+            </div>
+
+            <div class="exec-card">
+              <div class="exec-card-head"><h3>执行</h3><span class="badge"><span class="chip running" style="height:18px;font-size:9px">执行中</span></span></div>
+              <div class="exec-grid">
+                <div class="exec-field"><label>代码目录</label><div class="exec-input">使用已有代码目录<svg class="icon chev"><use href="#i-chevron-down"/></svg></div></div>
+                <div class="exec-field"><label>工作区</label><div class="exec-input">已创建 · feature/dsh-loom<svg class="icon chev"><use href="#i-chevron-down"/></svg></div></div>
+              </div>
+              <div class="exec-foot"><span class="hint">当前执行由 Session 持有，打开会话继续。</span><button class="btn btn-primary">打开会话</button></div>
+            </div>
+
+            <div class="timeline">
+              <div class="timeline-title">RECENT ACTIVITY</div>
+              <div class="timeline-row"><span class="t">11:08</span><span class="what">开始执行 · workloom ui 设计</span></div>
+              <div class="timeline-row"><span class="t">10:42</span><span class="what">生成 Lock 4f76ece · workloom</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <aside class="shell-aside">
+        <div class="context-head">
+          <div><div class="context-kicker">VERSION / CONTEXT</div><div class="context-title">workloom</div></div>
+          <div class="context-actions"><button class="btn btn-icon" aria-label="编辑版本"><svg class="icon"><use href="#i-edit"/></svg></button><button class="btn btn-icon" aria-label="更多操作"><svg class="icon"><use href="#i-more"/></svg></button></div>
+        </div>
+        <div class="context-scroll">
+          <div class="context-section" style="margin-top:0">
+            <div class="context-section-head"><span>GIT / 分支</span><span>LOCK 2 仓库</span></div>
+            <div class="git-card">
+              <div class="git-repo-block">
+                <div class="git-repo"><span class="git-repo-name">deepseek-harness-loom</span><span class="git-repo-path">.</span></div>
+                <div class="git-graph">
+                  <span class="git-spine"></span>
+                  <div class="git-node lock"><span class="git-dot"></span><span class="git-hash">4f76ece</span><span class="git-tag lock">Lock</span></div>
+                  <div class="git-node branch same"><span class="git-dot"></span><span class="git-ref">feature/dsh-loom</span><span class="git-tags"><span class="git-tag version">版本</span><span class="git-tag workspace">工作区</span></span></div>
+                </div>
+              </div>
+              <div class="git-repo-block">
+                <div class="git-repo"><span class="git-repo-name">deepseek-harness</span><span class="git-repo-path">../deepseek-harness</span></div>
+                <div class="git-graph">
+                  <span class="git-spine"></span>
+                  <div class="git-node lock"><span class="git-dot"></span><span class="git-hash">a91c2d3</span><span class="git-tag lock">Lock</span></div>
+                  <div class="git-node branch same"><span class="git-dot"></span><span class="git-ref">main</span><span class="git-tags"><span class="git-tag version">版本</span><span class="git-tag workspace">工作区</span></span></div>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-secondary ctx-wide">重新生成 Lock</button>
+          </div>
+
+          <div class="context-section">
+            <div class="context-section-head"><span>TASK</span><span class="ctx-edit">编辑</span></div>
+            <div class="context-box">
+              <div class="ctx-task-title">workloom ui 设计</div>
+              <div class="ctx-prop"><span class="pk">状态</span><span class="pv"><span class="ctx-status-dot run"></span>进行中</span></div>
+              <div class="ctx-prop"><span class="pk">优先级</span><span class="pv">普通</span></div>
+              <div class="ctx-prop"><span class="pk">当前轮次</span><span class="pv mono">1</span></div>
+            </div>
+          </div>
+
+          <div class="context-section">
+            <div class="context-section-head"><span>WORKSPACE</span><span>已创建</span></div>
+            <div class="context-box">
+              <div class="ctx-prop" style="border-top:0;padding-top:0"><span class="pk">根目录</span><span class="pv mono wrap">/home/bernie/workspace/repo/deepseek-harness-loom</span></div>
+              <div class="ctx-prop"><span class="pk">工作区分支</span><span class="pv">2 个仓库</span></div>
+              <div class="repo-branch"><span>deepseek-harness-loom</span><b>feature/dsh-loom</b></div>
+              <div class="repo-branch"><span>deepseek-harness</span><b>main</b></div>
+              <div class="ctx-prop"><span class="pk">状态</span><span class="pv"><span class="ctx-status-dot" style="background:#d6a23a"></span>有未提交改动</span></div>
+            </div>
+          </div>
+
+          <div class="context-section">
+            <div class="context-section-head"><span>MODULES</span><span>0 个</span></div>
+            <div class="context-box"><div class="ctx-muted">该项目没有配置模块。</div></div>
+          </div>
+
+          <div class="context-section">
+            <div class="context-section-head"><span>TESTS</span><span>未执行</span></div>
+            <div class="context-box"><div class="ctx-muted">本会话未执行测试。</div></div>
+          </div>
+
+          <div class="context-section">
+            <div class="context-section-head"><span>COST / USAGE</span><span>33.02M</span></div>
+            <div class="context-box">
+              <div class="usage-grid">
+                <div><span>未缓存输入</span><b>740,262</b></div>
+                <div><span>输出</span><b>140,434</b></div>
+                <div><span>缓存读写</span><b>32,139,904</b></div>
+                <div><span>累计</span><b>33,020,600</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <div class="shell-bottom">
+      <button class="bottom-tab active">审计</button>
+      <button class="bottom-tab">Diff<span style="font-family:var(--mono);font-size:9px;color:var(--ink-3)">3</span></button>
+      <button class="bottom-tab">用量<span style="font-family:var(--mono);font-size:9px;color:var(--ink-3)">33.02M</span></button>
+      <div class="bottom-meta"><span>workloom · 4f76ece</span><span>33.02M tokens</span><button class="mini-icon" aria-label="展开底部面板"><svg class="icon"><use href="#i-chevron-down"/></svg></button></div>
+    </div>
+  </div>
+</section>
+
+
+<section class="flow-board" id="board-kanban" style="padding:16px;background:#e7e9ec">
+  <div class="shell">
+    <header class="shell-top">
+      <div class="shell-brand"><span class="brandmark"><span></span></span><span class="shell-brandname">Workloom</span></div>
+      <span class="shell-sep"></span>
+      <button class="ctx-btn"><span class="k">项目</span><span class="v">dsh</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+      <button class="ctx-btn"><span class="k">版本</span><span class="v">workloom</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+      <span class="top-active"><span class="dot"></span>2 个工作区</span>
+      <div class="view-switch"><button>工作台</button><button class="active">看板</button></div>
+      <span class="top-spacer"></span>
+      <button class="btn btn-secondary top-new"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>新建<svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+      <button class="btn btn-icon top-icon active" aria-label="切换右侧面板"><svg class="icon"><use href="#i-panel"/></svg></button>
+      <button class="btn btn-icon top-icon" aria-label="设置"><svg class="icon"><use href="#i-settings"/></svg></button>
+    </header>
+    <div class="shell-body">
+      <div class="resize-handle right" title="拖动调整右栏宽度"></div>
+      <aside class="shell-side">
+        <div class="side-scroll">
+          <section class="side-section">
+            <div class="side-head"><svg class="icon pin" style="width:12px;height:12px"><use href="#i-star"/></svg>置顶项目</div>
+            <div class="side-hint">点击项目右侧的置顶按钮。</div>
+          </section>
+
+          <section class="side-section">
+            <div class="side-head">项目<span class="count">2</span></div>
+            <div class="proj-row active"><svg class="icon chev"><use href="#i-chevron-down"/></svg><svg class="icon folder"><use href="#i-folder"/></svg><span class="proj-name">dsh</span><span class="proj-count">2</span><span class="proj-actions"><button class="mini-icon" aria-label="新建版本"><svg class="icon"><use href="#i-plus"/></svg></button><button class="mini-icon" aria-label="编辑项目"><svg class="icon"><use href="#i-edit"/></svg></button><button class="mini-icon" aria-label="置顶项目"><svg class="icon"><use href="#i-star"/></svg></button><button class="mini-icon" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button></span></div>
+            <div class="tree">
+              <div class="ver-row"><span class="ver-chip">v1</span><span class="ver-count">3</span><span class="ver-actions"><button class="mini-icon" aria-label="新建版本"><svg class="icon"><use href="#i-plus"/></svg></button><button class="mini-icon" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button></span></div>
+              <div class="task-row"><span class="task-dot done"></span><div class="task-text"><div class="task-name">测试任务</div><div class="task-state">已完成</div></div></div>
+              <div class="task-row"><span class="task-dot done"></span><div class="task-text"><div class="task-name">第二轮验证任务</div><div class="task-state">已完成</div></div></div>
+              <div class="task-row"><span class="task-dot pending"></span><div class="task-text"><div class="task-name">第三轮任务验证</div><div class="task-state">待开始</div></div></div>
+              <div class="ver-row active"><span class="ver-chip">workloom</span><span class="ver-count">1</span><span class="ver-actions"><button class="mini-icon" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button></span></div>
+              <div class="task-row"><span class="task-dot running"></span><div class="task-text"><div class="task-name">workloom ui 设计</div><div class="task-state">进行中</div></div></div>
+            </div>
+            <div class="proj-row" style="margin-top:2px"><svg class="icon chev"><use href="#i-chevron-right"/></svg><svg class="icon folder"><use href="#i-folder"/></svg><span class="proj-name">Workloom 官网</span><span class="proj-count">0</span></div>
+            <button class="btn btn-secondary add-project"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>新建项目</button>
+          </section>
+
+          <section class="side-section" style="margin-bottom:8px">
+            <div class="side-head">会话<span class="count">最多 5 个</span></div>
+            <div class="search-box"><svg class="icon"><use href="#i-search"/></svg>搜索会话</div>
+            <div class="session-group">任务会话<span class="count">3</span></div>
+            <div class="session-row"><span class="session-dot"></span><div style="min-width:0"><div class="session-title">文件预览滚动换行修复</div><div class="session-meta">dsh · workloom ui 设计</div></div></div>
+            <div class="session-row"><span class="session-dot pending"></span><div style="min-width:0"><div class="session-title">查看当前工作区分支情况</div><div class="session-meta">dsh · 第二轮验证任务</div></div></div>
+            <div class="session-row"><span class="session-dot pending"></span><div style="min-width:0"><div class="session-title">查看当前路径内容</div><div class="session-meta">dsh · 测试任务</div></div></div>
+            <div class="session-actions"><button class="btn btn-secondary"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>新建任务会话</button><button class="btn btn-ghost"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg>新建临时会话</button></div>
+          </section>
+        </div>
+      </aside>
+      <main class="shell-main kb-main">
+        <div class="kb-toolbar">
+          <div class="kb-metrics">
+            <span class="kb-metric"><b>15</b>卡片</span>
+            <span class="kb-metric running"><b>3</b>进行中</span>
+            <span class="kb-metric"><b>3</b>活跃会话</span>
+            <span class="kb-metric review"><b>2</b>待审核</span>
+            <span class="kb-metric done"><b>5</b>已完成</span>
+          </div>
+          <div class="kb-filterbar">
+            <button class="kb-select"><span class="k">项目</span><span>dsh</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+            <button class="kb-select"><span class="k">版本</span><span>workloom</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+            <button class="kb-select"><span class="k">优先级</span><span>全部</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+            <button class="kb-select"><span class="k">模块</span><span>全部</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+            <button class="kb-search"><svg class="icon"><use href="#i-search"/></svg><span>搜索任务</span></button>
+            <div class="kb-mode"><span class="active">项目</span><span>平铺</span></div>
+          </div>
+        </div>
+        <div class="kb-board">
+          <section class="kb-lane primary">
+            <div class="kb-lane-head"><svg class="icon" style="width:11px;height:11px;color:var(--ink-3)"><use href="#i-folder"/></svg><span class="kb-lane-name">dsh</span><span class="kb-lane-count">12</span><button class="kb-lane-add">+ 新建卡片</button></div>
+            <div class="kb-cols"><section class="kb-col pending">
+              <div class="kb-col-head"><span class="kb-status-dot pending"></span><span class="kb-col-name">待开始</span><span class="kb-col-count">3</span></div>
+              <div class="kb-col-body"><div class="kb-card pending">
+                <div class="kb-card-title">整理版本切换器边界</div>
+                <div class="kb-card-desc">版本切换后保持任务筛选，不重置工作区。</div>
+                <div class="kb-card-meta"><span class="kb-ver">workloom</span><span class="kb-prio normal">普通</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/client</span><span class="kb-sessions">—</span></div>
+              </div>
+<div class="kb-card pending">
+                <div class="kb-card-title">补充导入项目校验</div>
+                <div class="kb-card-desc">导入时校验 source id 与模块引用。</div>
+                <div class="kb-card-meta"><span class="kb-ver">workloom</span><span class="kb-prio high">高</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/forms</span><span class="kb-sessions">—</span></div>
+              </div>
+<div class="kb-card pending">
+                <div class="kb-card-title">看板卡片拖拽回归</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">v1</span><span class="kb-prio low">低</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/kanban</span><span class="kb-sessions">—</span></div>
+              </div></div>
+            </section><section class="kb-col running">
+              <div class="kb-col-head"><span class="kb-status-dot running"></span><span class="kb-col-name">进行中</span><span class="kb-col-count">2</span></div>
+              <div class="kb-col-body"><div class="kb-card running">
+                <div class="kb-card-title">workloom ui 设计</div>
+                <div class="kb-card-desc">重做主界面顶栏、右栏与看板视觉。</div>
+                <div class="kb-card-meta"><span class="kb-ver">workloom</span><span class="kb-prio high">高</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/client</span><span class="kb-sessions">2 会话</span></div>
+              </div>
+<div class="kb-card running">
+                <div class="kb-card-title">文件预览滚动换行修复</div>
+                <div class="kb-card-desc">长行换行和滚动位置保持。</div>
+                <div class="kb-card-meta"><span class="kb-ver">v1</span><span class="kb-prio normal">普通</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/client</span><span class="kb-sessions">1 会话</span></div>
+              </div></div>
+            </section><section class="kb-col review">
+              <div class="kb-col-head"><span class="kb-status-dot review"></span><span class="kb-col-name">待审核</span><span class="kb-col-count">2</span></div>
+              <div class="kb-col-body"><div class="kb-card review">
+                <div class="kb-card-title">右栏分支图视觉走查</div>
+                <div class="kb-card-desc">同 ref 合并节点与标签层级。</div>
+                <div class="kb-card-meta"><span class="kb-ver">workloom</span><span class="kb-prio normal">普通</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/client</span><span class="kb-sessions">1 会话</span></div>
+              </div>
+<div class="kb-card review">
+                <div class="kb-card-title">删除弹框文案校对</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">workloom</span><span class="kb-prio low">低</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/client</span><span class="kb-sessions">—</span></div>
+              </div></div>
+            </section><section class="kb-col completed">
+              <div class="kb-col-head"><span class="kb-status-dot completed"></span><span class="kb-col-name">已完成</span><span class="kb-col-count">4</span></div>
+              <div class="kb-col-body"><div class="kb-card completed">
+                <div class="kb-card-title">测试任务</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">v1</span><span class="kb-prio low">低</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/domain</span><span class="kb-sessions">—</span></div>
+              </div>
+<div class="kb-card completed">
+                <div class="kb-card-title">第二轮验证任务</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">v1</span><span class="kb-prio normal">普通</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/service</span><span class="kb-sessions">—</span></div>
+              </div>
+<div class="kb-card completed">
+                <div class="kb-card-title">右栏用量口径统一</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">workloom</span><span class="kb-prio normal">普通</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/client</span><span class="kb-sessions">—</span></div>
+              </div>
+<div class="kb-card completed">
+                <div class="kb-card-title">顶栏视图切换收口</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">workloom</span><span class="kb-prio normal">普通</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/shell</span><span class="kb-sessions">—</span></div>
+              </div></div>
+            </section><section class="kb-col failed">
+              <div class="kb-col-head"><span class="kb-status-dot failed"></span><span class="kb-col-name">失败</span><span class="kb-col-count">1</span></div>
+              <div class="kb-col-body"><div class="kb-card failed">
+                <div class="kb-card-title">看板分组性能验证</div>
+                <div class="kb-card-desc">200 张卡片滚动掉帧。</div>
+                <div class="kb-card-meta"><span class="kb-ver">workloom</span><span class="kb-prio high">高</span></div>
+                <div class="kb-card-foot"><span class="kb-module">loom/client</span><span class="kb-sessions">1 会话</span></div>
+              </div></div>
+            </section></div>
+          </section>
+          <section class="kb-lane secondary">
+            <div class="kb-lane-head"><svg class="icon" style="width:11px;height:11px;color:var(--ink-3)"><use href="#i-folder"/></svg><span class="kb-lane-name">Workloom 官网</span><span class="kb-lane-count">3</span><button class="kb-lane-add">+ 新建卡片</button></div>
+            <div class="kb-cols"><section class="kb-col pending">
+              <div class="kb-col-head"><span class="kb-status-dot pending"></span><span class="kb-col-name">待开始</span><span class="kb-col-count">1</span></div>
+              <div class="kb-col-body"><div class="kb-card pending">
+                <div class="kb-card-title">官网首屏截图更新</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">v1</span><span class="kb-prio low">低</span></div>
+                <div class="kb-card-foot"><span class="kb-module">site/pages</span><span class="kb-sessions">—</span></div>
+              </div></div>
+            </section><section class="kb-col running">
+              <div class="kb-col-head"><span class="kb-status-dot running"></span><span class="kb-col-name">进行中</span><span class="kb-col-count">1</span></div>
+              <div class="kb-col-body"><div class="kb-card running">
+                <div class="kb-card-title">首页文案 A/B 复核</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">v1</span><span class="kb-prio normal">普通</span></div>
+                <div class="kb-card-foot"><span class="kb-module">site/pages</span><span class="kb-sessions">1 会话</span></div>
+              </div></div>
+            </section><section class="kb-col review">
+              <div class="kb-col-head"><span class="kb-status-dot review"></span><span class="kb-col-name">待审核</span><span class="kb-col-count">0</span></div>
+              <div class="kb-col-body"><div class="kb-empty">暂无任务</div></div>
+            </section><section class="kb-col completed">
+              <div class="kb-col-head"><span class="kb-status-dot completed"></span><span class="kb-col-name">已完成</span><span class="kb-col-count">1</span></div>
+              <div class="kb-col-body"><div class="kb-card completed">
+                <div class="kb-card-title">导航锚点修复</div>
+
+                <div class="kb-card-meta"><span class="kb-ver">v1</span><span class="kb-prio low">低</span></div>
+                <div class="kb-card-foot"><span class="kb-module">site/pages</span><span class="kb-sessions">—</span></div>
+              </div></div>
+            </section><section class="kb-col failed">
+              <div class="kb-col-head"><span class="kb-status-dot failed"></span><span class="kb-col-name">失败</span><span class="kb-col-count">0</span></div>
+              <div class="kb-col-body"><div class="kb-empty">暂无任务</div></div>
+            </section></div>
+          </section>
+        </div>
+      </main>
+      <aside class="shell-aside">
+        <div class="context-head">
+          <div><div class="context-kicker">BOARD / OVERVIEW</div><div class="context-title">dsh</div></div>
+          <div class="context-actions"><button class="btn btn-icon" aria-label="更多操作"><svg class="icon"><use href="#i-more"/></svg></button></div>
+        </div>
+        <div class="context-scroll">
+          <div class="kb-stat-grid">
+            <div class="kb-stat"><b>15</b><span>卡片</span></div>
+            <div class="kb-stat"><b class="blue">3</b><span>进行中</span></div>
+            <div class="kb-stat"><b>3</b><span>活跃会话</span></div>
+            <div class="kb-stat"><b class="purple">2</b><span>待审核</span></div>
+          </div>
+          <div class="context-section">
+            <div class="context-section-head"><span>ACTIVE SESSIONS</span><span>3</span></div>
+            <div class="kb-list">
+              <div class="kb-list-row"><span class="kb-status-dot running"></span><div><b>workloom ui 设计</b><small>workloom · 11:08</small></div><span class="kb-list-time">11:08</span></div>
+              <div class="kb-list-row"><span class="kb-status-dot running"></span><div><b>文件预览滚动换行修复</b><small>v1 · 10:42</small></div><span class="kb-list-time">10:42</span></div>
+              <div class="kb-list-row"><span class="kb-status-dot running"></span><div><b>首页文案 A/B 复核</b><small>v1 · 10:18</small></div><span class="kb-list-time">10:18</span></div>
+            </div>
+          </div>
+          <div class="context-section">
+            <div class="context-section-head"><span>REVIEW QUEUE</span><span>2</span></div>
+            <div class="kb-list">
+              <div class="kb-list-row"><span class="kb-status-dot review"></span><div><b>右栏分支图视觉走查</b><small>workloom</small></div></div>
+              <div class="kb-list-row"><span class="kb-status-dot review"></span><div><b>删除弹框文案校对</b><small>workloom</small></div></div>
+            </div>
+          </div>
+          <div class="context-section">
+            <div class="context-section-head"><span>PROJECTS</span><span>2</span></div>
+            <div class="kb-project-row"><span>dsh</span><b>12</b></div>
+            <div class="kb-project-row"><span>Workloom 官网</span><b>3</b></div>
+          </div>
+          <div class="context-section">
+            <div class="context-section-head"><span>RECENT ACTIVITY</span></div>
+            <div class="kb-list">
+              <div class="kb-list-row"><span class="kb-activity-time">11:08</span><div><b>开始执行 · workloom ui 设计</b></div></div>
+              <div class="kb-list-row"><span class="kb-activity-time">10:42</span><div><b>生成 Lock 4f76ece · workloom</b></div></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <div class="shell-bottom">
+      <button class="bottom-tab active">审计</button>
+      <button class="bottom-tab">Diff<span style="font-family:var(--mono);font-size:9px;color:var(--ink-3)">3</span></button>
+      <button class="bottom-tab">用量<span style="font-family:var(--mono);font-size:9px;color:var(--ink-3)">33.02M</span></button>
+      <div class="bottom-meta"><span>workloom · 4f76ece</span><span>33.02M tokens</span><button class="mini-icon" aria-label="展开底部面板"><svg class="icon"><use href="#i-chevron-down"/></svg></button></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- BOARD 8: CHROME SPEC -->
+<section class="board" id="board-chrome">
+  <div class="chrome-title"><div class="eyebrow">WORKLOOM / CHROME</div><h1>顶栏、左栏、右栏</h1></div>
+  <div class="chrome-top-wrap"><div class="chrome-label">TOP BAR · 52px · GLOBAL ENTRY</div><img src="chrome-top.png" alt="顶栏细节"></div>
+  <div class="chrome-left-wrap"><div class="chrome-label">LEFT · 320px · NAVIGATION</div><img src="chrome-left.png" alt="左栏细节"></div>
+  <div class="chrome-right-wrap"><div class="chrome-label">RIGHT · 344px · CONTEXT</div><img src="chrome-right.png" alt="右栏细节"></div>
+  <div class="chrome-notes">
+    <div class="chrome-note"><h3>顶栏 <span>TOP BAR</span></h3><p>项目/版本用<b>安静的文字选择器</b>，不加厚边框；活跃工作区用绿点；工作台/看板用分段控件。顶栏“新建”用描边次按钮，<b>黑色主按钮留给当前视图的主操作</b>（开始执行或打开会话），避免两处抢焦点。</p></div>
+    <div class="chrome-note"><h3>左栏 <span>LEFT RAIL</span></h3><p>320px；行高 32px；项目行 hover 才出现新增版本、编辑、更多。版本用浅蓝 chip，任务用<b>状态点 + 状态文字</b>；选中任务只加 2px 蓝色左线，不用整块深蓝。置顶空态保留一句操作提示。</p></div>
+    <div class="chrome-note"><h3>右栏 <span>CONTEXT</span></h3><p>344px；标题只放编辑和更多，删除收进更多。第一屏是 Git 分支图：按仓库逐个列出 Lock、版本 ref、工作区 ref，多仓库不能省略；下面依次是任务、工作区，模块/测试/用量默认展开。<b>右栏不放主按钮</b>，主操作留在中间工作台。</p></div>
+  </div>
+  <div class="chrome-tokens">
+    <div class="chrome-token"><i style="background:#fbfbfc"></i>#FBFBFC 侧栏</div>
+    <div class="chrome-token"><i style="background:#f0f5fd"></i>#F0F5FD 选中</div>
+    <div class="chrome-token"><i style="background:#4176e6"></i>#4176E6 进度/焦点</div>
+    <div class="chrome-token"><i style="background:#0f1115"></i>#0F1115 主按钮</div>
+    <div class="chrome-token"><i style="background:#48a363"></i>#48A363 完成</div>
+  </div>
+  <div class="chrome-foot"></div>
+</section>
+
+
+<!-- BOARD 9: CONTEXT / BRANCH -->
+<section class="board" id="board-context">
+  <div class="ctxb-head"><div class="eyebrow">WORKLOOM / CONTEXT RAIL</div><h1>右栏：版本与分支</h1><p>默认 344px；信息全部展开；右栏向左拉变宽，底部向上拉变高。</p></div>
+
+  <div class="ctxb-default"><div class="ctxb-label">DEFAULT · 344px · 同一 REF · 全部展开</div><img src="chrome-right.png" alt="右栏默认宽度"></div>
+  <div class="ctxb-handle"></div>
+  <div class="ctxb-handle-note"><b>拖动边界，不是滚动条</b>：右栏左边缘向左拉，右栏变宽；底栏上边缘向上拉，底栏变高。默认 344，范围 320–460；宽度记忆到偏好设置。</div>
+
+  <div class="ctxb-right">
+    <div class="ctxb-cards">
+      <div class="ctxb-card">
+        <div class="ctxb-kicker">A / SAME REF</div>
+        <div class="ctxb-title">同一 ref：合并成一个节点</div>
+        <p>版本与工作区指向同一分支时，不画两条线；一个分色节点 + 两个 role 标签。</p>
+        <div class="ref-source">deepseek-harness-loom <span>.</span></div>
+        <div class="ref-rail">
+          <div class="ref-line"></div>
+          <div class="ref-node"><span class="ref-dot"></span><span class="ref-mono">4f76ece</span><span class="ref-tag lock">Lock</span></div>
+          <div class="ref-node"><span class="ref-dot split"></span><span class="ref-mono">feature/dsh-loom</span><span class="ref-tags"><span class="ref-tag version">版本</span><span class="ref-tag workspace">工作区</span></span></div>
+        </div>
+        <div class="demo-foot">一个分支，两个角色；不新增 commit，也不画假分叉。</div>
+      </div>
+
+      <div class="ctxb-card">
+        <div class="ctxb-kicker">B / DIVERGED</div>
+        <div class="ctxb-title">工作区分支不同：从 Lock 分叉</div>
+        <p>只画 ref 关系，不伪造提交历史；版本 ref 蓝，工作区当前 ref 绿。</p>
+        <div class="fork-source">deepseek-harness-loom <span>.</span></div>
+        <div class="fork-canvas">
+          <svg viewBox="0 0 420 100" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M20 22 C52 22 54 48 78 48" fill="none" stroke="#4176e6" stroke-width="1.5" />
+            <path d="M20 22 C52 22 54 84 78 84" fill="none" stroke="#48a363" stroke-width="1.5" />
+            <circle cx="20" cy="22" r="4.5" fill="#0f1115" stroke="#fff" stroke-width="1.5" />
+            <circle cx="78" cy="48" r="4" fill="#4176e6" stroke="#fff" stroke-width="1.5" />
+            <circle cx="78" cy="84" r="4" fill="#48a363" stroke="#fff" stroke-width="1.5" />
+          </svg>
+          <div class="fork-label fork-lock"><span class="ref-tag lock">Lock</span>4f76ece</div>
+          <div class="fork-label fork-version"><span class="ref-tag version">版本</span>feature/dsh-loom</div>
+          <div class="fork-label fork-workspace"><span class="ref-tag workspace">工作区</span>worktree/context-panel</div>
+        </div>
+        <div class="demo-foot">工作区实际分支可为独立 worktree；右栏只读展示，不在这里切换。</div>
+      </div>
+    </div>
+
+    <div class="ctxb-notes">
+      <div class="ctxb-note"><b>Lock 是基线，不是分支头</b>图里的 Lock 节点表示固定的 commit；分支 ref 从它出发。不让 Lock 伪装成 main。</div>
+      <div class="ctxb-note"><b>同 ref 不制造假分叉</b>版本和工作区同一 ref 时只画一个节点，用「版本 / 工作区」标签区分角色。</div>
+      <div class="ctxb-note"><b>窄宽度规则</b>ref 单行截断，完整值放 title；路径允许换行；tag 不换行；模块/测试/用量保持展开，只滚动。</div>
+    </div>
+
+    <div class="ctxb-drag">
+      <div class="drag-card">
+        <div class="ctxb-kicker">RIGHT RAIL / WIDTH</div>
+        <div class="v-resize">
+          <div class="vr-center">工作台</div>
+          <div class="vr-boundary"><span class="vr-grip"></span><span class="vr-arrow">←</span></div>
+          <div class="vr-aside">右栏<br><b>344</b></div>
+        </div>
+        <div class="drag-caption">向左拖右栏边界：344 → 460；右栏变宽，工作台让位。</div>
+      </div>
+      <div class="drag-card">
+        <div class="ctxb-kicker">BOTTOM PANEL / HEIGHT</div>
+        <div class="bottom-resize">
+          <div class="br-handle"><span class="br-grip"></span></div>
+          <div class="br-tabs"><b>Diff 3</b><span>终端</span><span>测试</span><span>审计</span><span>成本</span></div>
+          <div class="br-body"><span>src/client/LoomPanel.tsx</span><span>+128 −42</span></div>
+        </div>
+        <div class="drag-caption">↑ 向上拖底栏上边界：工作台变矮，Diff / 终端 / 测试 / 审计 / 成本展开。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- BOARD 10: BOTTOM PANEL -->
+<section class="board" id="board-bottom">
+  <div class="bt-head"><div class="eyebrow">WORKLOOM / BOTTOM PANEL</div><h1>底部面板：向上拖</h1><p>拖的是面板上边缘，不是水平滚动条；向上拉展开，向下拉收起。</p></div>
+
+  <div class="bt-frame">
+    <div class="bt-top"><div class="eyebrow">WORKBENCH / CURRENT TASK</div><h2>workloom ui 设计</h2><p>底部面板展开后，工作台高度让位；右栏宽度不变。</p></div>
+    <div class="bt-panel">
+      <div class="bt-dragbar"><span class="up">↑</span><span class="hint">向上拖 · 220 → 320</span></div>
+      <div class="bt-tabs"><span class="bt-tab active">Diff <b>3</b></span><span class="bt-tab">终端</span><span class="bt-tab">测试</span><span class="bt-tab">审计 <b>12</b></span><span class="bt-tab">成本</span><span class="bt-tab fs">全屏</span></div>
+      <div class="bt-diff">
+        <div class="bt-file">src/client/LoomPanel.tsx <span class="add">+128</span><span class="del">−42</span></div>
+        <div class="bt-line"><span class="ln">412</span><span class="code">const aside = { width: asideWidth, flex: 'none' as const }</span></div>
+        <div class="bt-line del"><span class="ln">413</span><span class="code">  padding: '0 12px', borderLeft: '0.5px solid #e6e8ec'</span></div>
+        <div class="bt-line add"><span class="ln">413</span><span class="code">  padding: '0 14px', borderLeft: '1px solid #e6e8ec'</span></div>
+        <div class="bt-line add"><span class="ln">414</span><span class="code">  overflowY: 'auto', overscrollBehavior: 'contain'</span></div>
+        <div class="bt-line"><span class="ln">…</span><span class="code"></span></div>
+        <div class="bt-file" style="margin-top:8px">src/client/LoomContextPanel.tsx <span class="add">+64</span><span class="del">−21</span></div>
+        <div class="bt-line"><span class="ln">88</span><span class="code">const refs = collectWorkspaceRefs(workspace, version)</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="bt-note"><b>↑ 向上拖</b> 220 → 320 · 释放后记住高度；<b>↓ 向下拖</b> 收起</div>
+</section>
+
+</body>
+</html>
