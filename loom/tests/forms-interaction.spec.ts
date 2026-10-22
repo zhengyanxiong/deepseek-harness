@@ -200,3 +200,48 @@ it('walks a new task from content through optional scope to preview before creat
   await click(en['form.create'])
   expect(created).toMatchObject({ title: 'Ship', versionId: 'v1' })
 })
+
+it('filters the local branch list from the typed ref and still accepts free text', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  class StubResizeObserver { observe(): void {} disconnect(): void {} }
+  Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: StubResizeObserver })
+  const project: ProjectRecord = {
+    id: brandString<ProjectRecord['id']>('p1'),
+    config: { name: 'Shop', sources: [{ id: brandString<'loom.source'>('web'), repo: '/repo/shop', path: 'web' }], modules: [] },
+  }
+  const version: VersionRecord = {
+    id: brandString<VersionRecord['id']>('v1'), projectId: project.id, name: 'v1',
+    sources: [{ sourceId: brandString<'loom.source'>('web'), ref: 'main' }],
+  }
+  container = document.createElement('div')
+  document.body.append(container)
+  root = createRoot(container)
+  await act(async () => {
+    root?.render(createElement(VersionForm, {
+      t, open: true, project, version,
+      listBranches: async () => ({ ok: true, value: { topLevel: '/repo/shop', current: 'main', branches: ['main', 'release/1.0'] } }),
+      create: async () => ({ ok: false, error: { code: 'unused', message: 'unused' } }),
+      update: async () => ({ ok: true, value: version }),
+      onCreated: () => undefined,
+    }))
+  })
+  const input = container.querySelector<HTMLInputElement>(`input[aria-label^="${en['source.branch']}"]`)
+  expect(input).not.toBeNull()
+  await act(async () => { input?.focus(); await Promise.resolve() })
+  const arrow = container.querySelector<HTMLButtonElement>(`button[aria-label="${en['branch.open']}"]`)
+  expect(arrow).not.toBeNull()
+  await act(async () => { arrow?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
+  const labels = (): string[] => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(item => item.textContent ?? '')
+  expect(labels()).toEqual(['main', 'release/1.0'])
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+  await act(async () => {
+    setter?.call(input, 'rel')
+    input?.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(labels()).toEqual(['release/1.0'])
+  await act(async () => {
+    const release = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent === 'release/1.0')
+    release?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  })
+  expect(input?.value).toBe('release/1.0')
+})

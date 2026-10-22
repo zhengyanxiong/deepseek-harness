@@ -9,7 +9,9 @@ import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime, Sessi
 import type { SessionBinding, SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { DraftInitializationOptions, DraftInitializationResult } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
+import type { WorkspaceFileBytes, WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
+import type { SessionWorkspacePathApplication } from '@deepseek-ai/dsh-api-session-controller/types'
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AttachSessionRequest, CatalogSnapshot, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, GenerateLockRequest, Lock,
@@ -48,6 +50,8 @@ const PRESET_COPY: Readonly<Record<BuiltInPresetCopyKey, LoomKey>> = {
 /** Host catalog access owned by the registration context. */
 export interface LoomInjected {
   retainSession(id: SessionId): SessionReference
+  /** Opens a native resource when a session surface is mounted; false lets the caller use the Loom preview. */
+  openResource(address: string): boolean
   loadSnapshot(): Promise<RemoteResult<CatalogSnapshot>>
   createProject(request: ProjectConfig): Promise<RemoteResult<ProjectRecord>>
   updateProject(request: UpdateProjectRequest): Promise<RemoteResult<ProjectRecord>>
@@ -73,7 +77,11 @@ export interface LoomInjected {
   requestDraftInitialization(binding: SessionBinding, options: DraftInitializationOptions): DraftInitializationResult
   createSessionInWorkspace(path: string, agentPreset?: string): Promise<SessionId>
   openPath(path: string, action?: 'open' | 'reveal'): Promise<boolean>
+  openPathApplications(path: string, signal: AbortSignal): Promise<RemoteResult<readonly SessionWorkspacePathApplication[]>>
+  openPathWith(path: string, application: string): Promise<boolean>
+  readBytes(sessionId: SessionId, path: string, signal: AbortSignal): Promise<RemoteResult<WorkspaceFileBytes>>
   workspaceChanges(request: WorkspaceChangesRequest): Promise<RemoteResult<{ repositories: WorkspaceRepositoryChangesRecord[] }>>
+  workspaceChangeCount(request: WorkspaceChangesRequest): Promise<RemoteResult<number>>
   readFile(sessionId: SessionId, path: string, offset: number, signal: AbortSignal): Promise<RemoteResult<WorkspaceFileText>>
   cleanupWorkspace(request: CleanupWorkspaceRequest): Promise<RemoteResult<void>>
   acquireExecution(request: ExecutionRequest): Promise<RemoteResult<ExecutionState>>
@@ -343,7 +351,7 @@ function readPinnedProjects(): ProjectRecord['id'][] {
  * @param props - locale, native catalog, session acquisition, catalog actions, and renderer seats.
  * @returns the whole Loom page.
  */
-export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createProject, updateProject, deleteProject, createVersion, updateVersion, deleteVersion, createTask, updateTask, deleteTask, generateLock, prepareWorkspace, registerWorkspace, repositoryBranches, inspectWorkspace, pickDirectory, listDirectory, requestDraftInitialization, startAttempt, attachSession, registerTemporarySession, listAgentPresets, transitionTask, createSessionInWorkspace, openPath, workspaceChanges, readFile, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot }: LoomPanelProps) {
+export function LoomPanel({ t, useSessions, retainSession, openResource, loadSnapshot, createProject, updateProject, deleteProject, createVersion, updateVersion, deleteVersion, createTask, updateTask, deleteTask, generateLock, prepareWorkspace, registerWorkspace, repositoryBranches, inspectWorkspace, pickDirectory, listDirectory, requestDraftInitialization, startAttempt, attachSession, registerTemporarySession, listAgentPresets, transitionTask, createSessionInWorkspace, openPath, openPathApplications, openPathWith, workspaceChanges, workspaceChangeCount, readFile, readBytes, cleanupWorkspace, acquireExecution, releaseExecution, takeoverExecution, SessionProvider, renderSlot }: LoomPanelProps) {
   const sessions = useSessions(state => state)
   const [preferences, setPreferences] = useState<LoomPreferences>(readPreferences)
   const [view, setView] = useState<View>(preferences.view)
@@ -370,6 +378,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [asideOpen, setAsideOpen] = useState(preferences.contextOpen)
+  const [previewFullscreen, setPreviewFullscreen] = useState(false)
   const [bottomCollapsed, setBottomCollapsed] = useState(true)
   const [pane, setPane] = useState<LoomBottomPane>('diff')
   const [diffCount, setDiffCount] = useState(0)
@@ -435,6 +444,13 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     if (version !== undefined) setExpandedVersions(current => current.has(version) ? current : new Set(current).add(version))
   }, [project, version])
   useEffect(() => { if (preview !== undefined || review !== undefined) setAsideOpen(true) }, [preview, review])
+  useEffect(() => { if (preview === undefined) setPreviewFullscreen(false) }, [preview])
+  useEffect(() => {
+    if (!previewFullscreen) return
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') setPreviewFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [previewFullscreen])
   useEffect(() => { workspacePreview.close(); workspaceReviewPreview.close() }, [task?.id])
   useEffect(() => {
     if (typeof localStorage === 'undefined') return
@@ -504,6 +520,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
   const currentVersion = snapshot?.versions.find(candidate => candidate.id === version)
   const currentVersionProject = snapshot?.projects.find(candidate => candidate.id === currentVersion?.projectId)
   const boundRows = snapshot === undefined ? [] : boundSessions(snapshot)
+  const liveTaskIds = new Set(boundRows.filter(row => sessions.byId[row.sessionId as SessionId]?.running === true).map(row => row.task.id))
   const boundIds = new Set(boundRows.map(row => row.sessionId))
   const taskSessionCandidates = [...boundIds]
     .map(id => sessions.byId[id as SessionId])
@@ -553,16 +570,22 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
     ? selected ?? boundRows.find(row => row.task?.id === detailTask?.id)?.sessionId as SessionId | undefined
     : preview.sessionId as SessionId
   const taskSessions = snapshot === undefined || detailTask === undefined ? [] : boundSessions(snapshot).filter(row => row.task.id === detailTask.id)
+  const nativeSession = (selected ?? taskSessions.at(-1)?.sessionId) as SessionId | undefined
+  const openNativeFile = (path: string, sessionId: SessionId | undefined = nativeSession): void => {
+    if (sessionId !== undefined && openResource(fileAddressFor(sessionId, detailWorkspace?.path, path))) return
+    openFilePreview({ path })
+    setAsideOpen(true)
+  }
   const tokenUsage = aggregateTokenUsage(taskSessions.map(row => sessions.projectionsBySession[row.sessionId as SessionId]?.values))
   const temporaryWorkspace = snapshot?.workspaces.filter(candidate => candidate.cleaned !== true).at(-1)
   useEffect(() => {
     if (detailWorkspace?.id === undefined || detailWorkspace.cleaned === true) { setDiffCount(0); return }
     let active = true
-    workspaceChanges({ workspaceId: detailWorkspace.id, ...(detailAttemptId === undefined ? {} : { attemptId: detailAttemptId }) }).then((result) => {
-      if (active) setDiffCount(result.ok ? result.value.repositories.reduce((total, repository) => total + repository.files.length, 0) : 0)
+    workspaceChangeCount({ workspaceId: detailWorkspace.id, ...(detailAttemptId === undefined ? {} : { attemptId: detailAttemptId }) }).then((result) => {
+      if (active) setDiffCount(result.ok ? result.value : 0)
     }, () => { if (active) setDiffCount(0) })
     return () => { active = false }
-  }, [detailWorkspace?.id, detailWorkspace?.cleaned, detailAttemptId, attempt, workspaceChanges])
+  }, [detailWorkspace?.id, detailWorkspace?.cleaned, detailAttemptId, attempt, workspaceChangeCount])
   const activeCount = snapshot === undefined ? 0 : activeWorkspaceCount(snapshot)
   const auditWorkspaceIds = new Set<string>((detailTask?.attempts ?? []).map(candidate => candidate.workspaceId))
   const auditRows = snapshot === undefined ? [] : snapshot.audit.filter(entry => detailTask === undefined
@@ -907,6 +930,7 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
         ? <LoomKanban
             t={t}
             snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], temporarySessions: [], audit: [], executions: [] }}
+            liveTaskIds={liveTaskIds}
             filter={filter}
             mode={kbMode}
             projectValue={filterProject}
@@ -990,8 +1014,8 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                     />
                   </div>}
           </main>}
-      {asideOpen && <LoomResizeHandle label={t('layout.resizeAside')} orientation="vertical" value={asideWidth} min={asideMin} max={asideMax} invert onChange={setAsideWidth} className={view === 'kanban' ? 'loom-aside-handle loom-aside-handle-kanban' : 'loom-aside-handle'} />}
-      {asideOpen && <aside className={`${preview === undefined && review === undefined ? 'loom-aside' : 'loom-aside loom-aside-preview'}${view === 'kanban' ? ' loom-aside-kanban' : ''}`} style={{ ...aside, width: asideWidth }}>
+      {asideOpen && !previewFullscreen && <LoomResizeHandle label={t('layout.resizeAside')} orientation="vertical" value={asideWidth} min={asideMin} max={asideMax} invert onChange={setAsideWidth} className={view === 'kanban' ? 'loom-aside-handle loom-aside-handle-kanban' : 'loom-aside-handle'} />}
+      {asideOpen && <aside className={`${preview === undefined && review === undefined ? 'loom-aside' : 'loom-aside loom-aside-preview'}${view === 'kanban' ? ' loom-aside-kanban' : ''}`} data-loom-preview-fullscreen={previewFullscreen ? 'true' : undefined} style={previewFullscreen && preview !== undefined ? { ...aside, position: 'fixed', inset: 0, width: '100vw', maxWidth: 'none', zIndex: 90, borderLeft: 'none' } : { ...aside, width: asideWidth }}>
         {review !== undefined
           ? <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none' }}>
@@ -999,20 +1023,13 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
                 <span style={{ ...metaLine, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('review.title', { turn: String(review.turn) })}</span>
                 <Button size="sm" variant="ghost" icon={<IconCloseOutlineRegular />} aria-label={t('form.close')} title={t('form.close')} onClick={() => { workspacePreview.close(); workspaceReviewPreview.close() }} style={{ marginLeft: 'auto', width: 26, height: 26, padding: 0, justifyContent: 'center' }} />
               </div>
-              <LoomReviewPreview t={t} sessionId={review.sessionId} seq={review.seq} initialIndex={review.index} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} onOpenFile={(path) => { openFilePreview({ sessionId: review.sessionId, path, mode: 'file' }) }} />
+              <LoomReviewPreview t={t} sessionId={review.sessionId} seq={review.seq} initialIndex={review.index} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} onOpenFile={(path) => { openNativeFile(path, review.sessionId as SessionId) }} />
             </div>
           : preview !== undefined
-            ? <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none' }}>
-                <strong style={{ fontSize: 12.5 }}>{t('diff.preview')}</strong>
-                <span style={{ ...metaLine, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preview.path}</span>
-                <button type="button" style={{ ...select, marginLeft: 'auto' }} onClick={() => workspacePreview.close()}>{t('form.close')}</button>
-              </div>
-              <LoomFilePreview t={t} workspaceId={detailWorkspace?.id} {...(detailAttemptId === undefined ? {} : { attemptId: detailAttemptId })} sessionId={previewSessionId} filePath={preview.path} initialMode={preview.mode ?? 'diff'} loadChanges={workspaceChanges} readFile={readFile} openPath={openPath} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} />
-            </div>
+            ? <LoomFilePreview t={t} workspaceId={detailWorkspace?.id} {...(detailAttemptId === undefined ? {} : { attemptId: detailAttemptId })} sessionId={previewSessionId} filePath={preview.path} initialMode={preview.mode ?? 'diff'} loadChanges={workspaceChanges} readFile={readFile} readBytes={readBytes} openPath={openPath} applications={openPathApplications} openWith={openPathWith} onClose={() => { workspacePreview.close(); setPreviewFullscreen(false) }} fullscreen={previewFullscreen} onToggleFullscreen={() => setPreviewFullscreen(current => !current)} wrap={preferences.previewWrap} onToggleWrap={togglePreviewWrap} />
             : view === 'kanban'
             ? snapshot !== undefined && <LoomKanbanAside t={t} snapshot={snapshot} filter={filter} onSelectSession={(id) => { const row = boundRows.find(candidate => candidate.sessionId === id); selectSession(id as SessionId, row?.task) }} />
-            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], temporarySessions: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} presetName={displayPresetName} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onNewVersion={() => { if (displayProject !== undefined) setProject(displayProject.id); openCreate('version') }} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} onDeleteProject={displayProject === undefined ? undefined : () => removeProject(displayProject)} onDeleteVersion={displayVersion === undefined ? undefined : () => removeVersion(displayVersion)} onDeleteTask={detailTask === undefined ? undefined : () => removeTask(detailTask)} openPath={openPath} />}
+            : <LoomContextPanel t={t} snapshot={snapshot ?? { projects: [], versions: [], locks: [], tasks: [], workspaces: [], temporarySessions: [], audit: [], executions: [] }} project={displayProject} version={displayVersion} task={detailTask} presetName={displayPresetName} usage={tokenUsage} generateLock={generateLock} onLockChanged={() => setAttempt(current => current + 1)} onEditProject={() => openEdit('project')} onNewVersion={() => { if (displayProject !== undefined) setProject(displayProject.id); openCreate('version') }} onEditVersion={() => openEdit('version')} onEditTask={() => openEdit('task')} onDeleteProject={displayProject === undefined ? undefined : () => removeProject(displayProject)} onDeleteVersion={displayVersion === undefined ? undefined : () => removeVersion(displayVersion)} onDeleteTask={detailTask === undefined ? undefined : () => removeTask(detailTask)} openPath={openPath} loadBranches={repositoryBranches} />}
       </aside>}
     </div>
     {!bottomCollapsed && <LoomResizeHandle label={t('layout.resizeBottom')} orientation="horizontal" value={bottomHeight} min={80} max={bottomMax} invert onChange={(height) => setPreferences(current => ({ ...current, bottomHeight: height }))} />}
@@ -1027,9 +1044,10 @@ export function LoomPanel({ t, useSessions, retainSession, loadSnapshot, createP
       workspaceId={detailWorkspace?.id}
       {...(detailAttemptId === undefined ? {} : { attemptId: detailAttemptId })}
       loadChanges={workspaceChanges}
+      onChangesCount={setDiffCount}
       wrap={preferences.previewWrap}
       onToggleWrap={togglePreviewWrap}
-      onOpenFile={(path) => { openFilePreview({ path }); setAsideOpen(true) }}
+      onOpenInRight={(path) => { openFilePreview({ path, ...(previewSessionId === undefined ? {} : { sessionId: previewSessionId }), mode: 'diff' }); setAsideOpen(true) }}
       onToggle={() => setBottomCollapsed(value => !value)}
       onPane={setPane}
     />

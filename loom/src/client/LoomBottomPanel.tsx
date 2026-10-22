@@ -1,6 +1,6 @@
 /** Collapsible bottom panel: native Diff, attempt activity and unwired integrations. */
-import { useState, type ReactNode } from 'react'
-import { IconFullscreenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useEffect, useState, type ReactNode } from 'react'
+import { IconFullscreenOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AuditEntry } from 'dsh-workloom/types'
 import { LoomDiff, type LoadWorkspaceChanges } from './LoomDiff.tsx'
 import { ACTOR_LABEL, AUDIT_LABEL, COLORS, metaLine } from './shell.ts'
@@ -25,12 +25,19 @@ export interface LoomBottomPanelProps {
   /** Attempt whose start HEAD is the comparison baseline. */
   readonly attemptId?: string | undefined
   readonly loadChanges: LoadWorkspaceChanges
+  /** Reports the changed-file count only when the Diff pane reads its changes. */
+  readonly onChangesCount?: (count: number) => void
   /** Whether comparisons wrap wide lines instead of scrolling sideways. */
   readonly wrap: boolean
   readonly onToggleWrap: () => void
-  readonly onOpenFile?: (path: string) => void
+  readonly onOpenInRight?: (path: string) => void
   readonly onToggle: () => void
   readonly onPane: (pane: Pane) => void
+}
+
+/** Read-only count capsule for a bottom tab; hides itself at zero. */
+function CountBadge({ count }: { count: number }): ReactNode {
+  return count > 0 ? <Tag tone="info">{String(count)}</Tag> : null
 }
 
 const PANES: readonly { id: Pane; key: LoomKey }[] = [
@@ -47,16 +54,24 @@ const PANES: readonly { id: Pane; key: LoomKey }[] = [
  * @returns the bottom region of the Loom page.
  */
 export function LoomBottomPanel(props: LoomBottomPanelProps): ReactNode {
-  const { t, collapsed, height, pane, audit, diffCount, usage, workspaceId, attemptId, loadChanges, wrap, onToggleWrap, onOpenFile, onToggle, onPane } = props
-  const [diffExpanded, setDiffExpanded] = useState(false)
+  const { t, collapsed, height, pane, audit, diffCount, usage, workspaceId, attemptId, loadChanges, onChangesCount, wrap, onToggleWrap, onOpenInRight, onToggle, onPane } = props
+  const [diffFullscreen, setDiffFullscreen] = useState(false)
+  useEffect(() => { if (pane !== 'diff') setDiffFullscreen(false) }, [pane])
+  useEffect(() => {
+    if (!diffFullscreen) return
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') setDiffFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [diffFullscreen])
+  const diffBody = <LoomDiff t={t} workspaceId={workspaceId} {...(attemptId === undefined ? {} : { attemptId })} loadChanges={loadChanges} wrap={wrap} onToggleWrap={onToggleWrap} {...onOpenInRight === undefined ? {} : { onOpenInRight }} {...onChangesCount === undefined ? {} : { onChangesCount }} />
   return <section style={{ flex: 'none', borderTop: `0.5px solid ${COLORS.border}`, background: COLORS.panel2, display: 'flex', flexDirection: 'column' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '0 8px', height: 34, overflowX: 'auto', borderBottom: collapsed ? 'none' : `0.5px solid ${COLORS.border}` }}>
-      {PANES.map(item => <button key={item.id} type="button" onClick={() => { onPane(item.id); if (collapsed) onToggle() }} style={{ height: '100%', flex: 'none', padding: '0 13px', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', background: 'none', border: 'none', borderBottom: `2px solid ${pane === item.id && !collapsed ? COLORS.accent : 'transparent'}`, color: pane === item.id && !collapsed ? COLORS.text : COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: 12 }}>{t(item.key)}{item.id === 'diff' && diffCount > 0 && <span style={{ background: COLORS.panel3, borderRadius: 7, padding: '0 5px', fontSize: 10, color: COLORS.dim }}>{String(diffCount)}</span>}{item.id === 'audit' && audit.length > 0 && <span style={{ background: COLORS.panel3, borderRadius: 7, padding: '0 5px', fontSize: 10, color: COLORS.dim }}>{String(audit.length)}</span>}</button>)}
-      {!collapsed && pane === 'diff' && <button type="button" title={t('diff.expand')} onClick={() => setDiffExpanded(true)} style={{ marginLeft: 'auto', flex: 'none', display: 'flex', alignItems: 'center', gap: 5, height: '100%', padding: '0 10px', whiteSpace: 'nowrap', border: 'none', background: 'transparent', color: COLORS.faint, cursor: 'pointer', font: 'inherit', fontSize: 11 }}><IconFullscreenOutlineRegular size={13} />{t('diff.expand')}</button>}
+      {PANES.map(item => <button key={item.id} type="button" onClick={() => { onPane(item.id); if (collapsed) onToggle() }} style={{ height: '100%', flex: 'none', padding: '0 13px', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', background: 'none', border: 'none', borderBottom: `2px solid ${pane === item.id && !collapsed ? COLORS.accent : 'transparent'}`, color: pane === item.id && !collapsed ? COLORS.text : COLORS.dim, cursor: 'pointer', font: 'inherit', fontSize: 12 }}>{t(item.key)}{item.id === 'diff' ? <CountBadge count={diffCount} /> : item.id === 'audit' ? <CountBadge count={audit.length} /> : null}</button>)}
+      {!collapsed && pane === 'diff' && <button type="button" title={t('diff.fullscreen')} aria-label={t('diff.fullscreen')} onClick={() => setDiffFullscreen(true)} style={{ marginLeft: 'auto', flex: 'none', display: 'flex', alignItems: 'center', gap: 5, height: '100%', padding: '0 10px', whiteSpace: 'nowrap', border: 'none', background: 'transparent', color: COLORS.faint, cursor: 'pointer', font: 'inherit', fontSize: 11 }}><IconFullscreenOutlineRegular size={13} />{t('diff.fullscreen')}</button>}
       <button type="button" onClick={onToggle} style={{ marginLeft: !collapsed && pane === 'diff' ? 0 : 'auto', flex: 'none', position: 'sticky', right: 0, zIndex: 1, background: COLORS.panel2, border: 'none', color: COLORS.faint, cursor: 'pointer', font: 'inherit', fontSize: 11, padding: '0 10px', whiteSpace: 'nowrap' }}>{collapsed ? `▴ ${t('bottom.expand')}` : `▾ ${t('bottom.collapse')}`}</button>
     </div>
     {!collapsed && <div style={{ height, overflow: 'auto', padding: '10px 16px', fontSize: 11.5, fontFamily: 'ui-monospace, "Cascadia Code", monospace', lineHeight: 1.75 }}>
-      {pane === 'diff' && <LoomDiff t={t} workspaceId={workspaceId} {...(attemptId === undefined ? {} : { attemptId })} loadChanges={loadChanges} wrap={wrap} onToggleWrap={onToggleWrap} {...onOpenFile === undefined ? {} : { onOpenFile }} />}
+      {pane === 'diff' && diffBody}
       {pane === 'audit' && (audit.length === 0
         ? <p style={{ ...metaLine, margin: 0 }}>{t('bottom.activityEmpty')}</p>
         : audit.map(entry => <div key={entry.id} style={{ display: 'flex', gap: 12, minWidth: 0 }}>
@@ -76,16 +91,14 @@ export function LoomBottomPanel(props: LoomBottomPanelProps): ReactNode {
           </div>)}
       {(pane === 'terminal' || pane === 'tests') && <p style={{ ...metaLine, margin: 0 }}>{t('bottom.wiredLater')} · {t('diff.workspace')}</p>}
     </div>}
-    {diffExpanded && pane === 'diff' && <div role="dialog" aria-modal="true" aria-label={t('diff.title')} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setDiffExpanded(false)}>
-      <div style={{ width: 'calc(100vw - 32px)', height: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column', background: COLORS.panel, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,.5)' }} onClick={event => event.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none' }}>
-          <strong style={{ fontSize: 13 }}>{t('diff.title')}</strong>
-          <span style={{ ...metaLine, marginLeft: 'auto' }}>{t('diff.files')}</span>
-          <button type="button" onClick={() => setDiffExpanded(false)} style={{ border: `0.5px solid ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.text, cursor: 'pointer', font: 'inherit', fontSize: 12, padding: '4px 8px' }}>{t('form.close')}</button>
-        </div>
-        <div style={{ flex: 1, minHeight: 0 }}><LoomDiff t={t} workspaceId={workspaceId} {...(attemptId === undefined ? {} : { attemptId })} loadChanges={loadChanges} wrap={wrap} onToggleWrap={onToggleWrap} /></div>
+    {diffFullscreen && pane === 'diff' && <section aria-label={t('diff.title')} style={{ position: 'fixed', inset: 0, zIndex: 90, background: COLORS.panel, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: `0.5px solid ${COLORS.border}`, flex: 'none' }}>
+        <strong style={{ fontSize: 13 }}>{t('diff.title')}</strong>
+        <span style={{ ...metaLine, marginLeft: 'auto' }}>{t('diff.files')}</span>
+        <button type="button" title={t('diff.exitFullscreen')} aria-label={t('diff.exitFullscreen')} onClick={() => setDiffFullscreen(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, background: 'transparent', color: COLORS.text, cursor: 'pointer', font: 'inherit', fontSize: 11, padding: '4px 8px' }}><IconFullscreenOutlineRegular size={13} />{t('diff.exitFullscreen')}</button>
       </div>
-    </div>}
+      <div style={{ flex: 1, minHeight: 0 }}>{diffBody}</div>
+    </section>}
   </section>
 }
 

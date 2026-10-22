@@ -7,7 +7,7 @@ import { resolveLock } from '../domain/version.ts'
 import { isAbsolute, normalize, resolve, win32 } from 'node:path'
 import { createTask as pendingTask, startAttempt, attachSession, transitionTask, type Task, type Lock, type Workspace, type TaskStatus } from '../domain/task.ts'
 import { createJsonStore, JsonStoreError } from '../storage/json-store.ts'
-import { commitsSince, createLinkedWorkspace, ensureWorktreeBranch, linkWorkspaceSkills, prepareWorkspace as materializeWorkspace, removeLinkedWorkspace, removeWorkspace, resolveHead, workingTreeChanges, workingTreeDirty, WorkspacePreparationError, type WorkspaceRepositoryChanges } from '../git/workspace.ts'
+import { commitsSince, createLinkedWorkspace, ensureWorktreeBranch, linkWorkspaceSkills, prepareWorkspace as materializeWorkspace, removeLinkedWorkspace, removeWorkspace, removeWorkspaceSkills, resolveHead, workingTreeChangeCount, workingTreeChanges, workingTreeDirty, WorkspacePreparationError, type WorkspaceRepositoryChanges } from '../git/workspace.ts'
 import { admitWorkspaceLayout, WorkspaceLayoutError, type WorkspaceLayout, type WorkspaceMode, type WorkspaceRepositoryBinding, type WorkspaceRepositoryKind } from '../domain/workspace.ts'
 import type { AuditEntry, AuditEvent } from '../domain/audit.ts'
 import {
@@ -41,6 +41,8 @@ export interface WorkspaceRecord extends Workspace {
   rootPath?: string | undefined
   rootOwner?: 'loom' | 'user' | undefined
   repositories?: readonly WorkspaceRepositoryBinding[] | undefined
+  /** Skill links this workspace added under `<root>/.dsh/skills`; direct-workspace cleanup removes only these. */
+  skillLinks?: readonly string[] | undefined
 }
 /** A native Session started from Workloom without a task attachment. */
 export interface TemporarySessionRecord {
@@ -95,6 +97,7 @@ const workspaceSchema = z.strictObject({
   rootPath: z.string().refine(catalogPath).optional(),
   rootOwner: z.enum(['loom', 'user']).optional(),
   repositories: z.array(workspaceRepositorySchema).min(1).optional(),
+  skillLinks: z.array(z.string().refine(catalogPath)).optional(),
 })
 const temporarySessionSchema = z.strictObject({
   sessionId: id<'SessionId'>(),
@@ -296,10 +299,12 @@ export interface Catalog {
   deleteTask(taskId: TaskRecord['id']): Promise<void>
   prepareWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id']; branches?: Readonly<Record<string, string>>; mode?: 'managed' | 'linked'; repositories?: readonly { sourceId: Branded<'loom.source'>; path: string; targetPath: string }[] }): Promise<WorkspaceRecord>
   workspaceChanges(workspaceId: WorkspaceRecord['id'], attemptId?: Branded<'loom.attempt'>): Promise<{ repositories: WorkspaceRepositoryChanges[] }>
+  workspaceChangeCount(workspaceId: WorkspaceRecord['id'], attemptId?: Branded<'loom.attempt'>): Promise<number>
   workspaceStatus(workspaceId: WorkspaceRecord['id'], attemptId?: Branded<'loom.attempt'>): Promise<{ running: boolean; repositories: WorkspaceRepositoryChanges[] }>
   workspaceDirty(workspaceId: WorkspaceRecord['id']): Promise<boolean>
   cleanupWorkspace(workspaceId: WorkspaceRecord['id'], discardChanges: boolean): Promise<void>
   ensureWorkspaceBranches(workspaceId: WorkspaceRecord['id']): Promise<WorkspaceRecord>
+  ensureWorkspaceSkillLinks(workspaceId: WorkspaceRecord['id']): Promise<WorkspaceRecord>
   registerPreparedWorkspace(input: { path: string; versionId: Lock['versionId']; lockId: Lock['id']; branches?: Readonly<Record<string, string>>; projectId?: Branded<'loom.project'>; mode?: WorkspaceMode; rootPath?: string; rootOwner?: 'loom' | 'user'; repositories?: readonly Omit<WorkspaceRepositoryBinding, 'kind'>[] }): Promise<WorkspaceRecord>
   startAttempt(taskId: TaskRecord['id'], workspaceId: WorkspaceRecord['id']): Promise<TaskRecord>
   attachSession(taskId: TaskRecord['id'], sessionId: Branded<'SessionId'>): Promise<TaskRecord>
@@ -501,10 +506,31 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         return draft.workspaces[index]!
       })
     },
+    ensureWorkspaceSkillLinks: async workspaceId => {
+      const workspace = workspaceIn(state, workspaceId)
+      if (workspace.cleaned === true) return workspace
+      const bindings = workspaceBindings(state, workspace)
+      if (bindings.length < 2) return workspace
+      const existing = workspace.skillLinks ?? []
+      const links = await linkWorkspaceSkills(workspace.rootPath ?? workspace.path, bindings.map(binding => binding.targetPath))
+      const merged = [...new Set([...existing, ...links])]
+      if (merged.length === existing.length) return workspace
+      return transaction(draft => {
+        const index = draft.workspaces.findIndex(item => item.id === workspaceId)
+        if (index === -1) throw new CatalogError('missing_workspace')
+        draft.workspaces[index] = { ...draft.workspaces[index]!, skillLinks: merged }
+        return draft.workspaces[index]!
+      })
+    },
     workspaceChanges: async (workspaceId, attemptId) => {
       const lockId = attemptId === undefined ? undefined : state.tasks.flatMap(task => task.attempts).find(attempt => attempt.id === attemptId)?.lock.id
       if (attemptId !== undefined && lockId === undefined) throw new CatalogError('missing_task')
       return { repositories: await workingTreeChanges(workspaceWorktrees(state, workspaceId, lockId)) }
+    },
+    workspaceChangeCount: async (workspaceId, attemptId) => {
+      const lockId = attemptId === undefined ? undefined : state.tasks.flatMap(task => task.attempts).find(attempt => attempt.id === attemptId)?.lock.id
+      if (attemptId !== undefined && lockId === undefined) throw new CatalogError('missing_task')
+      return workingTreeChangeCount(workspaceWorktrees(state, workspaceId, lockId))
     },
     workspaceStatus: async (workspaceId, attemptId) => {
       const running = state.executions.some(execution => execution.workspaceId === workspaceId && execution.owner !== null)
@@ -530,6 +556,8 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       } else if (mode === 'linked') {
         const links = workspaceBindings(state, workspace).map(binding => resolve(root, binding.path))
         failures = await removeLinkedWorkspace(root, links)
+      } else if (workspace.skillLinks !== undefined) {
+        failures = await removeWorkspaceSkills(workspace.skillLinks)
       }
       if (failures.length > 0) throw new CatalogError('workspace_cleanup_failed')
       const referenced = state.tasks.some(task => task.attempts.some(attempt => attempt.workspaceId === workspaceId))
@@ -543,7 +571,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
       })
     },
     registerPreparedWorkspace: async input => {
-      return transaction(draft => {
+      return transaction(async draft => {
         const version = versionIn(draft, input.versionId)
         const project = draft.projects.find(item => item.id === (input.projectId ?? version.projectId))
         if (!project) throw new CatalogError('missing_project')
@@ -572,6 +600,9 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
         }
         if (repositories.some(repository => !project.config.sources.some(source => source.id === repository.sourceId))) throw new CatalogError('workspace_mismatch')
         if (draft.workspaces.some(item => item.cleaned !== true && (item.rootPath ?? item.path) === rootPath)) throw new CatalogError('workspace_path_registered')
+        const skillLinks = mode === 'direct' && repositories.length > 1
+          ? await linkWorkspaceSkills(rootPath, repositories.map(repository => repository.targetPath))
+          : []
         const record: WorkspaceRecord = {
           id: brandString<WorkspaceRecord['id']>(randomUUID()),
           path: rootPath,
@@ -584,6 +615,7 @@ export async function createCatalog(file: string, resolveCommit: (repo: string, 
           repositories,
           ...(input.branches === undefined || Object.keys(input.branches).length === 0 ? {} : { branches: input.branches }),
           ...(input.mode === 'managed' ? { managed: true } : {}),
+          ...(skillLinks.length === 0 ? {} : { skillLinks }),
         }
         draft.workspaces.push(record)
         recordAudit(draft, 'workspace.prepared', 'system', { workspaceId: record.id, detail: rootPath })

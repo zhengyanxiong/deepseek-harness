@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from 'node:child_process'
 import { lstat, mkdir, readdir, rm, rmdir, stat, symlink, unlink } from 'node:fs/promises'
 import { promisify } from 'node:util'
-import { basename, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
 
 /** Quote one repository path for Git's `safe.directory`; Git paths use forward slashes on Windows. */
 function safeDirectory(path: string): string {
@@ -365,6 +365,48 @@ export interface WorkspaceRepositoryChanges {
 }
 const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/u
 
+/** Decode one Git C-style quoted path into the UTF-8 path Git displays. */
+function unquoteGitPath(value: string): string {
+  if (!value.startsWith('"') || !value.endsWith('"')) return value
+  const bytes: number[] = []
+  const text = value.slice(1, -1)
+  const escapes: Readonly<Record<string, number>> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 }
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]!
+    if (character !== '\\') { bytes.push(...Buffer.from(character, 'utf8')); continue }
+    const next = text[index + 1]
+    if (next === undefined) break
+    if (next >= '0' && next <= '7') {
+      let octal = next
+      while (octal.length < 3 && text[index + 2] !== undefined && text[index + 2]! >= '0' && text[index + 2]! <= '7') {
+        octal += text[index + 2]
+        index += 1
+      }
+      bytes.push(Number.parseInt(octal, 8))
+      index += 1
+      continue
+    }
+    const escaped = escapes[next]
+    if (escaped === undefined) bytes.push(...Buffer.from(next, 'utf8'))
+    else bytes.push(escaped)
+    index += 1
+  }
+  return Buffer.from(bytes).toString('utf8')
+}
+
+/** Split a quoted or plain `diff --git` header into its old and new paths. */
+function diffHeaderPaths(line: string): { oldPath: string; newPath: string } | undefined {
+  const rest = line.slice('diff --git '.length)
+  const quoted = /^("(?:\\.|[^"\\])*") ("(?:\\.|[^"\\])*")$/u.exec(rest)
+  if (quoted !== null) return {
+    oldPath: unquoteGitPath(quoted[1]!).replace(/^a\//u, ''),
+    newPath: unquoteGitPath(quoted[2]!).replace(/^b\//u, ''),
+  }
+  const plain = /^a\/(.*?) b\/(.*)$/u.exec(rest)
+  if (plain === null) return undefined
+  return { oldPath: plain[1]!, newPath: plain[2]! }
+}
+
 function parseDiff(text: string): WorkspaceFileChange[] {
   const files: WorkspaceFileChange[] = []
   let path: string | undefined
@@ -382,8 +424,7 @@ function parseDiff(text: string): WorkspaceFileChange[] {
   for (const line of text.split('\n')) {
     if (line.startsWith('diff --git ')) {
       flushFile()
-      const match = /^diff --git a\/(.*?) b\/(.*)$/u.exec(line)
-      path = match?.[2]
+      path = diffHeaderPaths(line)?.newPath
       continue
     }
     if (path === undefined) continue
@@ -510,6 +551,29 @@ export async function workingTreeChanges(worktrees: readonly { repo: string; dir
 }
 
 /**
+ * Count changed files in worktrees without producing their diffs.
+ *
+ * This is the cheap path for a collapsed Diff badge: it asks Git for changed
+ * names and untracked entries only, so it never parses hunks or reads file
+ * contents.
+ * @param worktrees - owning repository, worktree directory and comparison commit.
+ * @returns changed-file count across every repository, including untracked files.
+ */
+export async function workingTreeChangeCount(worktrees: readonly { repo: string; directory: string; commit: string }[]): Promise<number> {
+  let total = 0
+  for (const { directory, commit } of worktrees) {
+    if (!COMMIT.test(commit)) throw new WorkspacePreparationError('invalid_commit')
+    try {
+      const tracked = (await execFile('git', ['-C', directory, 'diff', '--name-only', '-z', commit], { windowsHide: true })).stdout
+      total += tracked.split('\u0000').filter(Boolean).length
+      const status = (await execFile('git', ['-C', directory, 'status', '--porcelain=v1', '-z', '--untracked-files=all'], { windowsHide: true })).stdout
+      for (const entry of status.split('\u0000')) if (entry.startsWith('?? ')) total += 1
+    } catch (error) { throw new WorkspacePreparationError('diff_failed', [], error) }
+  }
+  return total
+}
+
+/**
  * Remove a prepared workspace's worktrees and then its root directory.
  * @param root - Workspace root created by {@link prepareWorkspace}.
  * @param repositories - owning repository and each worktree directory.
@@ -549,11 +613,13 @@ export async function commitsSince(directory: string, baseline: string): Promise
  * container links each repository's `.dsh/skills` and `.agents/skills` entries
  * under `<root>/.dsh/skills`. Best-effort: one unreadable repository does not
  * fail workspace creation.
- * @param root - Loom-created container root (never a repository worktree).
- * @param repositories - real repository directories inside the container.
+ * @param root - Workspace root DSH reads its project skills from.
+ * @param repositories - real repository directories behind the workspace.
+ * @returns link paths this call created, so direct workspaces can remove only their own links.
  */
-export async function linkWorkspaceSkills(root: string, repositories: readonly string[]): Promise<void> {
+export async function linkWorkspaceSkills(root: string, repositories: readonly string[]): Promise<string[]> {
   const destination = join(root, '.dsh', 'skills')
+  const links: string[] = []
   let created = false
   for (const repository of repositories) {
     const prefix = basename(repository).replace(/[^A-Za-z0-9._-]/gu, '-')
@@ -565,9 +631,40 @@ export async function linkWorkspaceSkills(root: string, repositories: readonly s
         try {
           if (!created) { await mkdir(destination, { recursive: true, mode: 0o700 }); created = true }
           const target = join(repository, relativeRoot, entry.name)
-          await symlink(target, join(destination, `${prefix}--${entry.name}`), process.platform === 'win32' ? (entry.isDirectory() ? 'junction' : 'file') : 'dir')
+          const link = join(destination, `${prefix}--${entry.name}`)
+          await symlink(target, link, process.platform === 'win32' ? (entry.isDirectory() ? 'junction' : 'file') : 'dir')
+          links.push(link)
         } catch { /* A skill link is an optional discovery aid; never block the workspace. */ }
       }
     }
   }
+  return links
+}
+
+/**
+ * Remove only the skill links a direct workspace created, then the empty
+ * `<root>/.dsh` directories that held them. A user-owned `.dsh` tree with other
+ * entries survives untouched.
+ * @param links - absolute link paths recorded on the workspace.
+ * @returns paths that could not be removed; empty when cleanup completed.
+ */
+export async function removeWorkspaceSkills(links: readonly string[]): Promise<string[]> {
+  const errors: string[] = []
+  const directories = new Set<string>()
+  for (const link of links) {
+    try { await unlink(link) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push(link)
+    }
+    directories.add(dirname(dirname(link)))
+  }
+  for (const dshDirectory of directories) {
+    const skillsDirectory = join(dshDirectory, 'skills')
+    try { await rmdir(skillsDirectory) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && (error as NodeJS.ErrnoException).code !== 'ENOTEMPTY') errors.push(skillsDirectory)
+    }
+    try { await rmdir(dshDirectory) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && (error as NodeJS.ErrnoException).code !== 'ENOTEMPTY') errors.push(dshDirectory)
+    }
+  }
+  return errors
 }

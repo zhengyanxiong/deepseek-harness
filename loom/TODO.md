@@ -1,7 +1,52 @@
 # Workloom 剩余功能待办
 
-更新时间：2026-10-18
+更新时间：2026-10-22
 代码基线：`4d634d77d0`（`feature/dsh-loom`）
+
+## 2026-10-22 会话技能自动发现（本轮）
+
+- [x] 删除右侧上下文面板的 `会话 Skills` 列表及其 `remote.skills.list` 读取、注入和 locale 文案；技能展示不再占用工作台空间。
+- [x] 技能发现仍由 DSH 原生 `skill-filesystem` + `tool-skill` 按 Session 的 cwd 自动完成；单仓库工作区直接读取根目录 `.dsh/skills` / `.agents/skills`。
+- [x] 多仓库工作区继续在根目录聚合各仓库技能；任务启动时重新扫描并补充新增技能链接，Agent 通过原生 `skill` 工具按需加载，不再提示手动读取 `SKILL.md`。
+- [x] 测试覆盖：移除右侧 skills 列表交互测试；新增多仓库技能链接刷新测试；注入测试守护不再引入未使用的 `remote.skills`。
+
+验证：Host/Client typecheck、36 files / 240 tests 通过；Loom build + stage 通过。当前会话日志里原生 `available_skills` 已包含本仓库 `.agents/skills` 的 `dsh-client-ui-ux`、`dsh-responsive-ui`、`dsh-code-review`，说明自动发现路径生效。
+
+## 2026-10-22 本轮已处理（7 项）
+
+- [x] 3 Skills：~~右侧栏通过原生 `remote.skills.list` 展示当前 Session 可发现的 skills~~ 已被「2026-10-22 会话技能自动发现」取代：右侧列表删除，技能由原生会话目录自动发现；多仓库聚合链接保留。
+- [x] 12 Diff：当前 DSH checkout 没有原生 `fileDiff` factory；继续使用 Loom 的 `LoomHunks` 渲染，保留既有 fallback，不伪造原生接口。
+- [x] 14 文件预览：优先调用原生 `sidebarRight.openResource`；主面板没有挂载 Session surface 时捕获该原生拒绝并回退到 Loom 预览，避免未处理异常。
+- [x] 2 分支组合框：输入框独立过滤、方向键展开/移动、Escape 关闭、Enter 选中；加载后隐藏加载按钮，无匹配给出空状态提示。
+- [x] 5 右栏分组：版本基线（Lock/版本引用）与任务工作区（真实检出分支）分区展示，不再混成 Git 状态列表。
+- [x] 7 看板状态：仅当卡片对应原生 Session 正在运行时显示运行脉冲，避免“有执行记录”被误当成“正在运行”。
+- [x] 10 版本编辑头部：版本编辑弹层只保留一个标题，不再重复。
+
+验证：Host/Client typecheck、35 files / 237 tests、Loom build + stage 通过；在独立 `3090` 端口启动 DSH 验证 Workloom 主面板、原生技能目录、文件预览回退均无 `without inject` 或页面异常。用户当前 `3080` 实例未重启，刷新页面后才会加载新 client bundle。
+
+## 2026-10-22 Diff 目录懒加载（本轮）
+
+- [x] Diff 目录树默认全部折叠，只渲染仓库根节点；展开某一层时才挂载并渲染该层子目录和文件，避免一次创建整棵树。
+- [x] 切换 workspace/attempt 时清空展开状态和选中状态；已选文件仍可正常打开右侧预览。
+- [x] 底部 Diff 面板折叠时不再挂载 `LoomDiff`，但折叠状态仍通过轻量 `workspaceChangeCount` 显示变更文件数：Host 只执行 `git diff --name-only` 和未跟踪文件统计，不解析 hunk；打开 Diff 后仍由 `LoomDiff` 回填精确数量。
+- [x] 文件正文、图片、Markdown 相对图片和每文件 Diff 仍只在选中/切换到 File 时读取；目录懒渲染不改变这些按需读取路径。
+- [x] 新增 `diff-lazy-tree.spec.ts` 和折叠面板测试，覆盖默认不展开、逐层展开以及折叠时不挂载 Diff reader。
+- [x] 底部栏 Diff/Activity 计数改用原生 `Tag` 的 `info` 胶囊徽标，零值隐藏；不再使用临时 inline 数字样式，浅色/深色主题都走原生 token。
+
+
+说明：`workspaceChanges` 仍是单次 Git 变更集读取；若要把 hunk 本身也按目录拆分读取，需要新增 Host 分段 API，本轮未改协议。`workspaceChangeCount` 是新增 Host Remote 方法，运行中的 DSH 进程需要重启后才会暴露；刷新旧 Host 时 Client 会回退到一次完整读取以保证不崩，但折叠计数不再是轻量路径。
+
+验证：Host/Client typecheck、36 files / 241 tests 通过；独立 `3092`（新 Host）实测折叠状态只调用轻量 `workspaceChangeCount`，不调用全量 `workspaceChanges`，折叠徽标 82 与展开后完整读取的 82 一致；旧 `3090` Host 未重启时 Client 回退成功、徽标仍出现且无崩溃；默认树只有 1 个仓库节点、0 个文件行，逐层展开后才出现子目录和文件。
+
+## 2026-10-22 文件预览与全屏（本轮）
+
+- [x] 右侧预览按原生预览能力重做：Markdown 用 `MarkdownText` 渲染，图片通过 `remote.workspaceFiles.readBytes` 读取并支持 `ImageLightbox`，代码/文本保留 `CodeBlock`，二进制给出外部打开入口。
+- [x] 顶部工具栏改为原生式：文件类型图标、文件名/完整路径、默认应用、在文件夹中显示、打开方式菜单、全屏和关闭；打开方式复用 `remote.session.workspacePathApplications` 与 `openWorkspacePath`。
+- [x] 底部 Diff 点击文件只切换 inline diff，不再自动打开右侧；头部增加显式按钮，通过 `openFilePreview` 在右侧打开。
+- [x] 删除底部 Diff 的自绘 `role="dialog"` 遮罩弹框，改为 `position: fixed; inset: 0` 的页面级全屏；右侧预览也使用同样的页面级全屏，Escape 退出，不创建 modal/backdrop。
+- [x] 修复新预览依赖注入：`remote.session` 是独立 service，必须出现在 `ctx.inject`，否则主槽位再次报 `without inject`；`remote.skills` 随右侧列表删除后不再注入，`client-injection.spec.ts` 守护 `remote.session` 存在且 `remote.skills` 不存在。
+
+验证：Client/Host typecheck、35 files / 237 tests、Loom build + stage 通过；独立 `3090` 实测右侧 Markdown 标题渲染、PNG 预览（blob URL，naturalWidth 2880）、打开方式菜单、页面级 1440×960 全屏、Escape 退出，以及底部选中不再自动打开右侧；无 console/page error。用户 `3080` 实例未重启，刷新页面后加载新 bundle。
 
 本文件只记录尚未完成的产品能力，不重复已经闭环的项目、版本、任务、Lock、工作区、原生会话、Diff、执行权、清理和删除能力。优先级最高的是**版本级共享上下文设计**（P0-0）：先完成设计评审，再实现。
 

@@ -68,6 +68,7 @@ async function chooseTaskDelete(): Promise<void> {
   await act(async () => { button(en['task.delete']).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) })
 }
 
+
 it('asks for confirmation before deleting and reports a refused deletion', async () => {
   let calls = 0
   await render(async () => { calls += 1; return { ok: false, error: { code: 'gateway/internal', message: 'task_workspace_uncleaned' } } })

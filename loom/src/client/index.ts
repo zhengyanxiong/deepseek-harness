@@ -12,7 +12,8 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import contribution from 'dsh-workloom/remote'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
+import type { SessionWorkspacePathApplication } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { WorkspaceFileBytes, WorkspaceFileText } from '@deepseek-ai/dsh-api-workspace-files/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type { AttachSessionRequest, CleanupWorkspaceRequest, CreateTaskRequest, CreateVersionRequest, DeleteProjectRequest, DeleteTaskRequest, DeleteVersionRequest, GenerateLockRequest, PrepareWorkspaceRequest, ProjectConfig, StartAttemptRequest, TransitionTaskRequest, WorkspaceChangesRequest, ExecutionRequest, ReleaseExecutionRequest, UpdateProjectRequest, UpdateVersionRequest, UpdateTaskRequest, RegisterTemporarySessionRequest, RegisterWorkspaceRequest, RepositoryBranchesRequest, InspectWorkspaceRequest } from 'dsh-workloom/types'
@@ -21,7 +22,7 @@ import { LoomMark } from './LoomMark.tsx'
 import { LoomNoticeHost } from './LoomNoticeHost.tsx'
 import { pushLoomNotice, reportLoomFailure } from './feedback.ts'
 import { ConversationEmbed } from './conversation/ConversationEmbed.tsx'
-import { openFilePreview, openReviewPreview, previewTargetFromAddress, reviewIndexFromOptions, reviewTargetFromAddress } from './preview.ts'
+import { openReviewPreview, reviewIndexFromOptions, reviewTargetFromAddress } from './preview.ts'
 import { NS, en, zh, type LoomKey } from './locales.ts'
 
 const PANEL_ID = 'loom' as MainPanelId
@@ -29,6 +30,7 @@ const PANEL_ID = 'loom' as MainPanelId
 /** The workspace-files read this bundle calls through the native Remote carrier. */
 interface WorkspaceFilesFace {
   read(sessionId: SessionId, path: string, range: { readonly offset: number }, signal?: AbortSignal): Promise<RemoteResult<WorkspaceFileText>>
+  readBytes(sessionId: SessionId, path: string, options: Record<string, never>, signal?: AbortSignal): Promise<RemoteResult<WorkspaceFileBytes>>
 }
 
 /** One native Agent preset as the project form offers it. */
@@ -100,18 +102,15 @@ export function apply(ctx: ClientContext): void {
             openReviewPreview(review)
             return
           }
-          const target = previewTargetFromAddress(address)
-          if (target !== undefined) {
-            openFilePreview({ ...target, mode: 'file' })
-            return
-          }
         }
         original.call(controller, address, options)
       }
       return () => { controller.openResource = original }
     }, 'loom: route file links to the workbench preview')
   })
-  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'remote.loom', 'remote.workspaceFiles', 'remote.agentPresets', 'remote.directoryPicker'], (ui) => {
+  // `remote.session` is a separate native service: the main slot fails with
+  // "without inject" when it is omitted, even though api-remotes mounts it.
+  ctx.inject(['slots', 'locale', 'sessions', 'workspaces', 'sidebarRight', 'remote.loom', 'remote.session', 'remote.workspaceFiles', 'remote.agentPresets', 'remote.directoryPicker'], (ui) => {
     ui.effect(() => ui.locale.register(NS, { en, zh }), 'loom: dictionary')
     const t = ui.locale.bind(NS)
     const notified = async <T,>(promise: Promise<RemoteResult<T>>, success?: LoomKey): Promise<RemoteResult<T>> => {
@@ -131,6 +130,11 @@ export function apply(ctx: ClientContext): void {
       children: { 'loom.conversation': { kind: 'single', scope: 'session' } },
       inject: (): LoomInjected => ({
         retainSession: id => ui.sessions.retain(id, { source: 'loom' }),
+        openResource: (address: string): boolean => {
+          // A global main panel has no mounted native Session surface, so the
+          // native right sidebar deliberately rejects writes; let Loom fall back.
+          try { ui.sidebarRight.openResource(address); return true } catch { return false }
+        },
         loadSnapshot: () => notified(ui.remote.loom.snapshot()),
         createProject: (request: ProjectConfig) => notified(ui.remote.loom.createProject(request), 'notice.projectCreated'),
         updateProject: (request: UpdateProjectRequest) => notified(ui.remote.loom.updateProject(request), 'notice.projectUpdated'),
@@ -163,7 +167,29 @@ export function apply(ctx: ClientContext): void {
         listAgentPresets: () => ui.remote.agentPresets.list(),
         transitionTask: (request: TransitionTaskRequest) => notified(ui.remote.loom.transitionTask(request), 'notice.taskMoved'),
         workspaceChanges: (request: WorkspaceChangesRequest) => ui.remote.loom.workspaceChanges(request),
+        workspaceChangeCount: async (request: WorkspaceChangesRequest): Promise<RemoteResult<number>> => {
+          // A refreshed client can outlive a Host that predates this lightweight
+          // method. Try it, then fall back to the full read rather than failing
+          // the whole panel while that Host is still running.
+          const method = ui.remote.loom.workspaceChangeCount
+          if (typeof method === 'function') {
+            try {
+              const result = await method(request)
+              if (result.ok) return result
+            } catch { /* The Host may not have this Remote method yet. */ }
+          }
+          const result = await ui.remote.loom.workspaceChanges(request)
+          return result.ok
+            ? { ok: true, value: result.value.repositories.reduce((total, repository) => total + repository.files.length, 0) }
+            : result
+        },
         readFile: (sessionId, path, offset, signal): Promise<RemoteResult<WorkspaceFileText>> => ui.remote.workspaceFiles.read(sessionId, path, { offset }, signal),
+        readBytes: (sessionId, path, signal): Promise<RemoteResult<WorkspaceFileBytes>> => ui.remote.workspaceFiles.readBytes(sessionId, path, {}, signal),
+        openPathApplications: (path, signal): Promise<RemoteResult<readonly SessionWorkspacePathApplication[]>> => ui.remote.session.workspacePathApplications({ path }, signal),
+        openPathWith: async (path, application) => {
+          const result = await ui.remote.session.openWorkspacePath({ path, application })
+          return result.ok
+        },
         cleanupWorkspace: (request: CleanupWorkspaceRequest) => notified(ui.remote.loom.cleanupWorkspace(request), 'notice.workspaceCleaned'),
         acquireExecution: (request: ExecutionRequest) => notified(ui.remote.loom.acquireExecution(request)),
         releaseExecution: (request: ReleaseExecutionRequest) => notified(ui.remote.loom.releaseExecution(request)),

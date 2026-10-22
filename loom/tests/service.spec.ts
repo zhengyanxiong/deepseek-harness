@@ -104,9 +104,10 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   expect(await call('snapshot')).toMatchObject({ temporarySessions: [] })
   await writeFile(join(root, 'web', 'file'), 'changed\nsecond\n')
   await writeFile(join(root, 'web', 'new.txt'), 'added\n')
+  await writeFile(join(root, 'web', 'Loom上下文.md'), 'unicode path\n')
   const changes = await call('workspaceChanges', { request: { workspaceId: workspace.id } }) as { repositories: { files: { path: string; added: number; deleted: number; before: boolean; after: boolean; hunks: { lines: string[] }[] }[] }[] }
   const files = changes.repositories[0]!.files
-  expect(files.map(file => file.path).sort()).toEqual(['file', 'new.txt'])
+  expect(files.map(file => file.path).sort((left, right) => left.localeCompare(right))).toEqual(['file', 'Loom上下文.md', 'new.txt'].sort((left, right) => left.localeCompare(right)))
   const changed = files.find(file => file.path === 'file')!
   expect(changed.added).toBe(2)
   expect(changed.deleted).toBe(1)
@@ -115,11 +116,14 @@ it('materializes a workspace from a Lock through the gateway', async () => {
   expect(changed.hunks.flatMap(hunk => hunk.lines)).toContain('-content')
   expect(files.find(file => file.path === 'new.txt')).toMatchObject({ before: false, after: true })
   expect(files.find(file => file.path === 'new.txt')!.hunks[0]!.lines).toEqual(['+added'])
+  expect(files.find(file => file.path === 'Loom上下文.md')).toMatchObject({ before: false, after: true })
+  expect(await call('workspaceChangeCount', { request: { workspaceId: workspace.id } })).toBe(3)
   const status = await call('workspaceStatus', { request: { workspaceId: workspace.id } }) as { running: boolean; repositories: { files: unknown[] }[] }
   expect(status.running).toBe(false)
-  expect(status.repositories[0]!.files).toHaveLength(2)
+  expect(status.repositories[0]!.files).toHaveLength(3)
   await exec('git', ['-C', join(root, 'web'), 'checkout', '--', 'file'])
   await rm(join(root, 'web', 'new.txt'), { force: true })
+  await rm(join(root, 'web', 'Loom上下文.md'), { force: true })
   const task = await call('createTask', { request: { versionId: version.id, title: 'Clean' } }) as { id: string }
   await call('startAttempt', { request: { taskId: task.id, workspaceId: workspace.id } })
   const execution = await call('acquireExecution', { request: { workspaceId: workspace.id, sessionId: 'session-owner' } }) as { owner: { generation: number } }
@@ -289,4 +293,6 @@ it('marks linked sessions with full access and gives the Agent the repository ma
   ctx.emit('agent/created', { agent: { session: { header: { cwd: workspace.path } }, ctx: { get: (name: string) => name === 'systemPrompt' ? { context: (context: { text: string }) => { contexts.push(context) } } : undefined } } } as never)
   expect(contexts[0]?.text).toContain(repo)
   expect(contexts[0]?.text).toContain('back')
+  expect(contexts[0]?.text).toContain('native session skill catalog')
+  expect(contexts[0]?.text).not.toContain('read the relevant SKILL.md directly')
 })

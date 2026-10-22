@@ -144,7 +144,7 @@ export default class LoomService extends TypertRemoteService {
           `This Session runs in a Loom workspace whose only working directory is ${cwd}.`,
           'It contains these repositories; use the mapped path below for each one:',
           ...bindings.map(binding => `- ${binding.path === '.' ? '(workspace root)' : binding.path} -> ${binding.targetPath}${binding.branch === undefined ? '' : ` (branch ${binding.branch})`}`),
-          'Repository skills live under each mapped path at .dsh/skills or .agents/skills; read the relevant SKILL.md directly when the task belongs to that repository.',
+          'Skills from these repositories are aggregated into this workspace root, so the native session skill catalog discovers them automatically. When the catalog lists a matching skill, load it with the skill tool before acting instead of reading SKILL.md manually.',
         ].join('\n'),
       })
     })
@@ -402,6 +402,18 @@ export default class LoomService extends TypertRemoteService {
     })
   }
 
+  /** Count changed files in a workspace without reading their diffs. @param request - prepared workspace identity. @returns changed-file count, including untracked files. */
+  @Remote
+  workspaceChangeCount(request: WorkspaceChangesRequest): Promise<number> {
+    return this.run(catalog => {
+      const parsed = workspaceChangesRequest.parse(request)
+      return catalog.workspaceChangeCount(
+        brandString<WorkspaceRecord['id']>(parsed.workspaceId),
+        parsed.attemptId === undefined ? undefined : brandString<Branded<'loom.attempt'>>(parsed.attemptId),
+      )
+    })
+  }
+
   /** Read whether a workspace is owned by a running task and what it has changed. @param request - prepared workspace identity. @returns ownership and changes. */
   @Remote
   workspaceStatus(request: WorkspaceChangesRequest): Promise<WorkspaceStatusResult> {
@@ -436,7 +448,10 @@ export default class LoomService extends TypertRemoteService {
       if (registered !== undefined) {
         const version = snapshot.versions.find(candidate => candidate.id === parsed.versionId)
         const projectId = registered.projectId ?? snapshot.versions.find(candidate => candidate.id === registered.versionId)?.projectId
-        if (version !== undefined && projectId === version.projectId) return catalog.ensureWorkspaceBranches(registered.id)
+        if (version !== undefined && projectId === version.projectId) {
+          await catalog.ensureWorkspaceBranches(registered.id)
+          return catalog.ensureWorkspaceSkillLinks(registered.id)
+        }
       }
       const branches = { ...parsed.branches }
       let repositories: { sourceId: Branded<'loom.source'>; path: string; targetPath: string }[] | undefined
@@ -468,7 +483,8 @@ export default class LoomService extends TypertRemoteService {
         ...(parsed.rootOwner === undefined ? {} : { rootOwner: parsed.rootOwner }),
         ...(repositories === undefined ? {} : { repositories }),
       })
-      return catalog.ensureWorkspaceBranches(workspace.id)
+      await catalog.ensureWorkspaceBranches(workspace.id)
+      return catalog.ensureWorkspaceSkillLinks(workspace.id)
     })
   }
 
@@ -481,6 +497,7 @@ export default class LoomService extends TypertRemoteService {
       const workspace = await catalog.ensureWorkspaceBranches(workspaceId)
       if (workspace.cleaned === true) throw new Error('workspace_cleaned')
       if (await catalog.workspaceDirty(workspaceId)) throw new Error('workspace_changes')
+      await catalog.ensureWorkspaceSkillLinks(workspaceId)
       return catalog.startAttempt(brandString<TaskRecord['id']>(parsed.taskId), workspaceId)
     })
   }

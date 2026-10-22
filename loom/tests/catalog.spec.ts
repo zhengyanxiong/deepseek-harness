@@ -426,6 +426,45 @@ it('records a direct single-repository workspace and keeps the real folder after
   expect(catalog.snapshot().workspaces).toEqual([])
 })
 
+it('links direct multi-repository skills into the workspace root and removes only those links', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
+  const repo = async (name: string): Promise<string> => {
+    const path = join(dir, name); await mkdir(path)
+    await exec('git', ['init', '--quiet', path])
+    await exec('git', ['-C', path, 'config', 'user.name', 'Loom Test'])
+    await exec('git', ['-C', path, 'config', 'user.email', 'loom@example.invalid'])
+    await mkdir(join(path, '.agents', 'skills', 'demo'), { recursive: true })
+    await writeFile(join(path, '.agents', 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\n')
+    await writeFile(join(path, 'file.txt'), name)
+    await exec('git', ['-C', path, 'add', '.'])
+    await exec('git', ['-C', path, 'commit', '--quiet', '-m', 'initial'])
+    return path
+  }
+  const web = await repo('web'); const api = await repo('api')
+  const catalog = await createCatalog(join(dir, 'state.json'), async (repository) => (await exec('git', ['-C', repository, 'rev-parse', 'HEAD'])).stdout.trim())
+  const project = await catalog.createProject({ name: 'Shop', sources: [{ id: 'web', repo: web, path: 'web' }, { id: 'api', repo: api, path: 'api' }], modules: [] })
+  const version = await catalog.createVersion(project.id, 'v', project.config.sources.map(source => ({ sourceId: source.id, ref: 'HEAD' })))
+  const lock = await catalog.generateLock(version.id)
+  const root = join(dir, 'direct-root'); await mkdir(root)
+  const workspace = await catalog.registerPreparedWorkspace({
+    path: root, versionId: version.id, lockId: lock.id, mode: 'direct', rootOwner: 'user',
+    repositories: [
+      { sourceId: project.config.sources[0]!.id, path: 'web', targetPath: web },
+      { sourceId: project.config.sources[1]!.id, path: 'api', targetPath: api },
+    ],
+  })
+  expect(workspace.skillLinks).toHaveLength(2)
+  expect((await lstat(join(root, '.dsh', 'skills', 'web--demo'))).isSymbolicLink()).toBe(true)
+  expect((await lstat(join(root, '.dsh', 'skills', 'api--demo'))).isSymbolicLink()).toBe(true)
+  await mkdir(join(api, '.agents', 'skills', 'extra'), { recursive: true })
+  await writeFile(join(api, '.agents', 'skills', 'extra', 'SKILL.md'), '---\nname: extra\n---\n')
+  const refreshed = await catalog.ensureWorkspaceSkillLinks(workspace.id)
+  expect(refreshed.skillLinks).toHaveLength(3)
+  expect((await lstat(join(root, '.dsh', 'skills', 'api--extra'))).isSymbolicLink()).toBe(true)
+  await catalog.cleanupWorkspace(workspace.id, true)
+  await expect(lstat(join(root, '.dsh'))).rejects.toThrow()
+  expect((await lstat(root)).isDirectory()).toBe(true)
+})
 it('materializes a single-repository managed workspace at its root without an extra directory layer', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'loom-catalog-')); dirs.push(dir)
   const repo = join(dir, 'repo'); await mkdir(repo)

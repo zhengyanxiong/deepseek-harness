@@ -73,7 +73,7 @@ dsh plugin --profile desktop add dsh-workloom@0.1.7
 - Git 调用会禁用用户级和系统级配置及 hooks，但会为当前仓库路径显式传入 `safe.directory`，以兼容 Windows 或不同账户下的目录所有者检查。
 - `direct` 直接使用真实目录，Loom 只登记和执行，不复制、不移动、不删除；`linked` 由 Loom 创建容器和链接，清理只删除容器，不删除真实仓库；`managed` 由 Loom 创建 worktree 和根目录，清理会删除这两者。
 - `linked` 会话会以 DSH `danger-full-access` 运行，因为链接目标位于工作区根目录之外；`managed` 与 `direct` 使用 `workspace-write`。
-- 多仓库容器会在根目录聚合各仓库的 `.dsh/skills` 与 `.agents/skills`，让 DSH 的项目技能仍可发现；`direct` 不修改用户目录，改为在会话上下文中列出仓库路径与技能位置。
+- 项目技能完全交给 DSH 原生会话技能目录：单仓库直接读取工作区根目录的 `.dsh/skills` / `.agents/skills`；多仓库容器在根目录聚合各仓库的技能条目并随任务启动刷新，Agent 在会话中用原生 `skill` 工具按需加载，Loom 不再维护一套平行的技能浏览/注入 UI。
 - Workloom 的执行权只约束 DSH 托管的 Agent 调用；外部编辑器和终端仍可修改工作区文件。
 - 终止确认观察的是 Agent 状态，不是所有子进程或外部进程。
 - Terminal、测试面板尚未接入原生或外部数据源。

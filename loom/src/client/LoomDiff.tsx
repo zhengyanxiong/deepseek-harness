@@ -2,7 +2,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
-  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular,
+  IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconPanelLeftOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   WorkspaceChangesRequest, WorkspaceFileChangeRecord, WorkspaceRepositoryChangesRecord,
@@ -104,8 +104,10 @@ interface LoomDiffProps {
   /** Whether the comparison wraps wide lines instead of scrolling sideways. */
   readonly wrap: boolean
   readonly onToggleWrap: () => void
-  /** Open a file outside the inline comparison, such as the workbench aside. */
-  readonly onOpenFile?: (path: string) => void
+  /** Open the selected file explicitly in the right-side preview. */
+  readonly onOpenInRight?: (path: string) => void
+  /** Reports the changed-file count only after this pane reads the changes. */
+  readonly onChangesCount?: (count: number) => void
 }
 
 const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, width: '100%', minWidth: 0, border: 'none', borderRadius: 4, padding: '3px 6px', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', fontSize: 11.5, textAlign: 'left' }
@@ -115,14 +117,14 @@ interface TreeBranchProps {
   readonly t: Translate
   readonly node: DiffTreeDirectory
   readonly depth: number
-  readonly collapsed: ReadonlySet<string>
+  readonly expanded: ReadonlySet<string>
   readonly selectedKey: string | undefined
   readonly onToggle: (path: string) => void
   readonly onSelectFile: (entry: DiffTreeFile) => void
 }
 
-function TreeBranch({ t, node, depth, collapsed, selectedKey, onToggle, onSelectFile }: TreeBranchProps): ReactNode {
-  const open = !collapsed.has(node.path)
+function TreeBranch({ t, node, depth, expanded, selectedKey, onToggle, onSelectFile }: TreeBranchProps): ReactNode {
+  const open = expanded.has(node.path)
   return <>
     <button type="button" aria-expanded={open} style={{ ...row, paddingLeft: 6 + depth * 14 }} onClick={() => onToggle(node.path)}>
       {open ? <IconChevronDownOutlineRegular size={12} /> : <IconChevronRightOutlineRegular size={12} />}
@@ -130,7 +132,7 @@ function TreeBranch({ t, node, depth, collapsed, selectedKey, onToggle, onSelect
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
       <span style={count}>{String(fileCount(node))}</span>
     </button>
-    {open && node.directories.map(child => <TreeBranch key={child.path} t={t} node={child} depth={depth + 1} collapsed={collapsed} selectedKey={selectedKey} onToggle={onToggle} onSelectFile={onSelectFile} />)}
+    {open && node.directories.map(child => <TreeBranch key={child.path} t={t} node={child} depth={depth + 1} expanded={expanded} selectedKey={selectedKey} onToggle={onToggle} onSelectFile={onSelectFile} />)}
     {open && node.files.map(entry => <LoomFileRow key={entry.key} display={entry.file.path.split('/').at(-1) ?? entry.file.path} title={entry.file.path}
       added={entry.file.added} deleted={entry.file.deleted} {...entry.file.binary ? { binary: true } : {}} t={t} selected={entry.key === selectedKey} depth={depth + 1} onClick={() => onSelectFile(entry)} />)}
   </>
@@ -141,19 +143,28 @@ function TreeBranch({ t, node, depth, collapsed, selectedKey, onToggle, onSelect
  * @param props - selected workspace, its changes read, and the native factory renderer.
  * @returns the tree and comparison, or the state that stands in for them.
  */
-export function LoomDiff({ t, workspaceId, attemptId, loadChanges, wrap, onToggleWrap, onOpenFile }: LoomDiffProps): ReactNode {
+export function LoomDiff({ t, workspaceId, attemptId, loadChanges, wrap, onToggleWrap, onOpenInRight, onChangesCount }: LoomDiffProps): ReactNode {
   const [changes, setChanges] = useState<readonly WorkspaceRepositoryChangesRecord[] | 'loading' | 'error'>('loading')
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [selectedKey, setSelectedKey] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (workspaceId === undefined) return
     let live = true
-    setChanges('loading'); setSelectedKey(undefined); setCollapsed(new Set())
+    setChanges('loading'); setSelectedKey(undefined); setExpanded(new Set())
     void loadChanges({ workspaceId, ...(attemptId === undefined ? {} : { attemptId }) }).then((result) => {
-      if (live) setChanges(result.ok ? result.value.repositories : 'error')
-    }).catch(() => { if (live) setChanges('error') })
+      if (!live) return
+      if (result.ok) {
+        setChanges(result.value.repositories)
+        onChangesCount?.(result.value.repositories.reduce((total, repository) => total + repository.files.length, 0))
+      } else {
+        setChanges('error')
+        onChangesCount?.(0)
+      }
+    }).catch(() => {
+      if (live) { setChanges('error'); onChangesCount?.(0) }
+    })
     return () => { live = false }
-  }, [workspaceId, attemptId, loadChanges])
+  }, [workspaceId, attemptId, loadChanges, onChangesCount])
   if (workspaceId === undefined) return <p style={{ margin: 0, padding: 8 }}>{t('diff.workspace')}</p>
   if (changes === 'loading') return <p style={{ margin: 0, padding: 8 }} role="status">{t('diff.loading')}</p>
   if (changes === 'error') return <p style={{ margin: 0, padding: 8 }} role="alert">{t('state.error')}</p>
@@ -167,19 +178,20 @@ export function LoomDiff({ t, workspaceId, attemptId, loadChanges, wrap, onToggl
       : { kind: 'text', path: file.path, display: file.path, before: file.before, after: file.after, coarse: false, hunks: file.hunks }
   const added = files.reduce((total, entry) => total + entry.file.added, 0)
   const deleted = files.reduce((total, entry) => total + entry.file.deleted, 0)
-  return <div style={{ display: 'grid', gridTemplateColumns: 'minmax(190px, 280px) 1fr', gap: 12, padding: 8, minHeight: 0, height: '100%', boxSizing: 'border-box', fontSize: 11.5, lineHeight: 1.5 }}>
+  return <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 340px) 1fr', gap: 12, padding: 8, minHeight: 0, height: '100%', boxSizing: 'border-box', fontSize: 11.5, lineHeight: 1.5 }}>
     <div aria-label={t('diff.files')} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', borderRight: '0.5px solid var(--dsw-alias-border-l4)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px 6px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11 }}>
-        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('diff.files')} {String(files.length)}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, rowGap: 4, flexWrap: 'wrap', padding: '7px 8px 6px', color: 'var(--dsw-alias-label-secondary)', fontSize: 11 }}>
+        <span style={{ flex: 'none', whiteSpace: 'nowrap' }}>{t('diff.files')} {String(files.length)}</span>
         <span style={{ marginLeft: 'auto', flex: 'none' }}><LoomFileCounts file={{ display: '', added, deleted }} t={t} /></span>
+        {onOpenInRight !== undefined && <button type="button" title={t('diff.openInRight')} aria-label={t('diff.openInRight')} onClick={() => onOpenInRight(selected.file.path)} style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, border: '0.5px solid var(--dsw-alias-border-l4)', borderRadius: 5, background: 'transparent', color: 'var(--dsw-alias-label-secondary)', cursor: 'pointer', font: 'inherit', fontSize: 10.5, lineHeight: '18px', padding: '0 5px', whiteSpace: 'nowrap' }}><span aria-hidden style={{ display: 'inline-flex', transform: 'scaleX(-1)' }}><IconPanelLeftOutlineRegular size={11} /></span>{t('diff.openInRight')}</button>}
         <LoomWrapToggle t={t} wrap={wrap} onToggle={onToggleWrap} />
       </div>
       <div role="group" aria-label={t('diff.files')} style={{ minHeight: 0, overflow: 'auto', padding: '0 4px 6px' }}>
-        {trees.map(tree => <TreeBranch key={tree.path} t={t} node={tree} depth={0} collapsed={collapsed} selectedKey={selected.key} onToggle={(path) => setCollapsed(current => {
+        {trees.map(tree => <TreeBranch key={tree.path} t={t} node={tree} depth={0} expanded={expanded} selectedKey={selected.key} onToggle={(path) => setExpanded(current => {
           const next = new Set(current)
           if (next.has(path)) next.delete(path); else next.add(path)
           return next
-        })} onSelectFile={(entry) => { setSelectedKey(entry.key); onOpenFile?.(entry.file.path) }} />)}
+        })} onSelectFile={(entry) => { setSelectedKey(entry.key) }} />)}
       </div>
     </div>
     <div data-loom-diff-viewport style={diffViewport}>

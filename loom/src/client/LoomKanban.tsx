@@ -13,6 +13,8 @@ type Translate = (key: LoomKey) => string
 export interface LoomKanbanProps {
   readonly t: Translate
   readonly snapshot: CatalogSnapshot
+  /** Tasks whose bound native Session is currently running; only these pulse. */
+  readonly liveTaskIds?: ReadonlySet<string> | undefined
   readonly filter: ShellFilter
   readonly mode: 'flat' | 'grouped'
   readonly projectValue: string
@@ -53,14 +55,14 @@ function Metric({ value, label, color, first }: { value: number; label: string; 
   return <div style={{ ...metricStyle, ...(first === true ? { paddingLeft: 0 } : {}) }}><b style={{ fontWeight: 400, fontSize: 13, color: color ?? COLORS.text, fontFamily: 'ui-monospace, monospace' }}>{String(value)}</b><span>{label}</span></div>
 }
 
-function Card({ task, versionName, sessions, versionProjects, moduleNamesByProject, t, onSelect }: { task: TaskRecord; versionName: string; sessions: number; versionProjects: ReadonlyMap<string, string>; moduleNamesByProject: ReadonlyMap<string, ReadonlyMap<string, string>>; t: Translate; onSelect: (task: TaskRecord) => void }) {
+function Card({ task, versionName, sessions, live, versionProjects, moduleNamesByProject, t, onSelect }: { task: TaskRecord; versionName: string; sessions: number; live: boolean; versionProjects: ReadonlyMap<string, string>; moduleNamesByProject: ReadonlyMap<string, ReadonlyMap<string, string>>; t: Translate; onSelect: (task: TaskRecord) => void }) {
   const meta = STATUS_META[task.status]
   const priority = task.priority ?? 'normal'
   const priorityMeta = PRIORITY_META[priority]
   const commit = shortCommit(task.attempts.at(-1)?.lock)
   const modules = (task.moduleIds ?? []).map(moduleId => moduleNamesByProject.get(versionProjects.get(task.versionId) ?? '')?.get(moduleId) ?? moduleId)
   const lastDragAt = useRef(0)
-  const executing = sessions > 0
+  const executing = live
   return <button type="button" className={executing ? 'loom-kb-card-running' : undefined} draggable onDragStart={event => { lastDragAt.current = Date.now(); event.dataTransfer?.setData('text/plain', task.id); if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = 'move' }} onDragEnd={() => { lastDragAt.current = Date.now() }} style={{ ...card, borderLeftColor: meta.color }} onClick={() => { if (Date.now() - lastDragAt.current > 500) onSelect(task) }}>
     <span style={cardTitle}>{task.title}</span>
     {task.description !== undefined && task.description !== '' && <span style={cardDescription}>{task.description}</span>}
@@ -81,13 +83,14 @@ function Card({ task, versionName, sessions, versionProjects, moduleNamesByProje
   </button>
 }
 
-function Column({ column, t, versionNames, versionProjects, moduleNamesByProject, sessionCounts, onSelect, onDropTask }: {
+function Column({ column, t, versionNames, versionProjects, moduleNamesByProject, sessionCounts, liveTaskIds, onSelect, onDropTask }: {
   column: BoardColumn
   t: Translate
   versionNames: ReadonlyMap<string, string>
   versionProjects: ReadonlyMap<string, string>
   moduleNamesByProject: ReadonlyMap<string, ReadonlyMap<string, string>>
   sessionCounts: ReadonlyMap<string, number>
+  liveTaskIds: ReadonlySet<string>
   onSelect: (task: TaskRecord) => void
   onDropTask: (taskId: TaskRecord['id'], target: TaskRecord['status']) => void
 }) {
@@ -106,7 +109,7 @@ function Column({ column, t, versionNames, versionProjects, moduleNamesByProject
     </div>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
       {column.tasks.length === 0 && <span style={{ ...metaLine, textAlign: 'center', padding: '12px 5px', border: `0.5px dashed ${COLORS.border}`, borderRadius: 5, fontSize: 9.5 }}>{t('kb.empty')}</span>}
-      {column.tasks.map(task => <Card key={task.id} task={task} versionName={versionNames.get(task.versionId) ?? ''} sessions={sessionCounts.get(task.id) ?? 0} versionProjects={versionProjects} moduleNamesByProject={moduleNamesByProject} t={t} onSelect={onSelect} />)}
+      {column.tasks.map(task => <Card key={task.id} task={task} versionName={versionNames.get(task.versionId) ?? ''} sessions={sessionCounts.get(task.id) ?? 0} live={liveTaskIds.has(task.id)} versionProjects={versionProjects} moduleNamesByProject={moduleNamesByProject} t={t} onSelect={onSelect} />)}
     </div>
   </div>
 }
@@ -117,7 +120,7 @@ function Column({ column, t, versionNames, versionProjects, moduleNamesByProject
  * @returns the board view.
  */
 export function LoomKanban(props: LoomKanbanProps) {
-  const { t, snapshot, filter, mode, projectValue, versionValue, priorityValue, moduleValue, searchValue, onMode, onProject, onVersion, onPriority, onModule, onSearch, onSelect, onMove, onNewCard } = props
+  const { t, snapshot, liveTaskIds = new Set(), filter, mode, projectValue, versionValue, priorityValue, moduleValue, searchValue, onMode, onProject, onVersion, onPriority, onModule, onSearch, onSelect, onMove, onNewCard } = props
   const metrics = boardMetrics(snapshot, filter)
   const versionNames = new Map(snapshot.versions.map(version => [version.id, version.name]))
   const versionProjects = new Map(snapshot.versions.map(version => [version.id, version.projectId]))
@@ -182,13 +185,13 @@ export function LoomKanban(props: LoomKanbanProps) {
                 <button type="button" style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: COLORS.faint, font: 'inherit', fontSize: 9.5, cursor: 'pointer', padding: '2px 0' }} onClick={() => onNewCard(project)}>＋ {t('kb.newCard')}</button>
               </div>
               <div className="loom-kb-columns" style={columnsGrid}>
-                {columns.map(column => <Column key={column.status} column={column} t={t} versionNames={versionNames} versionProjects={versionProjects} moduleNamesByProject={moduleNamesByProject} sessionCounts={sessionCounts} onSelect={onSelect} onDropTask={handleDrop} />)}
+                {columns.map(column => <Column key={column.status} column={column} t={t} versionNames={versionNames} versionProjects={versionProjects} moduleNamesByProject={moduleNamesByProject} sessionCounts={sessionCounts} liveTaskIds={liveTaskIds} onSelect={onSelect} onDropTask={handleDrop} />)}
               </div>
             </div>)}
             {lanes.length === 0 && <p style={metaLine}>{t('kb.empty')}</p>}
           </div>
         : <div className="loom-kb-columns" style={{ ...columnsGrid, flex: 1, minHeight: 210, marginTop: 0 }}>
-            {flat.map(column => <Column key={column.status} column={column} t={t} versionNames={versionNames} versionProjects={versionProjects} moduleNamesByProject={moduleNamesByProject} sessionCounts={sessionCounts} onSelect={onSelect} onDropTask={handleDrop} />)}
+            {flat.map(column => <Column key={column.status} column={column} t={t} versionNames={versionNames} versionProjects={versionProjects} moduleNamesByProject={moduleNamesByProject} sessionCounts={sessionCounts} liveTaskIds={liveTaskIds} onSelect={onSelect} onDropTask={handleDrop} />)}
           </div>}
     </div>
   </div>

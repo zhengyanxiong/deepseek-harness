@@ -232,6 +232,7 @@ export function BranchPicker({ t, source, value, listBranches, onChange, compact
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
+  const [filterText, setFilterText] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const input = inputRef.current
@@ -254,18 +255,29 @@ export function BranchPicker({ t, source, value, listBranches, onChange, compact
       else setFailed(true)
     } catch { setFailed(true) } finally { setLoading(false) }
   }
-  const branchItems: MenuEntry[] = (branches ?? []).map(branch => ({ id: branch, label: branch }))
+  const query = filterText.trim().toLowerCase()
+  const filtered = (branches ?? []).filter(branch => query === '' || branch.toLowerCase().includes(query))
+  const branchItems: MenuEntry[] = filtered.map(branch => ({ id: branch, label: branch }))
   return <div style={field}>
     {!compact && <span style={fieldLabel}>{t('source.branch')}</span>}
     <div style={{ display: 'flex', gap: 6 }}>
       <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
         <input ref={inputRef} aria-label={`${t('source.branch')} ${source.path}`}
           placeholder={t('source.branchPlaceholder')} value={value}
-          onChange={event => onChange(event.target.value)}
-          onFocus={() => { if (branches === undefined) void load() }} style={{ ...input, paddingRight: 32 }} />
+          aria-autocomplete="list" aria-expanded={open}
+          onChange={event => { onChange(event.target.value); setFilterText(event.target.value); if (branches !== undefined) setOpen(true) }}
+          onFocus={() => { if (branches === undefined) void load() }}
+          onKeyDown={event => {
+            if (event.key === 'ArrowDown') { event.preventDefault(); if (branches === undefined) void load(); else setOpen(true); return }
+            if (event.key === 'Escape') { if (open) { event.preventDefault(); setOpen(false) } return }
+            if (event.key === 'Enter' && open) {
+              const exact = filtered.find(branch => branch === value.trim())
+              if (exact !== undefined) { event.preventDefault(); onChange(exact); setFilterText(''); setOpen(false) }
+            }
+          }} style={{ ...input, paddingRight: 32 }} />
         {listBranches !== undefined && <Menu open={open} onClose={() => setOpen(false)} items={branchItems} selectedId={value === '' ? undefined : value} selection="fill" portal listClassName="loom-branch-menu"
           getAnchorRect={() => inputRef.current?.getBoundingClientRect() ?? null}
-          onSelect={branch => { onChange(branch); setOpen(false) }}
+          onSelect={branch => { onChange(branch); setFilterText(''); setOpen(false) }}
           anchor={<button type="button" aria-label={t('branch.open')} aria-haspopup="listbox" aria-expanded={open}
             onClick={() => {
               if (branches === undefined) void load()
@@ -277,10 +289,10 @@ export function BranchPicker({ t, source, value, listBranches, onChange, compact
             <IconChevronDownOutlineRegular size={16} />
           </button>} />}
       </div>
-      {listBranches !== undefined && <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => { void load() }}>{loading ? t('branch.loading') : t('branch.load')}</Button>}
+      {listBranches !== undefined && (branches === undefined || failed) && <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => { void load() }}>{loading ? t('branch.loading') : t('branch.load')}</Button>}
     </div>
     <p style={hint}>
-      {failed ? t('branch.unavailable') : branches === undefined ? t('branch.chooseOrType') : t('branch.available').replace('{count}', String(branches.length))}
+      {failed ? t('branch.unavailable') : branches === undefined ? t('branch.chooseOrType') : filtered.length === 0 ? t('branch.noMatch') : t('branch.available').replace('{count}', String(branches.length))}
     </p>
   </div>
 }
