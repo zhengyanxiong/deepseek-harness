@@ -1,0 +1,55 @@
+name: Bug report
+description: Something in the Workloom workbench does not behave as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Remove secrets and private repository paths before posting logs.
+  - type: input
+    id: version
+    attributes:
+      label: Workloom version
+      description: Output of `npm ls -g dsh-workloom` or the version in your DSH profile.
+      placeholder: 0.1.7
+    validations:
+      required: true
+  - type: input
+    id: dsh
+    attributes:
+      label: DeepSeek Harness version
+      placeholder: 0.2.1-rc.2
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Linux, macOS, Windows (native), Windows (WSL)]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smaller the reproduction, the faster the fix.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the visible error message and relevant Host log lines.
+    validations:
+      required: true
+  - type: textarea
+    id: workspace
+    attributes:
+      label: Workspace setup (optional)
+      description: Workspace mode (managed / direct / linked), repository layout, project pool state.

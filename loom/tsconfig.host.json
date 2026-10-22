@@ -10,28 +10,5 @@
     "tests/git-workspace.spec.ts",
     "tests/service.spec.ts",
     "src/types.ts"
-  ],
-  "references": [
-    {
-      "path": "../vendor/cordis"
-    },
-    {
-      "path": "../vendor/schemastery"
-    },
-    {
-      "path": "../packages/api/gateway/tsconfig.host.json"
-    },
-    {
-      "path": "../packages/api/remote-access/tsconfig.host.json"
-    },
-    {
-      "path": "../packages/typert/protocol"
-    },
-    {
-      "path": "../packages/typert/registry"
-    },
-    {
-      "path": "../packages/client/connection/tsconfig.host.json"
-    }
   ]
 }

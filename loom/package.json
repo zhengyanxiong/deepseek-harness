@@ -64,42 +64,82 @@
     "dsh": ">=0.2.1-rc.2 <0.3.0"
   },
   "scripts": {
-    "generate": "node --import tsx/esm scripts/generate-typert.ts",
-    "build": "pnpm run generate && tsdown",
+    "build": "tsdown",
     "watch": "tsdown --watch",
+    "typecheck": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json && tsc -p tsconfig.domain.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "install-local": "pnpm run build && node scripts/stage.mjs",
-    "prepack": "pnpm run build",
-    "migrate-catalog": "node --import tsx/esm scripts/migrate-catalog.ts"
+    "generate": "node --import tsx/esm scripts/generate-typert.ts",
+    "migrate-catalog": "node --import tsx/esm scripts/migrate-catalog.ts",
+    "prepack": "pnpm run build"
   },
   "dependencies": {
-    "zod": "^4.0.0"
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/schemastery": "*",
-    "@deepseek-ai/dsh-typert-protocol": "*",
-    "@deepseek-ai/dsh-brand": "*",
+    "@deepseek-ai/cordis": ">=4.0.5",
+    "@deepseek-ai/schemastery": ">=3.18.5",
+    "@deepseek-ai/dsh-brand": ">=0.2.1-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.2.1-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.2.1-rc.2 <0.3.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@deepseek-ai/dsh-client-ui-primitives": "*"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@deepseek-ai/schemastery": "*",
-    "@deepseek-ai/dsh-agent-preset-registry": "*",
-    "@deepseek-ai/dsh-typert-protocol": "*",
-    "@deepseek-ai/dsh-brand": "*",
-    "@deepseek-ai/dsh-api-remote-access": "*",
-    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/schemastery": "3.18.5",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-gateway": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-remote-access": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-remotes": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-workspace-controller": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-api-workspace-files": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-brand": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-store": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-dockkit": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-layout": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-session": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-typert-registry": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-util-code-language": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-util-workspace-path": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-typert-generator": "0.2.1-rc.2",
+    "@types/node": "^22.20.1",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
-    "lightningcss": "^1.32.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "tsdown": "*",
-    "tsx": "^4.20.0",
-    "@deepseek-ai/dsh-client-ui-primitives": "*",
-    "@deepseek-ai/dsh-client-store": "*",
-    "@deepseek-ai/dsh-client-ui-slots": "*"
+    "lightningcss": "^1.33.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsdown": "^0.22.2",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11",
+    "zod": "^4.4.3",
+    "anser": "^2.3.5",
+    "clsx": "^2.1.1",
+    "diff": "^9.0.0",
+    "immer": "^11.2.7",
+    "jsdom": "^27.0.0",
+    "mdast-util-from-markdown": "^2.1.0",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-math": "^3.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "micromark-extension-math": "^3.1.0",
+    "shiki": "^4.5.0",
+    "simple-icons": "^16.35.0",
+    "zustand": "^5.0.15"
   },
   "license": "MIT",
   "keywords": [
@@ -115,12 +155,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zhengyanxiong/deepseek-harness.git",
-    "directory": "loom"
+    "url": "git+https://github.com/zhengyanxiong/dsh-workloom.git"
   },
-  "homepage": "https://github.com/zhengyanxiong/deepseek-harness/tree/feature/dsh-loom/loom",
+  "homepage": "https://github.com/zhengyanxiong/dsh-workloom#readme",
   "bugs": {
-    "url": "https://github.com/zhengyanxiong/deepseek-harness/issues"
+    "url": "https://github.com/zhengyanxiong/dsh-workloom/issues"
   },
-  "author": "zhengyanxiong"
+  "author": "zhengyanxiong",
+  "packageManager": "pnpm@11.28.5"
 }

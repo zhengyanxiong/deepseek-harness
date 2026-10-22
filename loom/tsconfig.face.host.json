@@ -1,5 +1,5 @@
 {
-  "extends": "../tsconfig.base.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": { "noEmit": true, "composite": false, "incremental": false },
   "include": ["src/index.ts", "src/host", "src/domain", "src/git", "src/storage"]
 }

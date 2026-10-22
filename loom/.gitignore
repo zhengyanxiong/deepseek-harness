@@ -1,1 +1,16 @@
-dist-local
+node_modules/
+dist-local/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Build output. The Typert artifacts are checked in because they are generated
+# from the upstream Harness monorepo, where the plugin source lives.
+lib/*
+!lib/typert.host.js
+!lib/typert.host.d.ts
+!lib/typert.remote-client.js
+!lib/typert.remote-client.d.ts
+!lib/typert.remote-client.d.ts.map
+tmp/

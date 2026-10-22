@@ -1,5 +1,5 @@
 {
-  "extends": "../tsconfig.base.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "composite": false,
     "incremental": false,
@@ -10,35 +10,5 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react"
   },
-  "include": [
-    "src/client",
-    "tests/board.spec.ts",
-    "tests/task-board.spec.ts"
-  ],
-  "references": [
-    {
-      "path": "../packages/client/ui-conversation/tsconfig.client.json"
-    },
-    {
-      "path": "../packages/client/ui-sidebar"
-    },
-    {
-      "path": "../packages/client/ui-layout"
-    },
-    {
-      "path": "../packages/client/ui-session"
-    },
-    {
-      "path": "../packages/client/ui-slots"
-    },
-    {
-      "path": "../packages/client/ui-renderer"
-    },
-    {
-      "path": "../packages/client/locale/tsconfig.client.json"
-    },
-    {
-      "path": "../packages/api/session-controller/tsconfig.client.json"
-    }
-  ]
+  "include": ["src/client", "tests/board.spec.ts", "tests/task-board.spec.ts"]
 }

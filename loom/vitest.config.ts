@@ -1,18 +1,26 @@
 import { createRequire } from 'node:module'
-import tsconfigPaths from 'vite-tsconfig-paths'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
-import { standardDecoratorPlugin } from '../vitest.shared.ts'
+import { standardDecoratorPlugin } from './vitest.shared.ts'
 
-const webRequire = createRequire(new URL('../apps/web/package.json', import.meta.url))
+const require = createRequire(import.meta.url)
 
 export default defineConfig({
   resolve: { alias: [
-    { find: 'react-dom/server', replacement: webRequire.resolve('react-dom/server') },
-    { find: 'react-dom/client', replacement: webRequire.resolve('react-dom/client') },
-    { find: 'react/jsx-runtime', replacement: webRequire.resolve('react/jsx-runtime') },
-    { find: 'react/jsx-dev-runtime', replacement: webRequire.resolve('react/jsx-dev-runtime') },
-    { find: /^react$/, replacement: webRequire.resolve('react') },
+    { find: 'react-dom/server', replacement: require.resolve('react-dom/server') },
+    { find: 'react-dom/client', replacement: require.resolve('react-dom/client') },
+    { find: 'react/jsx-runtime', replacement: require.resolve('react/jsx-runtime') },
+    { find: 'react/jsx-dev-runtime', replacement: require.resolve('react/jsx-dev-runtime') },
+    { find: /^react$/, replacement: require.resolve('react') },
   ] },
-  plugins: [standardDecoratorPlugin(), tsconfigPaths({ projects: ['./tsconfig.base.json'] })],
-  test: { include: ['loom/tests/**/*.spec.ts'], environment: 'node' },
+  plugins: [standardDecoratorPlugin()],
+  test: {
+    root: fileURLToPath(new URL('.', import.meta.url)),
+    include: ['tests/**/*.spec.ts'],
+    environment: 'node',
+    // Published client packages ship CSS Modules and read Harness runtime
+    // modules from the Web shell's frozen table; transform them through Vite
+    // rather than letting Node resolve them as external ESM.
+    server: { deps: { inline: [/@deepseek-ai\//] } },
+  },
 })

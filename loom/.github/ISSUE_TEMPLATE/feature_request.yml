@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a capability for the Workloom workbench.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is currently slow, manual or unsafe?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How should the workbench behave? Mention affected panels and workspace modes.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This only uses native DeepSeek Harness surfaces.
+        - label: This needs a new Host Remote or catalog field.

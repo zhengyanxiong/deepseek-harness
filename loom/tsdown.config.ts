@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve as resolvePath } from 'node:path'
 import { transform } from 'lightningcss'
 import { defineConfig } from 'tsdown'
-import { standardDecoratorPlugin } from '../vitest.shared.ts'
+import { standardDecoratorPlugin } from './vitest.shared.ts'
 
 /** Runtime modules supplied by the Web shell's frozen module table. */
 const PLATFORM_MODULES = [
