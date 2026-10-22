@@ -23,6 +23,12 @@ pnpm run build
 built against. The Harness API is pre-stable, so a version bump of those
 packages is a real change: run the full check set afterwards.
 
+The devDependencies also mirror the Web shell's client module table (`shiki`,
+`simple-icons`, `zustand`, `immer`, the `mdast-*`/`micromark-*` set and
+`jsdom`). Published Harness client packages expect the shell to provide those
+modules at runtime, so the Node test environment installs them itself. They are
+development-only and never ship in the bundle.
+
 ## Checks
 
 | Command | What it covers |
