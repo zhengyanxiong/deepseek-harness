@@ -1,0 +1,13 @@
+{
+  // Solution file for editors: this checkout lives outside the root workspace,
+  // so without it tsserver treats every Loom file as an inferred project with
+  // no node types and no package paths. Face programs stay in their own leaves;
+  // tests are not covered yet.
+  "extends": "../tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.host.json" },
+    { "path": "./tsconfig.client.json" },
+    { "path": "./tsconfig.domain.json" }
+  ]
+}
