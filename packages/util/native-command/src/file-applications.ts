@@ -76,7 +76,7 @@ async function queryFileApplications(
     return display ? dedupeMacApplications(applications) : applications
   }
   if (target.platform !== 'win32') return []
-  const stdout = await windowsFileApplications(target.path, null, signal, run)
+  const stdout = await windowsFileApplications(target.path, null, signal, run, target.wsl)
   return parseNativeFileApplications(JSON.parse(stdout))
 }
 
@@ -174,7 +174,7 @@ export async function openNativeFileApplication(
   const target = await desktopTarget(path, signal, internals)
   const run = internals.run ?? runNativeCommand
   if (target.platform === 'win32') {
-    await windowsFileApplications(target.path, application, signal, run)
+    await windowsFileApplications(target.path, application, signal, run, target.wsl)
     return
   }
   const apps = await queryFileApplications(path, signal, internals, false)
@@ -186,7 +186,7 @@ export async function openNativeFileApplication(
 /** Resolve the desktop that owns the file, including Windows applications reached from WSL. */
 async function desktopTarget(
   path: string, signal: AbortSignal, internals: PathOpenerInternals,
-): Promise<{ platform: NodeJS.Platform; path: string }> {
+): Promise<{ platform: NodeJS.Platform; path: string; wsl: boolean }> {
   signal.throwIfAborted()
   const platform = internals.platform ?? process.platform
   if (platform === 'linux' && nativeFileManager(internals) === 'explorer') {
@@ -194,7 +194,7 @@ async function desktopTarget(
     signal.throwIfAborted()
     const windowsPath = translated.stdout.replace(/[\r\n]+$/, '')
     if (windowsPath === '') throw new Error('wslpath returned no Windows path')
-    return { platform: 'win32', path: windowsPath }
+    return { platform: 'win32', path: windowsPath, wsl: true }
   }
-  return { platform, path }
+  return { platform, path, wsl: false }
 }
