@@ -1,4 +1,5 @@
 /** Windows Shell association queries and invocation; paths are encoded data, never PowerShell expressions. */
+import { gzipSync } from 'node:zlib'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -237,15 +238,18 @@ public static class DshFileAssociations {
 
 /**
  * Execute the Windows Shell adapter in a Unicode STA PowerShell process; the adapter
- * source is a private temporary script file, removed once the call settles.
+ * source travels as a temporary script file, or as an encoded command for WSL where the
+ * Windows PowerShell cannot read a Linux temporary path.
  * @param path - Windows file path, translated by the caller for WSL.
  * @param application - registered handler to invoke; null requests the application list.
  * @param signal - caller cancellation.
  * @param run - native command runner.
+ * @param wsl - whether the file path came from WSL and needs an encoded Windows command.
  * @returns adapter output; query mode emits a JSON array.
  */
 export async function windowsFileApplications(
   path: string, application: string | null, signal: AbortSignal, run: NativeCommandRunner,
+  wsl = false,
 ): Promise<string> {
   const encodedPath = Buffer.from(path).toString('base64')
   const encodedApplication = Buffer.from(application ?? '').toString('base64')
@@ -258,7 +262,17 @@ $path = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPa
 $application = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedApplication}'))
 ${application === null ? 'ConvertTo-Json -InputObject @([DshFileAssociations]::List($path)) -Depth 4 -Compress' : '[DshFileAssociations]::Open($path, $application)'}
 `
-  // The script travels as a file, not as command-line data: -EncodedCommand grew with the
+  // WSL's PowerShell cannot read a Linux temporary path through -File, so WSL submits the
+  // script as UTF-16LE encoded command data instead. gzip keeps the embedded C# below the
+  // CreateProcess limit without a Windows-visible temporary file.
+  if (wsl) {
+    const compressed = gzipSync(Buffer.from(script, 'utf8')).toString('base64')
+    const bootstrap = `$b=[Convert]::FromBase64String('${compressed}');$m=New-Object IO.MemoryStream(,$b);$g=New-Object IO.Compression.GZipStream($m,[IO.Compression.CompressionMode]::Decompress);$s=(New-Object IO.StreamReader($g)).ReadToEnd();Invoke-Expression $s`
+    const encodedCommand = Buffer.from(bootstrap, 'utf16le').toString('base64')
+    const result = await run('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand], signal, 'hidden')
+    return result.stdout
+  }
+  // Native Windows keeps the script in a temporary file: -EncodedCommand grew with the
   // embedded C# and overflowed the 32767-character CreateProcess limit for long paths.
   // PowerShell 5.1 decodes a -File script as ANSI unless it carries a BOM; the BOM keeps
   // the embedded UTF-8 source intact.

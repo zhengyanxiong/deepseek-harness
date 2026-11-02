@@ -166,6 +166,9 @@ it('uses the Windows desktop for WSL paths and rejects an empty translation', as
   }))
   const facts = { platform: 'linux' as const, osRelease: 'microsoft', env: {}, run }
   expect(await nativeFileApplications('/mnt/c/音频.mp3', signal, facts)).toEqual([application])
+  const windowsQuery = run.mock.calls.find(call => call[0] === 'powershell.exe')
+  expect(windowsQuery?.[1]).toContain('-EncodedCommand')
+  expect(windowsQuery?.[1]).not.toContain('-File')
   await openNativeFileApplication('/mnt/c/音频.mp3', application.id, signal, facts)
   expect(run).toHaveBeenCalledWith('wslpath', ['-w', '/mnt/c/音频.mp3'], signal, 'hidden')
   const empty = async () => ({ stdout: '', stderr: '' })
